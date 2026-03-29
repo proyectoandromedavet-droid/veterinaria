@@ -1,0 +1,245 @@
+PENDIENTES PARA LLEGAR A 10/10
+Generado post code-review — VetManager Pro API
+========================================
+
+========================================
+ESTADO ACTUAL
+========================================
+Seguridad:      8/10  (era 4.5/10)
+Arquitectura:   8.5/10 (era 7/10)
+Testing:        7/10  (era 4/10)
+SaaS readiness: 6/10  (era 4/10)
+Producción:     6/10  (era 4.5/10)
+
+========================================
+CRÍTICO — SIN ESTO NO ES 10/10
+========================================
+
+[C1] HEALTH CHECKS PROFUNDOS
+- Estado: PARCIAL (solo /health → {ok})
+- Falta: /health/deep que verifique:
+  - Conexión DB (ping real)
+  - Conexión Redis (ping real)
+  - Servicios downstream (circuit breaker status)
+  - Espacio en disco / memoria
+- Impacto: sin esto, el healthcheck miente en producción
+
+[C2] API VERSIONING (/v1, /v2)
+- Estado: FALTANTE
+- Falta:
+  - Prefijo /api/v1/ en todas las rutas del gateway
+  - Headers de deprecación (Sunset, Deprecation)
+  - Registro de versión activa por ruta
+- Impacto: sin versionado, cualquier breaking change rompe clientes
+
+[C3] RBAC DINÁMICO DESDE DB
+- Estado: PARCIAL (rbac.js hardcodeado)
+- Falta:
+  - Tabla permissions en DB (id, resource, action, description)
+  - Tabla role_permissions (role_id, permission_id)
+  - Tabla org_role_overrides (org_id, role, added_permissions, removed_permissions)
+  - Cache Redis de permisos por org (TTL 5 min)
+  - API para gestionar permisos: GET/POST/DELETE /admin/permissions
+- Impacto: actualmente no es configurable por tenant
+
+[C4] MULTI-TENANT POR SUBDOMINIO
+- Estado: PARCIAL (gateway tiene subdomain resolver incompleto)
+- Falta:
+  - Tabla tenants (id, subdomain, org_id, plan, status)
+  - Middleware que resuelva HOST → org_id → inyecte en req
+  - Validación: el token JWT debe pertenecer al tenant del subdominio
+  - Fallback si tenant no encontrado → 404 con mensaje claro
+- Impacto: sin esto, multi-tenant es solo por org_id en header (inseguro)
+
+[C5] ERROR CATALOG ESTÁNDAR
+- Estado: PARCIAL (mensajes string libres)
+- Falta:
+  - Enum de error codes: AUTH_001, RBAC_002, VAL_003, etc.
+  - Campo `code` en todos los error responses
+  - Documentación de cada código
+  - Consistencia entre servicios
+- Impacto: clientes no pueden manejar errores programáticamente
+
+========================================
+IMPORTANTE — NECESARIO PARA PROD SERIA
+========================================
+
+[I1] DEEP HEALTH EN CADA SERVICIO
+- GET /health/deep → { db: 'ok'|'error', redis: 'ok'|'error', latency: N }
+- Usado por load balancer para sacar instancias enfermas
+
+[I2] STORAGE LIMITS EN USAGE LIMITS
+- usageLimits.js solo mide requests y AI calls
+- Falta: tracking de MB subidos por tenant
+- Falta: alertas cuando se acerca al límite (80%)
+- Falta: bloqueo cuando supera límite
+
+[I3] OPENAPI RUNTIME VALIDATION COMPLETA
+- express-openapi-validator está instalado pero no en todos los servicios
+- Falta: habilitar en medical, lab, billing, grooming, etc.
+- Falta: validación de responses (modo estricto en dev)
+
+[I4] CONTRACT TESTS
+- Falta: tests que verifiquen que gateway y servicios hablan el mismo contrato
+- Herramienta: Pact o similar
+- Mínimo: tests que verifiquen shape de response de endpoints críticos
+
+[I5] ZERO TRUST COMPLETO ENTRE SERVICIOS
+- Estado: PARCIAL (HMAC-SHA256 en internalAuth.js pero no enforced en todos)
+- Falta: verificación en CADA servicio, no solo en algunos
+- Falta: rotation del INTERNAL_SECRET sin downtime
+
+[I6] CIRCUIT BREAKER CON MÉTRICAS
+- circuitBreaker.js no expone métricas (cuántos OPEN, cambios de estado)
+- Falta: contador Prometheus de cambios de estado por servicio
+- Falta: notificación (webhook/log) cuando un servicio se abre
+
+[I7] GRACEFUL SHUTDOWN
+- Ningún servicio maneja SIGTERM correctamente
+- Falta: cerrar conexiones DB + Redis antes de salir
+- Falta: dejar de aceptar requests y terminar los in-flight
+
+[I8] QUERY LOGGING CON DURACIÓN
+- shared/db.js no loguea duración de queries
+- Falta: histograma Prometheus de query duration por operación
+- Falta: slow query log (queries > 500ms)
+
+[I9] MIGRACIONES VERSIONADAS
+- Sin framework de migraciones (Flyway, node-pg-migrate, umzug)
+- Scripts en /scripts/ pero manuales
+- Falta: tabla migration_history
+- Falta: rollback automático
+
+[I10] N+1 PREVENTION SISTEMÁTICO
+- Algunas rutas hacen queries en loop (owners + allergies + conditions en patients)
+- Falta: batch queries o JOINs donde corresponde
+- Falta: DataLoader pattern para resolvers complejos
+
+========================================
+PENDIENTE DE INFRAESTRUCTURA
+(no es código de la app, requiere AWS/DevOps)
+========================================
+
+[INF1] CI/CD PIPELINE (GitHub Actions / GitLab CI)
+- npm test en cada PR
+- SAST (eslint-security, semgrep)
+- Dependency audit (npm audit)
+- Build de imágenes Docker
+- Deploy automático a staging
+
+[INF2] AWS SECRETS MANAGER
+- JWT private keys en Secrets Manager (no variables de entorno)
+- DB password en Secrets Manager
+- Rotación automática
+
+[INF3] AWS KMS PARA JWT KEYS
+- Firma RS256 con clave en KMS
+- Sin clave privada en memoria
+- Rotación automática con kid
+
+[INF4] WAF (AWS WAF o Cloudflare)
+- Reglas contra SQLi, XSS, bots
+- Rate limit a nivel de CDN
+- Geo-blocking si es necesario
+
+[INF5] VPC + SECURITY GROUPS
+- Servicios internos no expuestos a internet
+- Solo gateway tiene IP pública
+- Redis y DB solo accesibles desde VPC
+
+[INF6] STAGING ENVIRONMENT
+- Igual a producción (misma infra, distinta data)
+- Deploy automático desde rama staging/main
+
+[INF7] BLUE/GREEN DEPLOYMENT
+- Deploy sin downtime
+- Rollback inmediato (cambio de load balancer)
+
+[INF8] BACKUPS AUTOMATIZADOS
+- MySQL: mysqldump diario + point-in-time recovery
+- Redis: RDB + AOF
+- Restore probado mensualmente
+
+[INF9] SBOM + SUPPLY CHAIN
+- npm audit en CI
+- Bloquear paquetes con CVE crítico
+- Lockfile siempre actualizado
+
+[INF10] SIEM / ALERTAS
+- CloudWatch / Datadog / Grafana alerting
+- Alerta cuando: auth failures > N/min, circuit breaker OPEN, error rate > 1%
+
+========================================
+FEATURES DE PRODUCTO PENDIENTES
+(más grandes, planificar por separado)
+========================================
+
+[P1] RBAC ABAC (Attribute-Based Access Control)
+- Permisos que dependan de atributos del recurso
+- Ej: veterinario solo ve pacientes de SU sucursal
+- Ej: receptionist no ve historial clínico
+
+[P2] DATA GOVERNANCE
+- Clasificación de datos: público / interno / sensible / crítico
+- Políticas de retención por tipo (ej: logs 90 días, datos médicos 10 años)
+- Borrado automático de datos vencidos
+
+[P3] API VERSIONING COMPLETO
+- /v1 y /v2 simultáneos
+- Deprecation notices con headers Sunset
+- Changelog automático
+
+[P4] MOTOR DE REGLAS DE NEGOCIO
+- Reglas dinámicas para: turnos, restricciones, alertas clínicas
+- Configurable por veterinaria (sin tocar código)
+- riskEngine.js es base, pero necesita ser más general
+
+[P5] PLUGIN SYSTEM
+- Módulos que extienden funcionalidad sin tocar core
+- API de hooks: before/after request, eventos de negocio
+- Marketplace de plugins por tenant
+
+[P6] BILLING REAL
+- Integración con Stripe/MercadoPago para cobro automático
+- Facturación mensual por plan
+- Overage pricing (cobrar por encima del plan)
+- Portal de facturación para admins
+
+[P7] SCHEMA ENGINE
+- API que lea el schema de la DB y genere:
+  - CRUD endpoints automáticos
+  - Tipos TypeScript
+  - Validaciones Zod
+
+[P8] CAPTCHA + DEVICE FINGERPRINT
+- CAPTCHA en login y reset password (hCaptcha/reCAPTCHA)
+- Device fingerprint para detectar cambio de dispositivo
+- Adaptive rate limit por comportamiento
+
+[P9] DATA LOSS PREVENTION
+- Detectar export masivo de datos (> N registros en ventana corta)
+- Detectar acceso a datos de otro tenant (intento fallido)
+- Alertas automáticas al admin
+
+[P10] DYNAMIC FRONTEND SCHEMA
+- Frontend que se adapta al schema/permisos del tenant
+- RBAC reflejado en UI (hide/disable elementos sin permisos)
+
+========================================
+RESUMEN DE ESTADO
+========================================
+
+Para código:
+  Crítico:     5 items  (C1-C5)
+  Importante:  10 items (I1-I10)
+
+Para infraestructura:
+  10 items (INF1-INF10)
+
+Para producto:
+  10 items (P1-P10)
+
+Estimado actual:  ~60-65% hacia 10/10 SaaS enterprise
+Con C1-C5 + I1-I10:  ~80-85%
+Con infraestructura: ~90-92%
+Con features producto: ~98-100%

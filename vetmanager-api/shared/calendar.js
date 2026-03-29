@@ -1,0 +1,262 @@
+'use strict';
+
+/**
+ * shared/calendar.js
+ * Google Calendar API integration (OAuth2 + Service Account)
+ * Sync appointments ↔ Google Calendar per vet user
+ */
+
+const { google } = require('googleapis');
+const db         = require('./db');
+
+// ─── OAuth2 client ────────────────────────────────────────────────────────────
+
+function buildOAuth2Client () {
+  return new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI   // e.g. https://api.vetmanager.com/auth/google/callback
+  );
+}
+
+/**
+ * Genera la URL de autorización OAuth2 para que el veterinario conecte su cuenta.
+ * @param {string} nonce — valor aleatorio generado por la ruta (almacenado en Redis)
+ *                         NO usar userId directamente (CSRF).
+ * @returns {string} authorizationUrl
+ */
+function getAuthUrl (nonce) {
+  const oauth2 = buildOAuth2Client();
+  return oauth2.generateAuthUrl({
+    access_type : 'offline',
+    prompt       : 'consent',
+    scope        : ['https://www.googleapis.com/auth/calendar'],
+    state        : nonce,   // nonce aleatorio — el callback lo valida contra Redis
+  });
+}
+
+/**
+ * Intercambia el code por tokens y los guarda en DB.
+ * @param {number} userId
+ * @param {string} code  — code recibido en callback de Google
+ */
+async function exchangeCode (userId, code) {
+  const oauth2 = buildOAuth2Client();
+  const { tokens } = await oauth2.getToken(code);
+  await _saveTokens(userId, tokens);
+  return tokens;
+}
+
+/**
+ * Revoca tokens y elimina de DB (desconectar cuenta).
+ * @param {number} userId
+ */
+async function revokeAccess (userId) {
+  const row = await _loadTokens(userId);
+  if (!row) return;
+  try {
+    const oauth2 = buildOAuth2Client();
+    oauth2.setCredentials({ access_token: row.access_token });
+    await oauth2.revokeToken(row.access_token);
+  } catch (_) { /* ignorar si ya expiró */ }
+  await db.query('DELETE FROM google_calendar_tokens WHERE user_id = :uid', { uid: userId });
+}
+
+// ─── Calendar operations ──────────────────────────────────────────────────────
+
+/**
+ * Crea un evento en Google Calendar del veterinario.
+ * @param {number} userId
+ * @param {object} appt — fila de appointments con joins (patient_name, vet_name, owner_name, etc.)
+ * @returns {object} { eventId, htmlLink }
+ */
+async function createEvent (userId, appt) {
+  const calendar = await _buildCalendar(userId);
+  const event    = _buildEventBody(appt);
+
+  const resp = await calendar.events.insert({
+    calendarId : 'primary',
+    resource   : event,
+  });
+
+  // Guardar google_event_id en la cita
+  await db.query(
+    'UPDATE appointments SET google_event_id = :eid WHERE id = :id',
+    { eid: resp.data.id, id: appt.id }
+  );
+
+  return { eventId: resp.data.id, htmlLink: resp.data.htmlLink };
+}
+
+/**
+ * Actualiza un evento existente en Google Calendar.
+ * @param {number} userId
+ * @param {object} appt — debe tener appt.google_event_id
+ */
+async function updateEvent (userId, appt) {
+  if (!appt.google_event_id) {
+    return createEvent(userId, appt);   // si no existe, crea uno nuevo
+  }
+  const calendar = await _buildCalendar(userId);
+  const event    = _buildEventBody(appt);
+
+  await calendar.events.update({
+    calendarId : 'primary',
+    eventId    : appt.google_event_id,
+    resource   : event,
+  });
+  return { eventId: appt.google_event_id };
+}
+
+/**
+ * Cancela / elimina el evento en Google Calendar.
+ * @param {number} userId
+ * @param {string} googleEventId
+ */
+async function deleteEvent (userId, googleEventId) {
+  if (!googleEventId) return;
+  try {
+    const calendar = await _buildCalendar(userId);
+    await calendar.events.delete({ calendarId: 'primary', eventId: googleEventId });
+  } catch (err) {
+    if (err.code !== 410) throw err;   // 410 = ya borrado, ignorar
+  }
+  await db.query(
+    'UPDATE appointments SET google_event_id = NULL WHERE google_event_id = :eid',
+    { eid: googleEventId }
+  );
+}
+
+/**
+ * Devuelve lista de eventos del calendario del veterinario en un rango de fechas.
+ * @param {number} userId
+ * @param {string} timeMin  ISO8601
+ * @param {string} timeMax  ISO8601
+ * @returns {object[]}
+ */
+async function listEvents (userId, timeMin, timeMax) {
+  const calendar = await _buildCalendar(userId);
+  const resp = await calendar.events.list({
+    calendarId   : 'primary',
+    timeMin,
+    timeMax,
+    singleEvents : true,
+    orderBy      : 'startTime',
+    maxResults   : 250,
+  });
+  return resp.data.items || [];
+}
+
+/**
+ * Verifica si el usuario tiene tokens Google guardados.
+ * @param {number} userId
+ * @returns {boolean}
+ */
+async function isConnected (userId) {
+  const row = await _loadTokens(userId);
+  return !!row;
+}
+
+// ─── Helpers privados ─────────────────────────────────────────────────────────
+
+async function _buildCalendar (userId) {
+  const row = await _loadTokens(userId);
+  if (!row) throw Object.assign(new Error('Google Calendar no conectado para este usuario'), { code: 'GCAL_NOT_CONNECTED' });
+
+  const oauth2 = buildOAuth2Client();
+  oauth2.setCredentials({
+    access_token  : row.access_token,
+    refresh_token : row.refresh_token,
+    expiry_date   : row.expiry_date ? Number(row.expiry_date) : undefined,
+  });
+
+  // Auto-refresh: si el access_token venció, googleapis lo renueva solo.
+  // Guardamos el nuevo token si fue actualizado.
+  oauth2.on('tokens', async (tokens) => {
+    await _saveTokens(userId, tokens);
+  });
+
+  return google.calendar({ version: 'v3', auth: oauth2 });
+}
+
+async function _loadTokens (userId) {
+  return db.queryOne(
+    'SELECT * FROM google_calendar_tokens WHERE user_id = :uid',
+    { uid: userId }
+  );
+}
+
+async function _saveTokens (userId, tokens) {
+  await db.query(
+    `INSERT INTO google_calendar_tokens
+       (user_id, access_token, refresh_token, expiry_date, scope)
+     VALUES (:uid, :at, :rt, :exp, :scope)
+     ON DUPLICATE KEY UPDATE
+       access_token  = VALUES(access_token),
+       refresh_token = IF(VALUES(refresh_token) IS NOT NULL, VALUES(refresh_token), refresh_token),
+       expiry_date   = VALUES(expiry_date),
+       updated_at    = NOW()`,
+    {
+      uid   : userId,
+      at    : tokens.access_token,
+      rt    : tokens.refresh_token || null,
+      exp   : tokens.expiry_date   || null,
+      scope : tokens.scope         || null,
+    }
+  );
+}
+
+/**
+ * Construye el body del evento Google Calendar a partir de una cita.
+ */
+function _buildEventBody (appt) {
+  const start = new Date(appt.scheduled_date);
+  const end   = new Date(start.getTime() + (appt.duration_minutes || 30) * 60_000);
+
+  const statusMap = {
+    scheduled   : 'tentative',
+    confirmed   : 'confirmed',
+    in_progress : 'confirmed',
+    completed   : 'confirmed',
+    cancelled   : 'cancelled',
+    no_show     : 'cancelled',
+  };
+
+  return {
+    summary     : `🐾 ${appt.patient_name || 'Paciente'} — ${appt.type_name || appt.reason || 'Consulta'}`,
+    description : [
+      appt.owner_name  ? `Propietario: ${appt.owner_name}`  : '',
+      appt.owner_phone ? `Teléfono: ${appt.owner_phone}`    : '',
+      appt.species     ? `Especie: ${appt.species}`         : '',
+      appt.reason      ? `Motivo: ${appt.reason}`           : '',
+      appt.notes       ? `Notas: ${appt.notes}`             : '',
+    ].filter(Boolean).join('\n'),
+    start       : { dateTime: start.toISOString(), timeZone: process.env.TZ || 'America/Argentina/Buenos_Aires' },
+    end         : { dateTime: end.toISOString(),   timeZone: process.env.TZ || 'America/Argentina/Buenos_Aires' },
+    status      : statusMap[appt.status] || 'tentative',
+    reminders   : {
+      useDefault : false,
+      overrides  : [
+        { method: 'popup', minutes: 60 },
+        { method: 'popup', minutes: 15 },
+      ],
+    },
+    extendedProperties: {
+      private: {
+        vetmanager_appointment_id : String(appt.id),
+        vetmanager_branch_id      : String(appt.branch_id || ''),
+      },
+    },
+  };
+}
+
+module.exports = {
+  getAuthUrl,
+  exchangeCode,
+  revokeAccess,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+  listEvents,
+  isConnected,
+};

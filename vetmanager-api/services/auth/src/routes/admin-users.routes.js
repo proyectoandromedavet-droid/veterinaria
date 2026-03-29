@@ -1,0 +1,205 @@
+'use strict';
+
+/**
+ * Admin user management routes.
+ *
+ * POST   /admin/users              → crear usuario staff + enviar welcome email
+ * GET    /admin/users              → listar usuarios del org
+ * PATCH  /admin/users/:id/deactivate → desactivar cuenta + revocar sesiones
+ *
+ * Requiere rol org_admin o superadmin (inyectado por gateway en X-User-Roles).
+ */
+
+const { Router }  = require('express');
+const { body, param, validationResult } = require('express-validator');
+const bcrypt      = require('bcryptjs');
+const crypto      = require('crypto');
+const db          = require('../../../../shared/db');
+const R           = require('../../../../shared/response');
+const { requireInternalSig } = require('../../../../shared/internalAuth');
+const { sendWelcome }        = require('../../../../shared/email');
+
+const router = Router();
+
+function validate(req, res, next) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return R.badRequest(res, 'Validation failed', errors.array());
+  next();
+}
+
+function fromHeaders(req, _res, next) {
+  req.user = {
+    userId:   req.headers['x-user-id'],
+    orgId:    req.headers['x-org-id'],
+    branchId: req.headers['x-branch-id'],
+    roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
+    email:    req.headers['x-user-email'],
+  };
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user.roles.some(r => ['superadmin', 'org_admin'].includes(r))) {
+    return R.forbidden(res, 'Se requiere rol org_admin o superadmin');
+  }
+  next();
+}
+
+// ── POST /admin/users ─────────────────────────────────────────────────────────
+router.post('/users',
+  requireInternalSig,
+  fromHeaders,
+  requireAdmin,
+  body('firstName').notEmpty().trim().isLength({ max: 60 }),
+  body('lastName').notEmpty().trim().isLength({ max: 60 }),
+  body('email').isEmail().normalizeEmail(),
+  body('role').notEmpty().isLength({ max: 40 }),
+  body('branchId').isInt({ min: 1 }),
+  body('phone').optional().isMobilePhone('any'),
+  body('licenseNumber').optional().isLength({ max: 40 }),
+  validate,
+  async (req, res, next) => {
+    try {
+      const { firstName, lastName, email, role, branchId, licenseNumber, phone } = req.body;
+
+      // Email no debe estar en uso
+      const existing = await db.queryOne(
+        `SELECT id FROM users WHERE email = :email`,
+        { email }
+      );
+      if (existing) return R.conflict(res, 'Ya existe un usuario con ese email');
+
+      // Sucursal debe pertenecer al mismo org del admin
+      const branch = await db.queryOne(
+        `SELECT b.id, o.name AS org_name FROM branches b
+         JOIN organizations o ON b.organization_id = o.id
+         WHERE b.id = :branchId AND b.organization_id = :orgId`,
+        { branchId, orgId: req.user.orgId }
+      );
+      if (!branch) return R.badRequest(res, 'Sucursal inválida o no pertenece a su organización');
+
+      // Rol debe existir
+      const roleRow = await db.queryOne(
+        `SELECT id FROM roles WHERE name = :name`, { name: role }
+      );
+      if (!roleRow) return R.badRequest(res, `Rol '${role}' no existe`);
+
+      // Generar contraseña temporal segura (12 chars base64url)
+      const tempPassword = crypto.randomBytes(9).toString('base64url');
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+      const userId = await db.transaction(async (conn) => {
+        const [r] = await conn.execute(
+          `INSERT INTO users
+             (first_name, last_name, email, password_hash, branch_id,
+              license_number, phone, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+          [firstName, lastName, email, passwordHash, branchId,
+           licenseNumber || null, phone || null]
+        );
+        const uid = r.insertId;
+
+        await conn.execute(
+          `INSERT INTO user_roles (user_id, role_id, is_active, assigned_by, assigned_at)
+           VALUES (?, ?, 1, ?, NOW())`,
+          [uid, roleRow.id, req.user.userId || null]
+        );
+
+        return uid;
+      });
+
+      // Enviar email de bienvenida con contraseña temporal (fire-and-forget)
+      sendWelcome({
+        to:           email,
+        name:         `${firstName} ${lastName}`,
+        orgName:      branch.org_name,
+        tempPassword,
+      }).catch(() => {});
+
+      return R.created(res, {
+        id:      userId,
+        message: 'Usuario creado. Se envió email de bienvenida con contraseña temporal.',
+      });
+    } catch (e) { next(e); }
+  }
+);
+
+// ── GET /admin/users ──────────────────────────────────────────────────────────
+router.get('/users',
+  requireInternalSig,
+  fromHeaders,
+  requireAdmin,
+  async (req, res, next) => {
+    try {
+      const { page = 1, limit = 50, isActive } = req.query;
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      const conds  = ['b.organization_id = :orgId'];
+      const params = { orgId: req.user.orgId, limit: parseInt(limit), offset };
+
+      if (isActive !== undefined) {
+        conds.push('u.is_active = :isActive');
+        params.isActive = isActive === 'true' ? 1 : 0;
+      }
+
+      const [users, [{ total }]] = await Promise.all([
+        db.query(
+          `SELECT u.id, u.first_name, u.last_name, u.email, u.phone,
+                  u.license_number, u.is_active, u.created_at,
+                  b.name AS branch_name,
+                  GROUP_CONCAT(r.name ORDER BY r.name SEPARATOR ',') AS roles
+           FROM users u
+           JOIN branches b ON u.branch_id = b.id
+           LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.is_active = 1
+           LEFT JOIN roles r ON r.id = ur.role_id
+           WHERE ${conds.join(' AND ')}
+           GROUP BY u.id
+           ORDER BY u.last_name, u.first_name
+           LIMIT :limit OFFSET :offset`,
+          params
+        ),
+        db.query(
+          `SELECT COUNT(DISTINCT u.id) AS total
+           FROM users u JOIN branches b ON u.branch_id = b.id
+           WHERE b.organization_id = :orgId`,
+          { orgId: req.user.orgId }
+        ),
+      ]);
+
+      return R.paginated(res, users, total, page, limit);
+    } catch (e) { next(e); }
+  }
+);
+
+// ── PATCH /admin/users/:id/deactivate ─────────────────────────────────────────
+router.patch('/users/:id/deactivate',
+  requireInternalSig,
+  fromHeaders,
+  requireAdmin,
+  param('id').isInt({ min: 1 }),
+  validate,
+  async (req, res, next) => {
+    try {
+      if (String(req.params.id) === String(req.user.userId)) {
+        return R.badRequest(res, 'No puede desactivar su propia cuenta');
+      }
+
+      const user = await db.queryOne(
+        `SELECT u.id FROM users u
+         JOIN branches b ON u.branch_id = b.id
+         WHERE u.id = :id AND b.organization_id = :orgId`,
+        { id: req.params.id, orgId: req.user.orgId }
+      );
+      if (!user) return R.notFound(res, 'Usuario no encontrado');
+
+      await db.query(
+        `UPDATE users SET is_active = 0, updated_at = NOW() WHERE id = :id`,
+        { id: req.params.id }
+      );
+      await db.callProc('sp_revoke_user_sessions', [req.params.id]);
+
+      return R.noContent(res);
+    } catch (e) { next(e); }
+  }
+);
+
+module.exports = router;

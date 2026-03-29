@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging, develop]
+  pull_request:
+    branches: [main, staging]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ── Lint ────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --prefer-offline
+
+      - name: ESLint
+        run: npm run lint --if-present
+
+  # ── Security audit ──────────────────────────────────────────────────────────
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --prefer-offline
+
+      # Fail on critical or high CVEs
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+  # ── Unit + integration tests ─────────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: vetmanager_test
+          MYSQL_USER: vetapp
+          MYSQL_PASSWORD: testpass
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -u root -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+
+    env:
+      NODE_ENV: test
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: vetmanager_test
+      MYSQL_USER: vetapp
+      MYSQL_PASSWORD: testpass
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      JWT_SECRET: ci-test-secret-at-least-32-chars!!
+      INTERNAL_SECRET: ci-internal-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Run migrations
+        run: |
+          for f in scripts/migrations/*.sql; do
+            mysql -h 127.0.0.1 -u root -prootpass vetmanager_test < "$f" || true
+          done
+
+      - name: Run tests
+        run: npm test -- --forceExit --runInBand --coverage
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ── Docker build (no push — validates Dockerfile) ────────────────────────────
+  docker-build:
+    name: Docker build check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    strategy:
+      matrix:
+        service: [gateway, auth, patients, medical, lab-imaging, billing, grooming, reports]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: false
+          tags: vetmanager/${{ matrix.service }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Deploy to staging (only on push to staging branch) ──────────────────────
+  deploy-staging:
+    name: Deploy to staging
+    needs: [lint, audit, test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        run: echo "Add your deployment script here (e.g. ssh deploy, kubectl apply, etc.)"
+        # Example for SSH deploy:
+        # uses: appleboy/ssh-action@v1
+        # with:
+        #   host: ${{ secrets.STAGING_HOST }}
+        #   username: ${{ secrets.STAGING_USER }}
+        #   key: ${{ secrets.STAGING_SSH_KEY }}
+        #   script: |
+        #     cd /opt/vetmanager-api
+        #     git pull origin staging
+        #     docker compose pull
+        #     docker compose up -d --remove-orphans

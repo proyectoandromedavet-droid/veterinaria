@@ -1,0 +1,257 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: vetmanager
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../vetmanager_COMPLETO_FINAL.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vetnet
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - vetnet
+
+  gateway:
+    build: ./gateway
+    restart: unless-stopped
+    ports:
+      - "4050:4050"
+    env_file: .env
+    environment:
+      - PORT=4050
+      - SERVICE_AUTH=http://auth:4051
+      - SERVICE_PATIENTS=http://patients:4052
+      - SERVICE_MEDICAL=http://medical:4053
+      - SERVICE_LAB=http://lab-imaging:4054
+      - SERVICE_BILLING=http://billing:4055
+      - SERVICE_TELEMEDICINE=http://telemedicine:4056
+      - SERVICE_GROOMING=http://grooming:4057
+      - SERVICE_REPORTS=http://reports:4058
+      - SERVICE_NOTIFICATIONS=http://notifications:4059
+      - SERVICE_PORTAL=http://portal:4060
+      - SERVICE_AI=http://ai:4061
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - vetnet
+
+  auth:
+    build: ./services/auth
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4051
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - vetnet
+
+  patients:
+    build: ./services/patients
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4052
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vetnet
+
+  medical:
+    build: ./services/medical
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4053
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vetnet
+
+  lab-imaging:
+    build: ./services/lab-imaging
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4054
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vetnet
+
+  billing:
+    build: ./services/billing
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4055
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vetnet
+
+  telemedicine:
+    build: ./services/telemedicine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4056
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vetnet
+
+  grooming:
+    build: ./services/grooming
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4057
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vetnet
+
+  reports:
+    build: ./services/reports
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4058
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vetnet
+
+  notifications:
+    build: ./services/notifications
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4059
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - vetnet
+
+  portal:
+    build: ./services/portal
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4060
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - vetnet
+
+  ai:
+    build: ./services/ai
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4061
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vetnet
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - vetnet
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - vetnet
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - vetnet
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  vetnet:
+    driver: bridge

@@ -1,0 +1,151 @@
+'use strict';
+
+const { WebSocketServer } = require('ws');
+const { createClient }    = require('redis');
+const jwt                 = require('jsonwebtoken');
+const { logger }          = require('./middleware/logger');
+
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'change_me_access';
+
+// Redis pub/sub for inter-service broadcasting
+let redisSubscriber;
+let redisPublisher;
+
+async function getRedisClients() {
+  if (!redisSubscriber) {
+    const opts = {
+      socket: {
+        host:     process.env.REDIS_HOST || 'localhost',
+        port:     parseInt(process.env.REDIS_PORT || '6379'),
+      },
+      password: process.env.REDIS_PASSWORD || undefined,
+    };
+    redisSubscriber = createClient(opts);
+    redisPublisher  = createClient(opts);
+    await redisSubscriber.connect();
+    await redisPublisher.connect();
+  }
+  return { sub: redisSubscriber, pub: redisPublisher };
+}
+
+// Map: userId → Set<WebSocket>
+const userSockets = new Map();
+
+function getTokenFromRequest(req) {
+  const url    = new URL(req.url, 'http://localhost');
+  const token  = url.searchParams.get('token');
+  const header = req.headers['authorization'];
+  return token || (header?.startsWith('Bearer ') ? header.slice(7) : null);
+}
+
+/**
+ * Attach WebSocket server to the HTTP server.
+ * Clients connect to: ws://host/ws?token=<access_token>
+ */
+async function attachWebSocket(httpServer) {
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const { sub } = await getRedisClients();
+
+  // Subscribe to all notification channels published by services
+  await sub.subscribe('notifications', (message) => {
+    try {
+      const payload = JSON.parse(message);
+      broadcast(payload);
+    } catch (e) {
+      logger.warn('WS: bad Redis message', { message });
+    }
+  });
+
+  wss.on('connection', (ws, req) => {
+    const token = getTokenFromRequest(req);
+    if (!token) {
+      ws.close(4001, 'Missing token');
+      return;
+    }
+
+    let user;
+    try {
+      user = jwt.verify(token, ACCESS_SECRET);
+    } catch (_) {
+      ws.close(4001, 'Invalid or expired token');
+      return;
+    }
+
+    const userId = String(user.userId);
+    if (!userSockets.has(userId)) userSockets.set(userId, new Set());
+    userSockets.get(userId).add(ws);
+
+    logger.info('WS: client connected', { userId, ip: req.socket.remoteAddress });
+
+    // Heartbeat
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
+
+    ws.on('message', (rawData) => {
+      try {
+        const msg = JSON.parse(rawData.toString());
+        if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
+      } catch (_) {}
+    });
+
+    ws.on('close', () => {
+      userSockets.get(userId)?.delete(ws);
+      if (userSockets.get(userId)?.size === 0) userSockets.delete(userId);
+      logger.info('WS: client disconnected', { userId });
+    });
+
+    ws.send(JSON.stringify({ type: 'connected', userId, roles: user.roles }));
+  });
+
+  // Heartbeat interval
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (!ws.isAlive) return ws.terminate();
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, parseInt(process.env.WS_HEARTBEAT_INTERVAL || '30000'));
+
+  wss.on('close', () => clearInterval(heartbeatInterval));
+
+  logger.info('WebSocket server attached at /ws');
+  return wss;
+}
+
+/**
+ * Broadcast a notification payload to specific users or roles.
+ * @param {{ type, targetUserIds?, targetRoles?, orgId?, branchId?, data }} payload
+ */
+function broadcast(payload) {
+  const { type, targetUserIds, data } = payload;
+  const message = JSON.stringify({ type, data, ts: new Date().toISOString() });
+
+  if (targetUserIds && targetUserIds.length) {
+    for (const uid of targetUserIds) {
+      const sockets = userSockets.get(String(uid));
+      if (!sockets) continue;
+      for (const ws of sockets) {
+        if (ws.readyState === 1) ws.send(message);
+      }
+    }
+    return;
+  }
+
+  // Broadcast to all connected clients (filtered by org if needed)
+  for (const [, sockets] of userSockets) {
+    for (const ws of sockets) {
+      if (ws.readyState === 1) ws.send(message);
+    }
+  }
+}
+
+/**
+ * Publish a notification from any service via Redis.
+ * Other services should use this function through their own Redis publisher.
+ */
+async function publishNotification(payload) {
+  const { pub } = await getRedisClients();
+  await pub.publish('notifications', JSON.stringify(payload));
+}
+
+module.exports = { attachWebSocket, publishNotification, broadcast };

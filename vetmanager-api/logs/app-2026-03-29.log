@@ -1,0 +1,16 @@
+{"level":"info","message":"Swagger UI at /api/v1/docs","timestamp":"2026-03-29T14:42:25.647Z"}
+{"env":"production","level":"info","message":"Gateway running on port 4050","timestamp":"2026-03-29T14:42:25.678Z","version":"v1"}
+{"error":"ERR unknown command 'subscribe'","level":"error","message":"WS init error","timestamp":"2026-03-29T14:42:25.738Z"}
+{"level":"info","message":"Swagger UI at /api/v1/docs","timestamp":"2026-03-29T14:46:22.118Z"}
+{"env":"development","level":"info","message":"Gateway running on port 4050","timestamp":"2026-03-29T14:46:22.151Z","version":"v1"}
+{"error":"ERR unknown command 'subscribe'","level":"error","message":"WS init error","timestamp":"2026-03-29T14:46:22.185Z"}
+{"level":"info","message":"Swagger UI at /api/v1/docs","timestamp":"2026-03-29T14:48:02.102Z"}
+{"env":"development","level":"info","message":"Gateway running on port 4050","timestamp":"2026-03-29T14:48:02.135Z","version":"v1"}
+{"error":"ERR unknown command 'subscribe'","level":"error","message":"WS init error","timestamp":"2026-03-29T14:48:02.177Z"}
+{"level":"error","message":"Unhandled rejection — process kept alive","reason":"ERR unknown command 'SCRIPT'","timestamp":"2026-03-29T14:48:19.871Z"}
+{"error":"ERR unknown command 'SCRIPT'","level":"error","message":"Unhandled error","requestId":"804e367e-8bf3-464b-b84e-7e162fc765ef","timestamp":"2026-03-29T14:48:19.878Z"}
+{"error":"ERR unknown command 'SCRIPT'","level":"error","message":"Unhandled error","requestId":"ca987959-d9f0-4547-a3d3-6243af9244bf","timestamp":"2026-03-29T14:48:19.964Z"}
+{"error":"ERR unknown command 'SCRIPT'","level":"error","message":"Unhandled error","requestId":"9d539a7c-d47d-4683-b32c-0a88f097ef86","timestamp":"2026-03-29T14:48:20.020Z"}
+{"level":"info","message":"Swagger UI at /api/v1/docs","timestamp":"2026-03-29T14:49:00.726Z"}
+{"env":"development","level":"info","message":"Gateway running on port 4050","timestamp":"2026-03-29T14:49:00.759Z","version":"v1"}
+{"error":"ERR unknown command 'subscribe'","level":"error","message":"WS init error","timestamp":"2026-03-29T14:49:00.789Z"}

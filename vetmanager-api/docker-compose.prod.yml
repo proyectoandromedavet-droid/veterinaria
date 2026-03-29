@@ -1,0 +1,292 @@
+version: '3.9'
+
+# Producción: todos los servicios con healthchecks, restart policies, y resource limits
+# Usar con: docker compose -f docker-compose.prod.yml up -d
+
+networks:
+  vetmanager-internal:
+    driver: bridge
+    internal: true   # No expuesto a internet — solo servicios internos
+  vetmanager-public:
+    driver: bridge    # Solo gateway tiene acceso
+
+volumes:
+  mysql-data:
+  redis-data:
+
+services:
+  # ── Base de datos ─────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: vetmanager
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./scripts/migrations:/docker-entrypoint-initdb.d:ro
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 600M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ── Gateway (único servicio público) ─────────────────────────────────────────
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+      - "443:3000"   # con reverse proxy nginx/traefik delante
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      AUTH_URL: http://auth:3001
+      PATIENTS_URL: http://patients:3002
+      MEDICAL_URL: http://medical:3003
+      LAB_URL: http://lab-imaging:3004
+      BILLING_URL: http://billing:3005
+      GROOMING_URL: http://grooming:3006
+      REPORTS_URL: http://reports:3007
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      auth: {condition: service_healthy}
+    networks: [vetmanager-internal, vetmanager-public]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── Servicios internos ────────────────────────────────────────────────────────
+  auth:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: mysql
+      DB_NAME: vetmanager
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  patients:
+    build:
+      context: .
+      dockerfile: services/patients/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      DB_HOST: mysql
+      DB_NAME: vetmanager
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  medical:
+    build:
+      context: .
+      dockerfile: services/medical/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      DB_HOST: mysql
+      DB_NAME: vetmanager
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  lab-imaging:
+    build:
+      context: .
+      dockerfile: services/lab-imaging/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      DB_HOST: mysql
+      DB_NAME: vetmanager
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3004/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  billing:
+    build:
+      context: .
+      dockerfile: services/billing/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      DB_HOST: mysql
+      DB_NAME: vetmanager
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN}
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3005/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  grooming:
+    build:
+      context: .
+      dockerfile: services/grooming/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3006
+      DB_HOST: mysql
+      DB_NAME: vetmanager
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3006/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  reports:
+    build:
+      context: .
+      dockerfile: services/reports/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3007
+      DB_HOST: mysql
+      DB_NAME: vetmanager
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3007/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3

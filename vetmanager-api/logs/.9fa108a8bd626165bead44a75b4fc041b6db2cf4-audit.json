@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "C:\\apps\\veterinaria\\vetmanager-api\\logs\\.9fa108a8bd626165bead44a75b4fc041b6db2cf4-audit.json",
+    "files": [
+        {
+            "date": 1774795344317,
+            "name": "C:\\apps\\veterinaria\\vetmanager-api\\logs\\app-2026-03-29.log",
+            "hash": "f8026f10943fcef53977df4d5931950219cbaa4e04a7ba1e66dc929c17d10412"
+        }
+    ],
+    "hashType": "sha256"
+}

@@ -1,0 +1,54 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:4050']
+    metrics_path: /metrics
+
+  - job_name: 'auth'
+    static_configs:
+      - targets: ['auth:4051']
+    metrics_path: /metrics
+
+  - job_name: 'patients'
+    static_configs:
+      - targets: ['patients:4052']
+    metrics_path: /metrics
+
+  - job_name: 'medical'
+    static_configs:
+      - targets: ['medical:4053']
+    metrics_path: /metrics
+
+  - job_name: 'lab-imaging'
+    static_configs:
+      - targets: ['lab-imaging:4054']
+    metrics_path: /metrics
+
+  - job_name: 'billing'
+    static_configs:
+      - targets: ['billing:4055']
+    metrics_path: /metrics
+
+  - job_name: 'telemedicine'
+    static_configs:
+      - targets: ['telemedicine:4056']
+    metrics_path: /metrics
+
+  - job_name: 'grooming'
+    static_configs:
+      - targets: ['grooming:4057']
+    metrics_path: /metrics
+
+  - job_name: 'reports'
+    static_configs:
+      - targets: ['reports:4058']
+    metrics_path: /metrics
+
+  - job_name: 'notifications'
+    static_configs:
+      - targets: ['notifications:4059']
+    metrics_path: /metrics

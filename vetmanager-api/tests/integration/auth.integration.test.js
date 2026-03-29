@@ -1,0 +1,267 @@
+'use strict';
+
+/**
+ * Integration tests — Auth service
+ *
+ * Spins up the auth Express app in-process and drives it via supertest.
+ * All external dependencies (DB, Redis) are mocked at module level.
+ *
+ * Coverage:
+ *   - POST /login  — success, bad credentials, locked account (brute-force)
+ *   - POST /refresh — token rotation, reuse detection
+ *   - POST /logout
+ */
+
+jest.mock('../../shared/db', () => ({
+  query:       jest.fn(),
+  queryOne:    jest.fn(),
+  callProc:    jest.fn(),
+  transaction: jest.fn(),
+  getPool:     jest.fn(() => ({ execute: jest.fn().mockResolvedValue([[]]) })),
+}));
+jest.mock('../../shared/twoFactor', () => ({
+  setupTwoFactor:       jest.fn(),
+  verifyTwoFactor:      jest.fn(),
+  generateRecoveryCodes: jest.fn(() => []),
+}));
+jest.mock('../../shared/email', () => ({
+  send2faEnabled:    jest.fn(),
+  sendPasswordReset: jest.fn(),
+}));
+jest.mock('redis', () => {
+  const store = new Map();
+  const ttlStore = new Map();
+
+  const client = {
+    connect:    jest.fn().mockResolvedValue(undefined),
+    on:         jest.fn(),
+    get:        jest.fn(async (k)       => store.get(k) ?? null),
+    set:        jest.fn(async (k, v)    => { store.set(k, v); return 'OK'; }),
+    setEx:      jest.fn(async (k, t, v) => { store.set(k, v); ttlStore.set(k, t); return 'OK'; }),
+    del:        jest.fn(async (k)       => { store.delete(k); return 1; }),
+    incr:       jest.fn(async (k)       => { const n = (parseInt(store.get(k) || 0)) + 1; store.set(k, String(n)); return n; }),
+    incrBy:     jest.fn(async (k, a)    => { const n = (parseInt(store.get(k) || 0)) + a; store.set(k, String(n)); return n; }),
+    expire:     jest.fn().mockResolvedValue(1),
+    ttl:        jest.fn(async (k)       => ttlStore.get(k) ?? -1),
+    multi:      jest.fn(() => ({
+      incrBy: jest.fn().mockReturnThis(),
+      expire: jest.fn().mockReturnThis(),
+      exec:   jest.fn().mockResolvedValue([1, 1]),
+    })),
+    _store: store,
+    _ttlStore: ttlStore,
+    _reset: () => { store.clear(); ttlStore.clear(); },
+  };
+
+  return { createClient: jest.fn(() => client) };
+});
+
+// These are populated in beforeAll after jest.resetModules()
+// so that the test and the controller share the SAME module instances
+// (same RSA key pair, same db mock, same redis mock client).
+let request, bcrypt, db, jwt, redisClient, app;
+
+beforeAll(() => {
+  process.env.NODE_ENV = 'test';
+  request     = require('supertest');
+  bcrypt      = require('bcryptjs');
+  db          = require('../../shared/db');
+  jwt         = require('../../shared/jwt');
+  const { createClient } = require('redis');
+  redisClient = createClient();  // same client instance the controller will use
+  app         = require('../../services/auth/src/index');
+});
+
+afterEach(() => {
+  redisClient._reset();
+  jest.clearAllMocks();
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function makePasswordHash(pw) {
+  return bcrypt.hash(pw, 1); // cost=1 for test speed
+}
+
+function makeProcResult(locked = false) {
+  return [[{ locked, locked_until: locked ? '2099-01-01 00:00:00' : null }]];
+}
+
+function makeUserRow(overrides = {}) {
+  return {
+    id:              1,
+    email:           'vet@clinic.com',
+    password_hash:   null, // filled in beforeEach
+    is_active:       true,
+    branch_id:       10,
+    organization_id: 5,
+    first_name:      'Vet',
+    last_name:       'Pro',
+    two_factor_enabled: false,
+    ...overrides,
+  };
+}
+
+// ── Tests: POST /login ─────────────────────────────────────────────────────────
+
+describe('POST /login', () => {
+  const PASSWORD = 'ValidPass1!';
+  let user;
+
+  beforeEach(async () => {
+    user = makeUserRow({ password_hash: await makePasswordHash(PASSWORD) });
+  });
+
+  test('200 — successful login returns access + refresh tokens', async () => {
+    db.callProc.mockResolvedValueOnce(makeProcResult(false));
+    db.queryOne.mockResolvedValueOnce(user);                       // user lookup
+    db.query
+      .mockResolvedValueOnce([{ name: 'veterinarian' }])           // roles
+      .mockResolvedValueOnce([{ insertId: 1 }])                    // insert session
+      .mockResolvedValueOnce([{ insertId: 2 }]);                   // login_history
+
+    const res = await request(app).post('/login').send({ email: user.email, password: PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      accessToken:  expect.any(String),
+      refreshToken: expect.any(String),
+    });
+    expect(res.body.data.user.orgId).toBe(5);
+  });
+
+  test('401 — wrong password', async () => {
+    db.callProc.mockResolvedValueOnce(makeProcResult(false));
+    db.queryOne.mockResolvedValueOnce(user);
+    db.query.mockResolvedValueOnce([{ insertId: 99 }]); // login_history failure
+
+    const res = await request(app).post('/login').send({ email: user.email, password: 'WrongPass1!' });
+    expect(res.status).toBe(401);
+  });
+
+  test('429 — account locked by SP', async () => {
+    db.callProc.mockResolvedValueOnce(makeProcResult(true));
+
+    const res = await request(app).post('/login').send({ email: user.email, password: PASSWORD });
+    expect(res.status).toBe(429);
+    expect(res.body.error.message).toMatch(/locked/i);
+  });
+
+  test('429 — Redis brute-force lock after repeated failures', async () => {
+    // Simulate lock already set in Redis
+    redisClient._store.set(`bf:lock:${user.email}:127.0.0.1`, '1');
+    redisClient._ttlStore.set(`bf:lock:${user.email}:127.0.0.1`, 30);
+
+    const res = await request(app).post('/login')
+      .set('X-Forwarded-For', '127.0.0.1')
+      .send({ email: user.email, password: 'anypassword' });
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBeDefined();
+    // DB should not be called at all (blocked before SP)
+    expect(db.callProc).not.toHaveBeenCalled();
+  });
+
+  test('400 — missing required fields', async () => {
+    const res = await request(app).post('/login').send({ email: 'not-an-email', password: 'x' });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── Tests: POST /refresh ───────────────────────────────────────────────────────
+
+describe('POST /refresh', () => {
+  let refreshToken;
+  let tokenHash;
+
+  beforeEach(() => {
+    const signed = jwt.signRefresh({ jti: 'test-jti', userId: 1 });
+    refreshToken = signed;
+    tokenHash    = jwt.hashToken(signed);
+  });
+
+  test('200 — valid token returns new pair', async () => {
+    const session = {
+      id: 10, user_id: 1, jti: 'test-jti',
+      email: 'vet@clinic.com', branch_id: 10, organization_id: 5,
+    };
+
+    db.queryOne.mockResolvedValueOnce(session);               // session lookup
+    db.query
+      .mockResolvedValueOnce([{ name: 'veterinarian' }])      // roles
+      .mockResolvedValueOnce([{ affectedRows: 1 }]);          // UPDATE session
+
+    const res = await request(app).post('/refresh').send({ refreshToken });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.accessToken).toBeTruthy();
+    expect(res.body.data.refreshToken).toBeTruthy();
+    // Old hash should be stored in Redis as "used"
+    expect(redisClient._store.get(`rt:used:${tokenHash}`)).toBe('10');
+  });
+
+  test('401 — token not found in DB', async () => {
+    db.queryOne.mockResolvedValueOnce(null); // session not found
+
+    const res = await request(app).post('/refresh').send({ refreshToken });
+    expect(res.status).toBe(401);
+    expect(res.body.error.message).toMatch(/not found/i);
+  });
+
+  test('401 — reuse detection: same token used twice', async () => {
+    // Pre-seed Redis as if this token was already rotated
+    redisClient._store.set(`rt:used:${tokenHash}`, '10');
+
+    // Simulate the new (rotated) session in DB
+    db.queryOne.mockResolvedValueOnce({ id: 10, jti: 'new-jti' });
+    db.query.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE revoke session
+
+    const res = await request(app).post('/refresh').send({ refreshToken });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.message).toMatch(/already used|theft/i);
+    // Session should be revoked
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('is_revoked = TRUE'),
+      expect.objectContaining({ id: '10' })
+    );
+  });
+
+  test('401 — invalid JWT signature', async () => {
+    const res = await request(app).post('/refresh').send({ refreshToken: 'bad.token.here' });
+    expect(res.status).toBe(401);
+  });
+
+  test('400 — missing refreshToken field', async () => {
+    const res = await request(app).post('/refresh').send({});
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── Tests: POST /logout ────────────────────────────────────────────────────────
+
+describe('POST /logout', () => {
+  test('204 — revokes JTI and session', async () => {
+    db.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+    const res = await request(app)
+      .post('/logout')
+      .set('X-User-Id',    '1')
+      .set('X-Org-Id',     '5')
+      .set('X-User-Roles', 'veterinarian')
+      .set('X-Jti',        'some-jti');
+
+    expect(res.status).toBe(204);
+    expect(redisClient._store.get('revoked:some-jti')).toBe('1');
+  });
+});
+
+// ── Tests: GET /health ─────────────────────────────────────────────────────────
+
+describe('GET /health', () => {
+  test('200 — health check always available', async () => {
+    const res = await request(app).get('/health');
+    expect([200, 503]).toContain(res.status);
+    expect(typeof res.body.status).toBe('string');
+    expect(res.body.service).toBe('auth');
+  });
+});

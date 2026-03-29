@@ -1,0 +1,1090 @@
+openapi: 3.0.3
+info:
+  title: VetManager Pro API
+  description: |
+    API REST para el sistema veterinario SaaS multinacional VetManager Pro.
+
+    **Autenticación:** Bearer JWT (access token de 15min + refresh token de 7 días)
+
+    **Multi-tenant:** Todos los endpoints filtran datos por `branchId` del token JWT.
+
+    **RBAC:** Cada endpoint requiere un permiso específico según el rol del usuario.
+  version: "1.0.0"
+  contact:
+    name: VetManager Pro
+    email: api@vetmanagerpro.com
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development
+  - url: https://api.vetmanagerpro.com/api/v1
+    description: Production
+
+tags:
+  - name: Auth
+    description: Autenticación, sesiones, API keys
+  - name: Clients
+    description: Clientes / dueños de mascotas
+  - name: Patients
+    description: Pacientes (animales)
+  - name: Appointments
+    description: Agenda de turnos y triage de emergencias
+  - name: Medical Records
+    description: Historia clínica completa (HC)
+  - name: Lab
+    description: Laboratorio clínico
+  - name: Imaging
+    description: Diagnóstico por imágenes
+  - name: Pathology
+    description: Patología (histopatología, citología, necropsias)
+  - name: Surgery
+    description: Cirugías y registros anestésicos
+  - name: Hospitalization
+    description: Internación y monitoreo de enfermería
+  - name: Vaccination
+    description: Vacunaciones y desparasitaciones
+  - name: Billing
+    description: Facturación multi-moneda y pagos
+  - name: Inventory
+    description: Farmacia e inventario
+  - name: Telemedicine
+    description: Teleconsulta y prescripciones digitales
+  - name: Grooming
+    description: Peluquería y estética canina/felina
+  - name: Reports
+    description: Reportes ejecutivos y KPIs
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            message: { type: string }
+            details: { type: array, items: { type: object } }
+
+    Pagination:
+      type: object
+      properties:
+        total:      { type: integer }
+        page:       { type: integer }
+        limit:      { type: integer }
+        totalPages: { type: integer }
+
+    Patient:
+      type: object
+      properties:
+        id:                   { type: integer }
+        name:                 { type: string, example: "Firulais" }
+        speciesId:            { type: integer }
+        species:              { type: string, example: "Canino" }
+        breedId:              { type: integer }
+        breed:                { type: string, example: "Labrador Retriever" }
+        sex:                  { type: string, enum: [male, female, unknown] }
+        birthdate:            { type: string, format: date }
+        chipNumber:           { type: string }
+        weightKg:             { type: number }
+        bodyConditionScore:   { type: integer, minimum: 1, maximum: 9 }
+        isNeutered:           { type: boolean }
+        photoUrl:             { type: string }
+        isActive:             { type: boolean }
+
+    Client:
+      type: object
+      properties:
+        id:             { type: integer }
+        firstName:      { type: string }
+        lastName:       { type: string }
+        email:          { type: string, format: email }
+        phone:          { type: string }
+        documentType:   { type: string, enum: [dni, passport, rut, cedula, other] }
+        documentNumber: { type: string }
+        address:        { type: string }
+        city:           { type: string }
+        outstandingBalance: { type: number }
+
+    Appointment:
+      type: object
+      properties:
+        id:              { type: integer }
+        scheduledDate:   { type: string, format: date-time }
+        durationMinutes: { type: integer }
+        status:          { type: string, enum: [scheduled,confirmed,in_progress,completed,cancelled,no_show] }
+        patientName:     { type: string }
+        ownerName:       { type: string }
+        vetName:         { type: string }
+        isEmergency:     { type: boolean }
+        reason:          { type: string }
+
+    MedicalRecord:
+      type: object
+      properties:
+        id:             { type: integer }
+        patientId:      { type: integer }
+        status:         { type: string, enum: [open, signed, amended] }
+        openedAt:       { type: string, format: date-time }
+        signedAt:       { type: string, format: date-time, nullable: true }
+        chiefComplaint: { type: string }
+        weightKg:       { type: number }
+        vetName:        { type: string }
+
+    Invoice:
+      type: object
+      properties:
+        id:              { type: integer }
+        invoiceNumber:   { type: string, example: "FAC-000042" }
+        status:          { type: string, enum: [draft,pending,partial,paid,overdue,cancelled] }
+        issuedDate:      { type: string, format: date }
+        totalAmount:     { type: number }
+        paidAmount:      { type: number }
+        currency:        { type: string, example: "ARS" }
+        clientName:      { type: string }
+
+    LabOrder:
+      type: object
+      properties:
+        id:          { type: integer }
+        orderNumber: { type: string, example: "LAB000042" }
+        status:      { type: string, enum: [pending,in_progress,partial,completed,cancelled] }
+        priority:    { type: string, enum: [routine,urgent,stat] }
+        orderedAt:   { type: string, format: date-time }
+        patientName: { type: string }
+        testCount:   { type: integer }
+
+    TeleSession:
+      type: object
+      properties:
+        id:          { type: integer }
+        sessionCode: { type: string, example: "TELE-M5X2K-A3F9B2" }
+        status:      { type: string, enum: [scheduled,waiting,in_progress,completed,cancelled,no_show] }
+        sessionType: { type: string, enum: [consultation,follow_up,second_opinion,emergency,prescription_renewal] }
+        scheduledAt: { type: string, format: date-time }
+        meetingUrl:  { type: string }
+        patientName: { type: string }
+        vetName:     { type: string }
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  # ── AUTH ────────────────────────────────────────────────────────────────────
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string, minLength: 6 }
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      accessToken:  { type: string }
+                      refreshToken: { type: string }
+                      expiresIn:    { type: string }
+                      user:
+                        type: object
+                        properties:
+                          id:       { type: integer }
+                          email:    { type: string }
+                          name:     { type: string }
+                          orgId:    { type: integer }
+                          branchId: { type: integer }
+                          roles:    { type: array, items: { type: string } }
+        '401': { description: Credenciales inválidas }
+        '429': { description: 'Demasiados intentos, cuenta bloqueada' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Renovar access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200': { description: Tokens renovados }
+        '401': { description: Refresh token inválido o expirado }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cerrar sesión (revoca token actual)
+      responses:
+        '204': { description: Sesión cerrada }
+
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Cerrar todas las sesiones activas
+      responses:
+        '204': { description: Todas las sesiones revocadas }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Obtener perfil del usuario autenticado
+      responses:
+        '200': { description: Perfil del usuario con roles }
+
+  /auth/sessions:
+    get:
+      tags: [Auth]
+      summary: Listar sesiones activas
+      responses:
+        '200': { description: Lista de sesiones }
+
+  /auth/sessions/{id}:
+    delete:
+      tags: [Auth]
+      summary: Revocar una sesión específica
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Sesión revocada }
+
+  /auth/api-keys:
+    get:
+      tags: [Auth]
+      summary: Listar API keys del usuario
+      responses:
+        '200': { description: Lista de API keys }
+    post:
+      tags: [Auth]
+      summary: Crear nueva API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:      { type: string }
+                scopes:    { type: array, items: { type: string } }
+                expiresAt: { type: string, format: date }
+      responses:
+        '201':
+          description: API key creada (rawKey visible SOLO en esta respuesta)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      prefix: { type: string }
+                      rawKey: { type: string }
+
+  # ── CLIENTS ────────────────────────────────────────────────────────────────
+  /clients:
+    get:
+      tags: [Clients]
+      summary: Listar clientes de la sucursal
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+          description: Buscar por nombre, email, teléfono o documento
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Lista paginada de clientes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Client' } }
+                  meta: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Clients]
+      summary: Crear nuevo cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, phone]
+              properties:
+                firstName:      { type: string }
+                lastName:       { type: string }
+                email:          { type: string, format: email }
+                phone:          { type: string }
+                documentType:   { type: string, enum: [dni,passport,rut,cedula,other] }
+                documentNumber: { type: string }
+                address:        { type: string }
+                city:           { type: string }
+      responses:
+        '201': { description: Cliente creado }
+        '409': { description: Email o documento duplicado }
+
+  /clients/{id}:
+    get:
+      tags: [Clients]
+      summary: Obtener cliente con sus mascotas
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Cliente con mascotas y contactos de emergencia }
+        '404': { description: Cliente no encontrado }
+    put:
+      tags: [Clients]
+      summary: Actualizar cliente
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Actualizado }
+    delete:
+      tags: [Clients]
+      summary: Desactivar cliente (soft delete)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Desactivado }
+
+  # ── PATIENTS ───────────────────────────────────────────────────────────────
+  /patients:
+    get:
+      tags: [Patients]
+      summary: Listar pacientes
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: speciesId
+          schema: { type: integer }
+        - in: query
+          name: isActive
+          schema: { type: string, enum: [true, false, all], default: 'true' }
+        - in: query
+          name: page
+          schema: { type: integer }
+      responses:
+        '200': { description: Lista paginada de pacientes }
+    post:
+      tags: [Patients]
+      summary: Crear nuevo paciente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, speciesId, sex, primaryOwnerId]
+              properties:
+                name:           { type: string }
+                speciesId:      { type: integer }
+                breedId:        { type: integer }
+                sex:            { type: string, enum: [male, female, unknown] }
+                birthdate:      { type: string, format: date }
+                chipNumber:     { type: string }
+                weightKg:       { type: number }
+                primaryOwnerId: { type: integer }
+      responses:
+        '201': { description: Paciente creado }
+
+  /patients/{id}:
+    get:
+      tags: [Patients]
+      summary: Obtener paciente completo (con dueños, alergias, condiciones crónicas)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Paciente completo }
+    put:
+      tags: [Patients]
+      summary: Actualizar datos del paciente
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Actualizado }
+
+  /patients/{id}/timeline:
+    get:
+      tags: [Patients]
+      summary: Historial cronológico completo del paciente
+      description: Devuelve todos los eventos clínicos (turnos, HC, vacunas, cirugías, internaciones, teleconsultas, grooming) ordenados por fecha.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Timeline completo del paciente }
+
+  /patients/{id}/owners:
+    post:
+      tags: [Patients]
+      summary: Agregar co-dueño al paciente
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientId, ownershipType]
+              properties:
+                clientId:      { type: integer }
+                ownershipType: { type: string, enum: [secondary, temporary_guardian, foster] }
+      responses:
+        '201': { description: Co-dueño agregado }
+
+  # ── APPOINTMENTS ───────────────────────────────────────────────────────────
+  /appointments:
+    get:
+      tags: [Appointments]
+      summary: Listar turnos
+      parameters:
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: vetId
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200': { description: Lista de turnos }
+    post:
+      tags: [Appointments]
+      summary: Crear turno
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patientId, vetId, scheduledDate]
+              properties:
+                patientId:         { type: integer }
+                vetId:             { type: integer }
+                scheduledDate:     { type: string, format: date-time }
+                durationMinutes:   { type: integer, default: 30 }
+                appointmentTypeId: { type: integer }
+                reason:            { type: string }
+                isEmergency:       { type: boolean }
+      responses:
+        '201': { description: Turno creado }
+
+  /appointments/today:
+    get:
+      tags: [Appointments]
+      summary: Turnos del día (vista agenda)
+      responses:
+        '200': { description: Agenda del día ordenada por hora }
+
+  /appointments/{id}/status:
+    patch:
+      tags: [Appointments]
+      summary: Cambiar estado del turno
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [scheduled,confirmed,in_progress,completed,cancelled,no_show] }
+      responses:
+        '204': { description: Estado actualizado }
+
+  /appointments/{id}/triage:
+    post:
+      tags: [Appointments]
+      summary: Registrar triage de emergencia
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priority, chiefComplaint]
+              properties:
+                priority:       { type: string, enum: [immediate,urgent,less_urgent,non_urgent] }
+                chiefComplaint: { type: string }
+                heartRate:      { type: number }
+                temperature:    { type: number }
+                painScore:      { type: integer, minimum: 0, maximum: 10 }
+      responses:
+        '201': { description: Triage registrado }
+
+  # ── MEDICAL RECORDS ────────────────────────────────────────────────────────
+  /medical-records:
+    get:
+      tags: [Medical Records]
+      summary: Listar historias clínicas
+      parameters:
+        - in: query
+          name: patientId
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, signed, amended] }
+      responses:
+        '200': { description: Lista de HCs }
+    post:
+      tags: [Medical Records]
+      summary: Abrir nueva historia clínica
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appointmentId, chiefComplaint]
+              properties:
+                appointmentId:  { type: integer }
+                chiefComplaint: { type: string }
+                weightKg:       { type: number }
+                temperature:    { type: number }
+      responses:
+        '201': { description: HC abierta }
+
+  /medical-records/{id}:
+    get:
+      tags: [Medical Records]
+      summary: Obtener HC completa (anamnesis, examen físico, diagnósticos, tratamientos, recetas)
+      responses:
+        '200': { description: HC completa }
+
+  /medical-records/{id}/sign:
+    post:
+      tags: [Medical Records]
+      summary: Firmar / cerrar historia clínica
+      description: Valida que tenga anamnesis y al menos un diagnóstico antes de firmar. Una vez firmada no puede editarse.
+      responses:
+        '200': { description: HC firmada exitosamente }
+        '400': { description: HC incompleta - falta anamnesis o diagnóstico }
+
+  /medical-records/{id}/anamnesis:
+    post:
+      tags: [Medical Records]
+      summary: Guardar anamnesis
+      responses:
+        '201': { description: Anamnesis guardada }
+
+  /medical-records/{id}/physical-exam:
+    post:
+      tags: [Medical Records]
+      summary: Guardar examen físico
+      responses:
+        '201': { description: Examen guardado }
+
+  /medical-records/{id}/diagnoses:
+    post:
+      tags: [Medical Records]
+      summary: Agregar diagnóstico
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [diagnosisName, diagnosisType]
+              properties:
+                diagnosisName:  { type: string }
+                diagnosisType:  { type: string, enum: [definitive,presumptive,differential,rule_out] }
+                diagnosisCode:  { type: string, description: "Código CIE o SNOMED" }
+                isPrimary:      { type: boolean }
+                prognosis:      { type: string, enum: [excellent,good,fair,guarded,poor,grave] }
+      responses:
+        '201': { description: Diagnóstico agregado }
+
+  /medical-records/{id}/treatments:
+    post:
+      tags: [Medical Records]
+      summary: Agregar tratamiento
+      responses:
+        '201': { description: Tratamiento agregado }
+
+  /medical-records/{id}/prescriptions:
+    post:
+      tags: [Medical Records]
+      summary: Crear receta médica
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [medicationName, dose, frequency]
+                    properties:
+                      medicationId:   { type: integer }
+                      medicationName: { type: string }
+                      dose:           { type: string }
+                      frequency:      { type: string }
+                      durationDays:   { type: integer }
+      responses:
+        '201': { description: Receta creada }
+
+  # ── LAB ────────────────────────────────────────────────────────────────────
+  /lab/orders:
+    get:
+      tags: [Lab]
+      summary: Listar órdenes de laboratorio
+      responses:
+        '200': { description: Lista de órdenes }
+    post:
+      tags: [Lab]
+      summary: Crear orden de laboratorio
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patientId, medicalRecordId, tests]
+              properties:
+                patientId:       { type: integer }
+                medicalRecordId: { type: integer }
+                tests:           { type: array, items: { type: integer }, description: "IDs de lab_tests" }
+                priority:        { type: string, enum: [routine,urgent,stat], default: routine }
+      responses:
+        '201': { description: Orden creada con número auto-generado }
+
+  /lab/orders/pending:
+    get:
+      tags: [Lab]
+      summary: Resultados pendientes de informar
+      responses:
+        '200': { description: Órdenes sin resultados completos }
+
+  /lab/orders/{id}/results:
+    post:
+      tags: [Lab]
+      summary: Cargar resultados (técnico de laboratorio)
+      description: Auto-detecta valores críticos y dispara alertas. Busca rangos de referencia por especie/sexo.
+      responses:
+        '201': { description: Resultados cargados. Alertas generadas si hay valores críticos. }
+
+  # ── IMAGING ────────────────────────────────────────────────────────────────
+  /imaging/orders:
+    get:
+      tags: [Imaging]
+      summary: Listar órdenes de imágenes
+      responses:
+        '200': { description: Lista de órdenes }
+    post:
+      tags: [Imaging]
+      summary: Crear orden de imágenes
+      responses:
+        '201': { description: Orden creada }
+
+  /imaging/orders/{id}/studies:
+    post:
+      tags: [Imaging]
+      summary: Registrar estudio realizado con URLs de imágenes (PACS/DICOM)
+      description: Almacena solo la URL externa del PACS. No sube imágenes a esta API.
+      responses:
+        '201': { description: Estudio registrado }
+
+  /imaging/orders/{id}/report:
+    post:
+      tags: [Imaging]
+      summary: Cargar informe radiológico
+      responses:
+        '201': { description: Informe cargado }
+
+  # ── SURGERY ────────────────────────────────────────────────────────────────
+  /surgeries:
+    get:
+      tags: [Surgery]
+      summary: Listar cirugías
+      responses:
+        '200': { description: Lista de cirugías }
+    post:
+      tags: [Surgery]
+      summary: Programar cirugía
+      responses:
+        '201': { description: Cirugía programada }
+
+  /surgeries/{id}/status:
+    patch:
+      tags: [Surgery]
+      summary: Actualizar estado de cirugía (incluye hora inicio/fin, diagnóstico postoperatorio)
+      responses:
+        '204': { description: Estado actualizado }
+
+  /surgeries/{id}/anesthesia:
+    post:
+      tags: [Surgery]
+      summary: Registrar protocolo anestésico
+      responses:
+        '201': { description: Registro anestésico guardado }
+
+  # ── HOSPITALIZATION ────────────────────────────────────────────────────────
+  /hospitalizations:
+    get:
+      tags: [Hospitalization]
+      summary: Listar internaciones
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [active, discharged, all], default: active }
+      responses:
+        '200': { description: Lista de internaciones }
+    post:
+      tags: [Hospitalization]
+      summary: Ingresar paciente a internación
+      description: Verifica disponibilidad de kennel. Usa sp_admit_hospitalization.
+      responses:
+        '201': { description: Paciente ingresado }
+        '409': { description: Kennel no disponible }
+
+  /hospitalizations/board:
+    get:
+      tags: [Hospitalization]
+      summary: Pizarrón de enfermería (todos los internados con últimos vitales)
+      responses:
+        '200': { description: Vista del pizarrón de internación }
+
+  /hospitalizations/{id}/monitoring:
+    post:
+      tags: [Hospitalization]
+      summary: Registrar control de enfermería
+      description: Dispara alerta si detecta valores críticos (hipotermia, taquicardia, etc.)
+      responses:
+        '201': { description: Control registrado. Alerta si hay valores críticos. }
+
+  /hospitalizations/{id}/discharge:
+    patch:
+      tags: [Hospitalization]
+      summary: Dar de alta al paciente
+      responses:
+        '200': { description: Alta registrada }
+
+  /hospitalizations/wards/availability:
+    get:
+      tags: [Hospitalization]
+      summary: Disponibilidad de kennels por área
+      responses:
+        '200': { description: Mapa de disponibilidad de kennels }
+
+  # ── VACCINATION ────────────────────────────────────────────────────────────
+  /vaccinations:
+    get:
+      tags: [Vaccination]
+      summary: Historial de vacunas
+      responses:
+        '200': { description: Lista de vacunaciones }
+    post:
+      tags: [Vaccination]
+      summary: Registrar vacuna aplicada
+      description: Auto-genera recordatorio para próxima dosis.
+      responses:
+        '201': { description: Vacuna registrada }
+
+  /vaccinations/alerts:
+    get:
+      tags: [Vaccination]
+      summary: Alertas de vacunas vencidas o por vencer (30 días)
+      responses:
+        '200': { description: Lista de alertas }
+
+  /vaccinations/deworming:
+    get:
+      tags: [Vaccination]
+      summary: Historial de desparasitaciones
+      responses:
+        '200': { description: Lista }
+    post:
+      tags: [Vaccination]
+      summary: Registrar desparasitación
+      responses:
+        '201': { description: Registrado }
+
+  # ── BILLING ────────────────────────────────────────────────────────────────
+  /invoices:
+    get:
+      tags: [Billing]
+      summary: Listar facturas
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [draft,pending,partial,paid,overdue,cancelled] }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200': { description: Lista paginada de facturas }
+    post:
+      tags: [Billing]
+      summary: Crear factura
+      description: Usa sp_generate_invoice. Numeración auto-correlativa por sucursal.
+      responses:
+        '201': { description: Factura creada }
+
+  /invoices/{id}:
+    get:
+      tags: [Billing]
+      summary: Obtener factura completa con items y pagos
+      responses:
+        '200': { description: Factura completa }
+
+  /invoices/aging:
+    get:
+      tags: [Billing]
+      summary: Reporte de aging (facturas vencidas por rango)
+      responses:
+        '200': { description: Aging report }
+
+  /payments:
+    post:
+      tags: [Billing]
+      summary: Registrar pago
+      description: Usa sp_record_payment. Auto-actualiza estado de factura y saldo del cliente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId, amount, paymentMethod]
+              properties:
+                invoiceId:     { type: integer }
+                amount:        { type: number }
+                paymentMethod: { type: string, enum: [cash,credit_card,debit_card,bank_transfer,check,crypto,other] }
+                reference:     { type: string }
+      responses:
+        '201': { description: Pago registrado }
+
+  # ── INVENTORY ──────────────────────────────────────────────────────────────
+  /inventory:
+    get:
+      tags: [Inventory]
+      summary: Listar inventario/farmacia
+      parameters:
+        - in: query
+          name: stockStatus
+          schema: { type: string, enum: [all, low, zero] }
+      responses:
+        '200': { description: Lista de items con stock }
+
+  /inventory/movements:
+    post:
+      tags: [Inventory]
+      summary: Registrar movimiento de inventario
+      responses:
+        '201': { description: Movimiento registrado. Alerta si stock bajo. }
+
+  # ── TELEMEDICINE ───────────────────────────────────────────────────────────
+  /tele/sessions:
+    get:
+      tags: [Telemedicine]
+      summary: Listar sesiones de teleconsulta
+      responses:
+        '200': { description: Lista de sesiones }
+    post:
+      tags: [Telemedicine]
+      summary: Crear sesión de teleconsulta
+      responses:
+        '201': { description: Sesión creada con código único }
+
+  /tele/sessions/today:
+    get:
+      tags: [Telemedicine]
+      summary: Sesiones del día
+      responses:
+        '200': { description: Agenda de teleconsultas del día }
+
+  /tele/sessions/{id}/pre-anamnesis:
+    post:
+      tags: [Telemedicine]
+      summary: Cliente completa pre-anamnesis antes de la sesión
+      responses:
+        '201': { description: Pre-anamnesis guardada }
+
+  /tele/sessions/{id}/prescription:
+    post:
+      tags: [Telemedicine]
+      summary: Emitir prescripción digital con firma hash
+      responses:
+        '201': { description: Prescripción digital creada con hash SHA-256 }
+
+  /tele/sessions/{id}/rating:
+    post:
+      tags: [Telemedicine]
+      summary: Calificar sesión
+      responses:
+        '201': { description: Calificación registrada }
+
+  # ── GROOMING ───────────────────────────────────────────────────────────────
+  /grooming/appointments:
+    get:
+      tags: [Grooming]
+      summary: Listar turnos de grooming
+      responses:
+        '200': { description: Lista de turnos }
+    post:
+      tags: [Grooming]
+      summary: Crear turno de grooming
+      description: Calcula precio estimado automáticamente basado en servicios y tamaño del paciente.
+      responses:
+        '201': { description: Turno creado con precio estimado }
+
+  /grooming/appointments/today:
+    get:
+      tags: [Grooming]
+      summary: Agenda de grooming del día
+      responses:
+        '200': { description: Agenda del día }
+
+  /grooming/appointments/{id}/record:
+    post:
+      tags: [Grooming]
+      summary: Registrar trabajo realizado (fotos antes/después, servicios, productos)
+      description: Si detecta problemas dermatológicos o de salud, genera alerta para derivación veterinaria.
+      responses:
+        '201': { description: Ficha de grooming guardada }
+
+  /grooming/groomers/performance:
+    get:
+      tags: [Grooming]
+      summary: Performance de groomers (servicios, ingresos, calificación)
+      responses:
+        '200': { description: Métricas de performance }
+
+  # ── REPORTS ────────────────────────────────────────────────────────────────
+  /reports/dashboard:
+    get:
+      tags: [Reports]
+      summary: Dashboard KPIs de la sucursal (hoy)
+      responses:
+        '200': { description: KPIs del día }
+
+  /reports/revenue:
+    get:
+      tags: [Reports]
+      summary: Ingresos por período
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: groupBy
+          schema: { type: string, enum: [day, week, month], default: day }
+      responses:
+        '200': { description: Ingresos agrupados }
+
+  /reports/top-clients:
+    get:
+      tags: [Reports]
+      summary: Top clientes por gasto
+      responses:
+        '200': { description: Ranking de clientes }
+
+  /reports/diagnoses:
+    get:
+      tags: [Reports]
+      summary: Diagnósticos más frecuentes
+      responses:
+        '200': { description: Top diagnósticos por frecuencia }
+
+  /reports/vaccination-compliance:
+    get:
+      tags: [Reports]
+      summary: Tasa de cumplimiento de vacunación
+      responses:
+        '200': { description: Porcentaje de pacientes al día con vacunas }
+
+  /reports/hospitalization-occupancy:
+    get:
+      tags: [Reports]
+      summary: Ocupación de internación (actual + histórico)
+      responses:
+        '200': { description: Porcentajes de ocupación por área }
+
+  /reports/executive:
+    get:
+      tags: [Reports]
+      summary: Dashboard ejecutivo completo (multi-sucursal)
+      description: Usa sp_executive_dashboard. Requiere rol org_admin o superior.
+      responses:
+        '200': { description: 'Reporte ejecutivo con revenue, diagnósticos, ocupación' }
