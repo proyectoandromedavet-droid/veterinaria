@@ -1,13 +1,13 @@
 FROM node:20-alpine
 WORKDIR /app
 
-COPY package.json ./
+COPY services/auth/package.json ./
 RUN npm install --omit=dev
 
-# Shared modules
-COPY ../../shared ./shared
+# Shared modules (build context must be the monorepo root)
+COPY shared ./shared
 
-COPY src ./src
+COPY services/auth/src ./src
 
 EXPOSE $PORT
 USER node
