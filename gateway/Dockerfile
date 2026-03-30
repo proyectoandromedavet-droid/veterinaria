@@ -1,15 +1,15 @@
 FROM node:20-alpine
 
-# node_modules must live at /app so Node's resolution algorithm can find
-# packages from both /app/gateway/src/ and /app/shared/ (which walk up to /app).
+# Install from the root package.json — it contains all dependencies needed
+# by both the gateway and the shared/ modules (redis, prom-client, etc.).
 WORKDIR /app
 
-COPY gateway/package.json gateway/package-lock.json ./
+COPY package.json package-lock.json ./
 RUN npm install --omit=dev
 
-# Maintain the monorepo structure inside the container:
+# Maintain the monorepo structure so relative imports resolve correctly:
 #   /app/gateway/src/index.js  →  ../../shared  →  /app/shared  ✓
-#   /app/shared/cache.js       →  require('redis')  →  /app/node_modules  ✓
+#   /app/shared/*.js           →  require('redis')  →  /app/node_modules  ✓
 COPY gateway/src ./gateway/src
 COPY shared ./shared
 

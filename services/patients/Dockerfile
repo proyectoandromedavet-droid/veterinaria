@@ -1,10 +1,10 @@
 FROM node:20-alpine
 
-# node_modules at /app so packages are reachable from /app/services/patients/src/
-# and from /app/shared/ (both walk up to /app/node_modules).
+# Install from the root package.json — it contains all dependencies needed
+# by both the service and the shared/ modules.
 WORKDIR /app
 
-COPY services/patients/package.json ./
+COPY package.json package-lock.json ./
 RUN npm install --omit=dev
 
 COPY services/patients/src ./services/patients/src
