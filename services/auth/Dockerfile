@@ -1,13 +1,16 @@
 FROM node:20-alpine
-WORKDIR /app
+
+# WORKDIR mirrors the monorepo structure so that relative imports
+# (../../../shared from services/auth/src/) resolve to /app/shared at runtime.
+# Build context must be the monorepo root:
+#   docker build -f services/auth/Dockerfile .
+WORKDIR /app/services/auth
 
 COPY services/auth/package.json ./
 RUN npm install --omit=dev
 
-# Shared modules (build context must be the monorepo root)
-COPY shared ./shared
-
 COPY services/auth/src ./src
+COPY shared /app/shared
 
 EXPOSE $PORT
 USER node

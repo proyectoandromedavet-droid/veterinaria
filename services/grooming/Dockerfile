@@ -1,13 +1,16 @@
 FROM node:20-alpine
-WORKDIR /app
+
+# WORKDIR mirrors the monorepo structure so that relative imports
+# (../../../shared from services/grooming/src/) resolve to /app/shared at runtime.
+# Build context must be the monorepo root:
+#   docker build -f services/grooming/Dockerfile .
+WORKDIR /app/services/grooming
 
 COPY services/grooming/package.json ./
 RUN npm install --omit=dev
 
-# Shared modules (build context must be the monorepo root)
-COPY shared ./shared
-
 COPY services/grooming/src ./src
+COPY shared /app/shared
 
 EXPOSE $PORT
 USER node
