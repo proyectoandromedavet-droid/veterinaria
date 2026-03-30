@@ -39,6 +39,33 @@ const server = http.createServer(app);
 const PORT   = parseInt(process.env.PORT || '4050');
 const V      = process.env.API_VERSION || 'v1';
 
+// ── Health check — before all middleware so it's always reachable ─────────────
+app.get('/health', async (_req, res) => {
+  const checks  = {};
+  const latency = {};
+
+  try {
+    const { getClient } = require('../../shared/cache');
+    const t0     = Date.now();
+    const client = await getClient();
+    await client.ping();
+    checks.redis  = 'ok';
+    latency.redis = Date.now() - t0;
+  } catch {
+    checks.redis = 'degraded';
+  }
+
+  res.status(200).json({
+    status:  'ok',
+    service: 'gateway',
+    version: V,
+    uptime:  Math.floor(process.uptime()),
+    ts:      new Date().toISOString(),
+    checks,
+    latency,
+  });
+});
+
 // ── Security headers (must be first) ─────────────────────────────────────────
 app.set('trust proxy', 1);
 app.use(helmetMiddleware);
@@ -79,34 +106,6 @@ app.use(httpMetrics('gateway'));
 // ── Audit logging ─────────────────────────────────────────────────────────────
 app.use(auditMiddleware({ mode: 'mutations' }));
 
-// ── Health check ─────────────────────────────────────────────────────────────
-app.get('/health', async (_req, res) => {
-  const checks  = {};
-  const latency = {};
-  let healthy   = true;
-
-  // Redis ping
-  try {
-    const { getClient } = require('../../shared/cache');
-    const t0     = Date.now();
-    const client = await getClient();
-    await client.ping();
-    checks.redis  = 'ok';
-    latency.redis = Date.now() - t0;
-  } catch {
-    checks.redis = 'degraded';
-  }
-
-  res.status(healthy ? 200 : 503).json({
-    status:  healthy ? 'ok' : 'degraded',
-    service: 'gateway',
-    version: V,
-    uptime:  Math.floor(process.uptime()),
-    ts:      new Date().toISOString(),
-    checks,
-    latency,
-  });
-});
 
 // ── Deep health check — agrega estado de todos los servicios ─────────────────
 const SERVICE_URLS = {
