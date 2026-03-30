@@ -11,16 +11,15 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const corsOptions = {
   origin(origin, callback) {
-    // In production: require an Origin header — reject requests without it
-    if (!origin) {
-      if (IS_PRODUCTION) {
-        return callback(new Error('CORS: Origin header required'));
-      }
-      // In dev/staging: allow no-origin (Postman, server-to-server, curl)
+    // Allow server-to-server requests (no Origin header)
+    if (!origin) return callback(null, true);
+
+    // Wildcard: allow all origins
+    if (allowedOrigins.includes('*') || allowedOrigins.length === 0) {
       return callback(null, true);
     }
 
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error(`CORS: origin '${origin}' not allowed`));
