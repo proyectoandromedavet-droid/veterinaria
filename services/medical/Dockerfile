@@ -1,17 +1,15 @@
 FROM node:20-alpine
 
-# WORKDIR mirrors the monorepo structure so that relative imports
-# (../../../shared from services/medical/src/) resolve to /app/shared at runtime.
-# Build context must be the monorepo root:
-#   docker build -f services/medical/Dockerfile .
-WORKDIR /app/services/medical
+# node_modules at /app so packages are reachable from /app/services/medical/src/
+# and from /app/shared/ (both walk up to /app/node_modules).
+WORKDIR /app
 
 COPY services/medical/package.json ./
 RUN npm install --omit=dev
 
-COPY services/medical/src ./src
-COPY shared /app/shared
+COPY services/medical/src ./services/medical/src
+COPY shared ./shared
 
 EXPOSE $PORT
 USER node
-CMD ["node", "src/index.js"]
+CMD ["node", "services/medical/src/index.js"]
