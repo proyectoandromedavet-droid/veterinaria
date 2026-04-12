@@ -37,7 +37,12 @@ function svc(name, script, port, instances = 1) {
 
 module.exports = {
   apps: [
-    svc('gateway',       `${BASE}/gateway/src/index.js`,                     4050, 2),
+    // Gateway: Upsun injects PORT=8888 via platform env; PM2 env_production mirrors it.
+    // In dev the gateway runs on 4050; in production on 8888 (Upsun web upstream).
+    {
+      ...svc('gateway', `${BASE}/gateway/src/index.js`, 4050, 2),
+      env_production: { NODE_ENV: 'production', PORT: 8888 },
+    },
     svc('auth',          `${BASE}/services/auth/src/index.js`,               4051),
     svc('patients',      `${BASE}/services/patients/src/index.js`,           4052),
     svc('medical',       `${BASE}/services/medical/src/index.js`,            4053),
@@ -48,5 +53,6 @@ module.exports = {
     svc('reports',       `${BASE}/services/reports/src/index.js`,            4058),
     svc('notifications', `${BASE}/services/notifications/src/index.js`,      4059),
     svc('portal',        `${BASE}/services/portal/src/index.js`,             4060),
+    svc('ai',            `${BASE}/services/ai/src/index.js`,                 4061),
   ],
 };

@@ -1,33 +1,52 @@
 ###############################################################################
 # Upsun configuration — VetManager Pro
-# Docs: https://docs.upsun.com
+# Single-app deployment: all microservices managed by PM2
+# Gateway exposes port 8888 to the web; internal services on localhost ports.
 ###############################################################################
 
 applications:
 
-  # ── API Gateway ──────────────────────────────────────────────────────────────
-  gateway:
+  app:
     source:
       root: "/"
     type: "nodejs:20"
+
     build:
       flavor: none
+
     dependencies:
       nodejs:
         npm: "*"
+
     hooks:
       build: |
         npm install --omit=dev
+        # Install PM2 globally for process management
+        npm install -g pm2
+
+      deploy: |
+        # Run DB migrations if migration script exists
+        if [ -f scripts/migrate.js ]; then
+          node scripts/migrate.js || true
+        fi
+
+    # Expose gateway on the web port
     web:
       commands:
-        start: "node gateway/src/index.js"
+        start: |
+          pm2 start ecosystem.config.js --env production --no-daemon
       upstream:
         socket_family: tcp
         protocol: http
+
     mounts:
-      "/gateway/logs":
+      "/logs":
         source: local
-        source_path: gateway-logs
+        source_path: app-logs
+      "/tmp/uploads":
+        source: local
+        source_path: uploads
+
     variables:
       env:
         NODE_ENV: production
@@ -35,300 +54,25 @@ applications:
         API_VERSION: v1
         WEBHOOK_WORKER: "false"
         OPENAPI_VALIDATE: "true"
+        # Internal service URLs (localhost within the same container)
+        SERVICE_AUTH: "http://localhost:4051"
+        SERVICE_PATIENTS: "http://localhost:4052"
+        SERVICE_MEDICAL: "http://localhost:4053"
+        SERVICE_LAB: "http://localhost:4054"
+        SERVICE_BILLING: "http://localhost:4055"
+        SERVICE_TELEMEDICINE: "http://localhost:4056"
+        SERVICE_GROOMING: "http://localhost:4057"
+        SERVICE_REPORTS: "http://localhost:4058"
+        SERVICE_NOTIFICATIONS: "http://localhost:4059"
+        SERVICE_PORTAL: "http://localhost:4060"
+        SERVICE_AI: "http://localhost:4061"
+
     relationships:
       mysql: "db:mysql"
       redis: "cache:redis"
-
-  # ── Auth Service ─────────────────────────────────────────────────────────────
-  auth:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/auth/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-      redis: "cache:redis"
-
-  # ── Patients Service ─────────────────────────────────────────────────────────
-  patients:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/patients/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-
-  # ── Medical Service ──────────────────────────────────────────────────────────
-  medical:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/medical/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-
-  # ── Lab-Imaging Service ──────────────────────────────────────────────────────
-  lab-imaging:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/lab-imaging/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-
-  # ── Billing Service ──────────────────────────────────────────────────────────
-  billing:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/billing/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-
-  # ── Telemedicine Service ─────────────────────────────────────────────────────
-  telemedicine:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/telemedicine/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-
-  # ── Grooming Service ─────────────────────────────────────────────────────────
-  grooming:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/grooming/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-
-  # ── Reports Service ──────────────────────────────────────────────────────────
-  reports:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/reports/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-
-  # ── Notifications Service ────────────────────────────────────────────────────
-  notifications:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/notifications/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      redis: "cache:redis"
-
-  # ── Portal Service ───────────────────────────────────────────────────────────
-  portal:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/portal/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
-      redis: "cache:redis"
-
-  # ── AI Service ───────────────────────────────────────────────────────────────
-  ai:
-    source:
-      root: "/"
-    type: "nodejs:20"
-    build:
-      flavor: none
-    dependencies:
-      nodejs:
-        npm: "*"
-    hooks:
-      build: |
-        npm install --omit=dev
-    web:
-      commands:
-        start: "node services/ai/src/index.js"
-      upstream:
-        socket_family: tcp
-        protocol: http
-    variables:
-      env:
-        NODE_ENV: production
-        PORT: "8888"
-    relationships:
-      mysql: "db:mysql"
 
 ###############################################################################
-# Services (infrastructure)
+# Services
 ###############################################################################
 
 services:
@@ -339,13 +83,13 @@ services:
     type: redis:7.2
 
 ###############################################################################
-# Routes — all traffic through gateway
+# Routes
 ###############################################################################
 
 routes:
   "https://{default}/":
     type: upstream
-    upstream: "gateway:http"
+    upstream: "app:http"
 
   "https://www.{default}/":
     type: redirect
