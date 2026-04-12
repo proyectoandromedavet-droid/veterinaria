@@ -333,7 +333,7 @@ applications:
 
 services:
   db:
-    type: mysql:8.0
+    type: mariadb:10.11
 
   cache:
     type: redis:7.2
