@@ -9,13 +9,23 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
+// In production, ALLOWED_ORIGINS must be explicitly set and cannot be '*'
+if (IS_PRODUCTION) {
+  if (allowedOrigins.length === 0) {
+    throw new Error('ALLOWED_ORIGINS must be set in production (e.g. https://app.example.com)');
+  }
+  if (allowedOrigins.includes('*')) {
+    throw new Error('ALLOWED_ORIGINS cannot be "*" in production — set explicit origins');
+  }
+}
+
 const corsOptions = {
   origin(origin, callback) {
     // Allow server-to-server requests (no Origin header)
     if (!origin) return callback(null, true);
 
-    // Wildcard: allow all origins
-    if (allowedOrigins.includes('*') || allowedOrigins.length === 0) {
+    // Development only: allow all origins if explicitly set to '*' or list is empty
+    if (!IS_PRODUCTION && (allowedOrigins.includes('*') || allowedOrigins.length === 0)) {
       return callback(null, true);
     }
 

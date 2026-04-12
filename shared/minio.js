@@ -8,12 +8,17 @@ let minioClient;
 
 function getClient() {
   if (!minioClient) {
+    const accessKey = process.env.MINIO_USER;
+    const secretKey = process.env.MINIO_PASSWORD;
+    if (!accessKey || !secretKey) {
+      throw new Error('MINIO_USER and MINIO_PASSWORD must be set as environment variables');
+    }
     minioClient = new Client({
-      endPoint:  process.env.MINIO_ENDPOINT  || 'minio',
+      endPoint:  process.env.MINIO_ENDPOINT || 'minio',
       port:      parseInt(process.env.MINIO_PORT || '9000'),
       useSSL:    process.env.MINIO_USE_SSL === 'true',
-      accessKey: process.env.MINIO_USER     || 'vetadmin',
-      secretKey: process.env.MINIO_PASSWORD || 'M1ni0S3cur3!',
+      accessKey,
+      secretKey,
     });
   }
   return minioClient;
@@ -33,16 +38,7 @@ async function ensureBucket(bucketName) {
   const exists = await client.bucketExists(bucketName);
   if (!exists) {
     await client.makeBucket(bucketName, 'us-east-1');
-    // Set public read policy for patient photos
-    const policy = JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [{
-        Effect: 'Allow', Principal: { AWS: ['*'] },
-        Action: ['s3:GetObject'],
-        Resource: [`arn:aws:s3:::${bucketName}/public/*`],
-      }],
-    });
-    await client.setBucketPolicy(bucketName, policy);
+    // No public policy — all access via presigned URLs only
   }
 }
 

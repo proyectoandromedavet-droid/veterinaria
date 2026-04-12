@@ -47,8 +47,9 @@ function validate(req, res, next) {
 // ── GET /patients ─────────────────────────────────────────────────────────────
 router.get('/', async (req, res, next) => {
   try {
-    const { search, speciesId, isActive = 'true', page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const { search, speciesId, isActive = 'true', page = 1 } = req.query;
+    const limit  = Math.min(parseInt(req.query.limit || '20'), 100);
+    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
     const branchId = req.user.branchId;
 
     const conditions = [`cl.branch_id = :branchId`];
@@ -212,8 +213,10 @@ router.put('/:id',
       const sets = [];
       const params = { id: req.params.id };
       for (const [k, v] of Object.entries(req.body)) {
-        const col = map[k] || k;
-        if (allowed.includes(col)) { sets.push(`${col} = :${col}`); params[col] = v; }
+        // Only accept keys that are explicitly mapped OR are already in the allowed list
+        // Column name must be in the allowlist — never use raw body key as column name
+        const col = map[k] || (allowed.includes(k) ? k : null);
+        if (col && allowed.includes(col)) { sets.push(`\`${col}\` = :${col}`); params[col] = v; }
       }
       if (!sets.length) return R.badRequest(res, 'No valid fields');
 

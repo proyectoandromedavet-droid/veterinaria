@@ -5,6 +5,7 @@ require('express-async-errors'); // patch Express to forward async errors to err
 
 const path         = require('path');
 const express      = require('express');
+const cookieParser = require('cookie-parser');
 const { getJwks } = require('../../../shared/jwt');
 const {
   helmetMiddleware,
@@ -23,7 +24,8 @@ app.use(helmetMiddleware);
 app.use(compressionMiddleware);
 app.use(requestId);
 
-// ── Body parsing + sanitization ───────────────────────────────────────────────
+// ── Cookie + Body parsing + sanitization ─────────────────────────────────────
+app.use(cookieParser());
 app.use(express.json({ limit: '256kb' }));  // auth payloads never need to be large
 app.use(hppMiddleware);
 app.use(sanitize);

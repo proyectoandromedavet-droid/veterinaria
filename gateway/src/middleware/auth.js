@@ -34,7 +34,6 @@ async function getRedis() {
 function extractToken(req) {
   const auth = req.headers['authorization'];
   if (auth?.startsWith('Bearer ')) return auth.slice(7);
-  if (req.query?.access_token) return req.query.access_token;
   return null;
 }
 

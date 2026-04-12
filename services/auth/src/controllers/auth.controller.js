@@ -68,7 +68,11 @@ async function checkBruteForce(email, ip) {
     }
     return { locked: false };
   } catch (_) {
-    return { locked: false }; // fail-open: don't block on Redis error
+    // In production, fail-closed: deny login when brute-force state is unavailable
+    if (process.env.NODE_ENV === 'production') {
+      return { locked: true, retryAfter: 60 };
+    }
+    return { locked: false }; // dev/test: fail-open to not block development
   }
 }
 
@@ -213,9 +217,17 @@ async function login(req, res) {
     }).catch(() => {});
   }
 
+  const isProd = process.env.NODE_ENV === 'production';
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure:   isProd,
+    sameSite: 'strict',
+    maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days in ms
+    path:     '/auth/refresh',
+  });
+
   return R.ok(res, {
     accessToken,
-    refreshToken,
     expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m',
     user: {
       id:       user.id,
@@ -242,7 +254,8 @@ async function login(req, res) {
  *   5. Revoke old access token JTI via `revoked:{jti}`.
  */
 async function refresh(req, res) {
-  const { refreshToken } = req.body;
+  // Accept token from httpOnly cookie (preferred) or body (backward compat)
+  const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
   if (!refreshToken) return R.badRequest(res, 'refreshToken required');
 
   let decoded;
@@ -318,7 +331,16 @@ async function refresh(req, res) {
   // Mark old hash as "used" — 10 min window accounts for clock skew + network latency
   await redis.setEx(`rt:used:${tokenHash}`, 10 * 60, String(session.id));
 
-  return R.ok(res, { accessToken, refreshToken: newRefresh });
+  const isProdRefresh = process.env.NODE_ENV === 'production';
+  res.cookie('refreshToken', newRefresh, {
+    httpOnly: true,
+    secure:   isProdRefresh,
+    sameSite: 'strict',
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+    path:     '/auth/refresh',
+  });
+
+  return R.ok(res, { accessToken });
 }
 
 /**
@@ -701,10 +723,24 @@ async function disable2fa(req, res) {
 
 /**
  * POST /auth/2fa/challenge  — verify TOTP during login (called after password check)
+ *
+ * Requires a signed `pendingToken` issued by /auth/login when 2FA is required.
+ * This prevents an attacker from targeting arbitrary userIds without knowing the password.
  */
 async function challenge2fa(req, res) {
-  const { userId, token } = req.body;
-  if (!userId || !token) return R.badRequest(res, 'userId and token required');
+  const { pendingToken, token } = req.body;
+  if (!pendingToken || !token) return R.badRequest(res, 'pendingToken and token required');
+
+  // Verify the short-lived pending token signed after password success
+  let pending;
+  try {
+    pending = jwt.verifyAccess(pendingToken);
+  } catch (_) {
+    return R.unauthorized(res, 'Invalid or expired pending token');
+  }
+  if (pending.scope !== '2fa_pending') return R.unauthorized(res, 'Invalid pending token scope');
+
+  const userId = pending.userId;
 
   const user = await db.queryOne(
     `SELECT id, email, two_factor_secret, two_factor_enabled, branch_id
@@ -729,7 +765,16 @@ async function challenge2fa(req, res) {
     roles.map(r => r.name)
   );
 
-  return R.ok(res, { accessToken, refreshToken });
+  const isProd2fa = process.env.NODE_ENV === 'production';
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure:   isProd2fa,
+    sameSite: 'strict',
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+    path:     '/auth/refresh',
+  });
+
+  return R.ok(res, { accessToken });
 }
 
 module.exports = {

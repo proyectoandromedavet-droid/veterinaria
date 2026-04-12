@@ -10,9 +10,25 @@
  */
 
 const axios  = require('axios');
+const { URL } = require('url');
 const db     = require('../db');
 const { sign, HEADER } = require('./signature');
 const { webhookDeliveries } = require('../metrics');
+
+// SSRF protection: block requests to private/loopback/link-local addresses
+const BLOCKED_HOSTS = /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|::1|0\.0\.0\.0|169\.254\.\d+\.\d+|fd[0-9a-f]{2}:.*)$/i;
+
+function isSafeWebhookUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    if (!['http:', 'https:'].includes(u.protocol)) return false;
+    const hostname = u.hostname;
+    if (BLOCKED_HOSTS.test(hostname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const MAX_RETRIES = 5;
 const BACKOFF_MS  = [60_000, 300_000, 1_800_000, 7_200_000, 28_800_000];
@@ -79,6 +95,19 @@ async function deliver(row) {
   let responseStatus = null;
   let responseBody   = null;
   let errorMessage   = null;
+
+  // SSRF guard — reject internal/private addresses before making the request
+  if (!isSafeWebhookUrl(url)) {
+    errorMessage = `SSRF blocked: delivery to '${url}' is not allowed`;
+    await db.query(
+      `UPDATE webhook_deliveries
+          SET status = 'failed', attempt_count = :attempt, last_attempt_at = NOW(),
+              error_message = :errorMessage
+        WHERE id = :id`,
+      { id, attempt, errorMessage }
+    );
+    return;
+  }
 
   try {
     const resp = await axios.post(url, JSON.parse(payload), {

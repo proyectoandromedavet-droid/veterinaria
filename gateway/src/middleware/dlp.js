@@ -43,7 +43,8 @@ async function dlpMiddleware(req, res, next) {
       });
     }
   } catch (err) {
-    logger.warn('[dlp-middleware] Pre-check failed (fail-open)', { err: err.message });
+    // DLP is a secondary control — fail-open but log with high severity
+    logger.error('[dlp-middleware] Pre-check failed — Redis unavailable, DLP bypassed', { err: err.message, userId, orgId });
   }
 
   // ── Fase 2: post-response — acumular conteo después de recibir la respuesta ──

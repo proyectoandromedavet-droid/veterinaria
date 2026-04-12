@@ -159,20 +159,37 @@ app.get('/health/deep', async (_req, res) => {
 });
 
 // ── Prometheus metrics endpoint ───────────────────────────────────────────────
-// Restrict to internal network via IP_WHITELIST or leave open in dev
-app.get('/metrics', metricsHandler);
+// Restricted to METRICS_TOKEN bearer auth (or localhost in dev)
+app.get('/metrics', (req, res, next) => {
+  const metricsToken = process.env.METRICS_TOKEN;
+  if (metricsToken) {
+    const auth = req.headers['authorization'];
+    if (auth !== `Bearer ${metricsToken}`) {
+      return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ success: false, error: { message: 'Metrics disabled — set METRICS_TOKEN' } });
+  }
+  next();
+}, metricsHandler);
 
 // ── Swagger UI ────────────────────────────────────────────────────────────────
+// Disabled in production unless SWAGGER_ENABLED=true is explicitly set
 const openApiPath = path.join(__dirname, '../docs/openapi.yaml');
-try {
-  const swaggerDoc = YAML.load(openApiPath);
-  app.use(`/api/${V}/docs`, swaggerUi.serve, swaggerUi.setup(swaggerDoc, {
-    customSiteTitle: 'VetManager Pro API',
-    swaggerOptions: { persistAuthorization: true },
-  }));
-  logger.info(`Swagger UI at /api/${V}/docs`);
-} catch (_) {
-  logger.warn('openapi.yaml not found — Swagger UI disabled');
+const swaggerEnabled = process.env.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true';
+if (swaggerEnabled) {
+  try {
+    const swaggerDoc = YAML.load(openApiPath);
+    app.use(`/api/${V}/docs`, swaggerUi.serve, swaggerUi.setup(swaggerDoc, {
+      customSiteTitle: 'VetManager Pro API',
+      swaggerOptions: { persistAuthorization: false },
+    }));
+    logger.info(`Swagger UI at /api/${V}/docs`);
+  } catch (_) {
+    logger.warn('openapi.yaml not found — Swagger UI disabled');
+  }
+} else {
+  app.use(`/api/${V}/docs`, (_req, res) => res.status(404).json({ success: false, error: { message: 'Not found' } }));
 }
 
 // ── OpenAPI request validation ────────────────────────────────────────────────

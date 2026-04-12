@@ -14,6 +14,7 @@
 const { Router } = require('express');
 const { body, param, validationResult } = require('express-validator');
 const db   = require('../../../../shared/db');
+const { requireInternalSig } = require('../../../../shared/internalAuth');
 const {
   ROLE_PERMISSIONS,
   setRoleOverride,
@@ -23,6 +24,25 @@ const {
 
 const router = Router();
 
+// ── Auth guard helpers (same as admin-users.routes.js) ───────────────────────
+function fromHeaders(req, _res, next) {
+  req.user = {
+    userId:   req.headers['x-user-id'],
+    orgId:    req.headers['x-org-id'],
+    branchId: req.headers['x-branch-id'],
+    roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
+    email:    req.headers['x-user-email'],
+  };
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user?.roles?.some(r => ['superadmin', 'org_admin'].includes(r))) {
+    return res.status(403).json({ success: false, error: { message: 'Se requiere rol org_admin o superadmin' } });
+  }
+  next();
+}
+
 function validate(req, res, next) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -30,6 +50,9 @@ function validate(req, res, next) {
   }
   next();
 }
+
+// Apply internal signature + role check to ALL routes in this router
+router.use(requireInternalSig, fromHeaders, requireAdmin);
 
 // ── GET /admin/rbac/roles ─────────────────────────────────────────────────────
 router.get('/roles', (req, res) => {

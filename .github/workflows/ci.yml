@@ -87,8 +87,9 @@ jobs:
       MYSQL_PASSWORD: testpass
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
-      JWT_SECRET: ci-test-secret-at-least-32-chars!!
-      INTERNAL_SECRET: ci-internal-secret
+      # Secrets must be stored in GitHub repository secrets (Settings → Secrets and variables → Actions)
+      # Required: CI_INTERNAL_SECRET (min 64 hex chars)
+      INTERNAL_SECRET: ${{ secrets.CI_INTERNAL_SECRET }}
 
     steps:
       - uses: actions/checkout@v4

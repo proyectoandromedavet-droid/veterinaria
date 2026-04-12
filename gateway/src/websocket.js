@@ -2,10 +2,8 @@
 
 const { WebSocketServer } = require('ws');
 const { createClient }    = require('redis');
-const jwt                 = require('jsonwebtoken');
+const { verifyAccess }    = require('../../shared/jwt');
 const { logger }          = require('./middleware/logger');
-
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'change_me_access';
 
 // Redis pub/sub for inter-service broadcasting
 let redisSubscriber;
@@ -32,10 +30,8 @@ async function getRedisClients() {
 const userSockets = new Map();
 
 function getTokenFromRequest(req) {
-  const url    = new URL(req.url, 'http://localhost');
-  const token  = url.searchParams.get('token');
   const header = req.headers['authorization'];
-  return token || (header?.startsWith('Bearer ') ? header.slice(7) : null);
+  return header?.startsWith('Bearer ') ? header.slice(7) : null;
 }
 
 /**
@@ -65,7 +61,7 @@ async function attachWebSocket(httpServer) {
 
     let user;
     try {
-      user = jwt.verify(token, ACCESS_SECRET);
+      user = verifyAccess(token);
     } catch (_) {
       ws.close(4001, 'Invalid or expired token');
       return;

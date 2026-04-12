@@ -73,10 +73,14 @@ async function queryOne(sql, params) {
 
 /**
  * Call a stored procedure.
- * @param {string} name  e.g. 'sp_login_attempt'
+ * @param {string} name  e.g. 'sp_login_attempt'  — must match /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
  * @param {Array}  args
  */
+const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/;
 async function callProc(name, args = []) {
+  if (!SAFE_IDENTIFIER.test(name)) {
+    throw new Error(`callProc: invalid procedure name '${name}'`);
+  }
   const placeholders = args.map(() => '?').join(',');
   const [results] = await getPool().execute(`CALL ${name}(${placeholders})`, args);
   return results;
@@ -103,14 +107,17 @@ function decorateConn(conn) {
   };
 
   conn.savepoint = async function(name) {
+    if (!SAFE_IDENTIFIER.test(name)) throw new Error(`savepoint: invalid name '${name}'`);
     await conn.execute(`SAVEPOINT ${name}`);
   };
 
   conn.releaseSavepoint = async function(name) {
+    if (!SAFE_IDENTIFIER.test(name)) throw new Error(`releaseSavepoint: invalid name '${name}'`);
     await conn.execute(`RELEASE SAVEPOINT ${name}`);
   };
 
   conn.rollbackToSavepoint = async function(name) {
+    if (!SAFE_IDENTIFIER.test(name)) throw new Error(`rollbackToSavepoint: invalid name '${name}'`);
     await conn.execute(`ROLLBACK TO SAVEPOINT ${name}`);
   };
 

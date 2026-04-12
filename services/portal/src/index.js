@@ -15,6 +15,7 @@ const { Router, body, validationResult } = require('express');
 const bcrypt     = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
+const rateLimit = require('express-rate-limit');
 const db      = require('../../../shared/db');
 const jwt     = require('../../../shared/jwt');
 const R       = require('../../../shared/response');
@@ -22,12 +23,29 @@ const mp      = require('../../../shared/mercadopago');
 const { sendPasswordReset, sendWelcome, sendNewDeviceLogin } = require('../../../shared/email');
 const { sendTemplate } = require('../../../shared/messaging');
 const fcm     = require('../../../shared/fcm');
+const { requireInternalSig } = require('../../../shared/internalAuth');
+
+// Rate limiter for auth endpoints — 10 attempts per 15 min per IP
+const authLimiter = rateLimit({
+  windowMs:         15 * 60 * 1000,
+  max:              10,
+  standardHeaders:  true,
+  legacyHeaders:    false,
+  message:          { success: false, error: { message: 'Demasiados intentos. Intente de nuevo en 15 minutos.' } },
+});
 
 const app  = express();
 const PORT = parseInt(process.env.PORT || '4060');
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Validate all requests come from the gateway (HMAC signature)
+// Exemptions: /health is checked by docker/orchestrator without HMAC
+app.use((req, res, next) => {
+  if (req.path === '/health') return next();
+  return requireInternalSig(req, res, next);
+});
 
 // ── Validación ────────────────────────────────────────────────────────────────
 const { body: vBody, validationResult: vResult } = require('express-validator');
@@ -77,9 +95,13 @@ function buildOwnerRefresh(client) {
  * POST /portal/auth/register
  * Registro de cuenta para dueño de mascota.
  */
+// Password policy: min 10 chars, upper + lower + digit + special char (same as staff)
+const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?])/;
+
 app.post('/portal/auth/register',
+  authLimiter,
   vBody('email').isEmail().normalizeEmail(),
-  vBody('password').isLength({ min: 10 }).matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?])/),
+  vBody('password').isLength({ min: 10 }).matches(PASSWORD_POLICY),
   vBody('firstName').notEmpty(),
   vBody('lastName').notEmpty(),
   validate,
@@ -131,6 +153,7 @@ app.post('/portal/auth/register',
  * POST /portal/auth/login
  */
 app.post('/portal/auth/login',
+  authLimiter,
   vBody('email').isEmail().normalizeEmail(),
   vBody('password').notEmpty(),
   validate,
@@ -285,7 +308,7 @@ app.put('/portal/me',
 app.put('/portal/me/password',
   portalAuth,
   vBody('currentPassword').notEmpty(),
-  vBody('newPassword').isLength({ min: 8 }).matches(/(?=.*[A-Z])(?=.*[0-9])/),
+  vBody('newPassword').isLength({ min: 10 }).matches(PASSWORD_POLICY),
   validate,
   async (req, res, next) => {
     try {
@@ -422,10 +445,11 @@ app.get('/portal/pets/:id/prescriptions', portalAuth, async (req, res, next) => 
 
 app.get('/portal/appointments', portalAuth, async (req, res, next) => {
   try {
-    const { status, upcoming, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const { status, upcoming, page = 1 } = req.query;
+    const limit  = Math.min(parseInt(req.query.limit || '20'), 100);
+    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
     const conds  = ['i.client_id=:cid'];
-    const p      = { cid: req.owner.clientId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p      = { cid: req.owner.clientId, limit, offset };
     if (status)             { conds.push('a.status=:status'); p.status = status; }
     if (upcoming === 'true') conds.push('a.appointment_date >= NOW()');
 
@@ -519,10 +543,11 @@ app.patch('/portal/appointments/:id/cancel', portalAuth, async (req, res, next) 
 
 app.get('/portal/invoices', portalAuth, async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const { status, page = 1 } = req.query;
+    const limit  = Math.min(parseInt(req.query.limit || '20'), 100);
+    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
     const conds  = ['i.client_id=:cid'];
-    const p      = { cid: req.owner.clientId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p      = { cid: req.owner.clientId, limit, offset };
     if (status) { conds.push('i.status=:status'); p.status = status; }
 
     const rows = await db.query(
@@ -602,8 +627,9 @@ app.post('/portal/invoices/:id/pay', portalAuth, async (req, res, next) => {
 
 app.get('/portal/notifications', portalAuth, async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const { page = 1 } = req.query;
+    const limit  = Math.min(parseInt(req.query.limit || '20'), 100);
+    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
     const rows = await db.query(
       `SELECT id, notification_type, title, message, severity, sent_at, read_at, action_url
        FROM notification_logs
