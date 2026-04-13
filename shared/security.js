@@ -2,16 +2,20 @@
 
 /**
  * Security middleware collection — mirrors apipersonal hardening stack.
- * Exposes: helmet, hpp, compression, sanitize, ipGuard, requestId, idempotency
+ * Exposes: helmet, hpp, compression, sanitize, ipGuard, requestId, idempotency,
+ *          dnsRebindingGuard, openRedirectGuard, contentTypeGuard, cacheHeaders,
+ *          safeDeserialize, sriHelper
  */
 
 const helmet      = require('helmet');
 const hpp         = require('hpp');
 const compression = require('compression');
+const crypto      = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const db          = require('./db');
 
 // ── Helmet (HTTP security headers) ───────────────────────────────────────────
+// Incluye Permissions-Policy para controlar acceso a cámara, micrófono y geoloc.
 const helmetMiddleware = helmet({
   contentSecurityPolicy: {
     directives: {
@@ -21,6 +25,7 @@ const helmetMiddleware = helmet({
       imgSrc:         ["'self'", 'data:', 'https:'],
       connectSrc:     ["'self'"],
       frameSrc:       ["'none'"],
+      frameAncestors: ["'none'"],
       objectSrc:      ["'none'"],
       upgradeInsecureRequests: [],
     },
@@ -28,6 +33,20 @@ const helmetMiddleware = helmet({
   crossOriginEmbedderPolicy: false,  // allow Swagger UI assets
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  // Permissions-Policy: deshabilitar APIs sensibles que la app no necesita exponer
+  permissionsPolicy: {
+    features: {
+      camera:          ["'none'"],
+      microphone:      ["'none'"],
+      geolocation:     ["'none'"],
+      payment:         ["'none'"],
+      usb:             ["'none'"],
+      magnetometer:    ["'none'"],
+      gyroscope:       ["'none'"],
+      accelerometer:   ["'none'"],
+      fullscreen:      ["'self'"],
+    },
+  },
 });
 
 // ── HPP — HTTP Parameter Pollution protection ─────────────────────────────────
@@ -44,16 +63,19 @@ const compressionMiddleware = compression({
 });
 
 // ── Sanitize — trim strings + block prototype pollution ──────────────────────
-function sanitizeDeep(value) {
+const MAX_SANITIZE_DEPTH = 10;
+
+function sanitizeDeep(value, depth = 0) {
+  if (depth > MAX_SANITIZE_DEPTH) return null;   // corta recursión antes del stack overflow
   if (value === null || value === undefined) return value;
   if (typeof value === 'string') return value.trim();
-  if (Array.isArray(value)) return value.map(sanitizeDeep);
+  if (Array.isArray(value)) return value.map(v => sanitizeDeep(v, depth + 1));
   if (typeof value === 'object') {
     const BLOCKED = new Set(['__proto__', 'constructor', 'prototype']);
     const out = Object.create(null);
     for (const [k, v] of Object.entries(value)) {
       if (BLOCKED.has(k)) continue;
-      out[k] = sanitizeDeep(v);
+      out[k] = sanitizeDeep(v, depth + 1);
     }
     return out;
   }
@@ -162,6 +184,207 @@ async function idempotency(req, res, next) {
   next();
 }
 
+// ── DNS Rebinding Guard ───────────────────────────────────────────────────────
+/**
+ * Valida el header Host contra la lista de dominios permitidos.
+ * Previene que un atacante use DNS rebinding para hacer que el navegador
+ * hable con servicios internos.
+ *
+ * Env: ALLOWED_HOSTS — lista CSV de hosts permitidos (ej: "app.vetmanager.io,api.vetmanager.io")
+ * En desarrollo, se permiten localhost y 127.0.0.1 si no hay lista configurada.
+ */
+function dnsRebindingGuard(req, res, next) {
+  const allowedRaw = process.env.ALLOWED_HOSTS || '';
+  if (!allowedRaw && process.env.NODE_ENV !== 'production') return next();
+
+  const allowedHosts = new Set(
+    allowedRaw.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
+  );
+
+  // En desarrollo, siempre permitir localhost/127.0.0.1 si no hay lista
+  if (!allowedHosts.size && process.env.NODE_ENV !== 'production') return next();
+
+  const host = (req.headers['host'] || '').toLowerCase().split(':')[0];   // strip port
+
+  // Permitir localhost en dev aunque haya lista
+  if (process.env.NODE_ENV !== 'production' && (host === 'localhost' || host === '127.0.0.1')) {
+    return next();
+  }
+
+  if (!allowedHosts.has(host)) {
+    return res.status(400).json({
+      success: false,
+      error: { message: 'Host header no permitido', code: 'HOST_HEADER_INVALID' },
+    });
+  }
+  next();
+}
+
+// ── Open Redirect Guard ───────────────────────────────────────────────────────
+/**
+ * Middleware para rutas que usan parámetros de redirección (ej: ?redirect=/path).
+ * Valida que la URL sea del propio dominio o una ruta relativa válida.
+ *
+ * Uso: router.get('/login', openRedirectGuard(['query.redirect', 'query.returnTo']), handler)
+ *
+ * @param {string[]} fields — rutas dot-notation a los parámetros de redirect
+ */
+function openRedirectGuard(fields = ['query.redirect', 'query.returnTo', 'body.redirect']) {
+  return function(req, res, next) {
+    const allowedOrigins = new Set(
+      (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim().toLowerCase()).filter(Boolean)
+    );
+
+    for (const fieldPath of fields) {
+      const [source, key] = fieldPath.split('.');
+      const value = req[source]?.[key];
+      if (!value) continue;
+
+      // Rutas relativas que empiecen con / son seguras (sin host)
+      if (/^\/[^/\\]/.test(value)) continue;
+      if (value.startsWith('/') && !value.startsWith('//')) continue;
+
+      // URLs absolutas: verificar que el origen esté en la lista
+      try {
+        const parsed = new URL(value);
+        const origin = parsed.origin.toLowerCase();
+        if (!allowedOrigins.has(parsed.host.toLowerCase()) && !allowedOrigins.has(origin)) {
+          return res.status(400).json({
+            success: false,
+            error: { message: 'URL de redirección no permitida', code: 'OPEN_REDIRECT_BLOCKED' },
+          });
+        }
+      } catch {
+        // URL malformada → bloquear
+        return res.status(400).json({
+          success: false,
+          error: { message: 'URL de redirección inválida', code: 'OPEN_REDIRECT_INVALID' },
+        });
+      }
+    }
+    next();
+  };
+}
+
+// ── Content-Type Guard ────────────────────────────────────────────────────────
+/**
+ * Rechaza requests mutantes (POST/PUT/PATCH) que no envíen Content-Type válido.
+ * Previene ataques de content-type smuggling y payloads malformados.
+ * Excluye multipart/form-data (file uploads) y application/x-www-form-urlencoded.
+ */
+function contentTypeGuard(req, res, next) {
+  const mutating = new Set(['POST', 'PUT', 'PATCH']);
+  if (!mutating.has(req.method)) return next();
+
+  // Rutas excluidas (webhooks, healthchecks)
+  const excluded = new Set(['/health', '/metrics', '/webhooks']);
+  if (excluded.has(req.path) || req.path.startsWith('/webhooks')) return next();
+
+  const ct = req.headers['content-type'] || '';
+
+  const VALID_TYPES = [
+    'application/json',
+    'application/x-www-form-urlencoded',
+    'multipart/form-data',
+    'application/octet-stream',
+  ];
+
+  const isValid = VALID_TYPES.some(t => ct.toLowerCase().includes(t));
+
+  // Si hay body pero el Content-Type es inválido → rechazar
+  if (!isValid && (req.headers['content-length'] || req.headers['transfer-encoding'])) {
+    return res.status(415).json({
+      success: false,
+      error: { message: 'Tipo de contenido no soportado', code: 'UNSUPPORTED_MEDIA_TYPE' },
+    });
+  }
+  next();
+}
+
+// ── Cache Headers ─────────────────────────────────────────────────────────────
+/**
+ * Agrega headers de cache seguros en respuestas de API para prevenir
+ * cache poisoning y evitar que CDNs sirvan respuestas privadas a otros usuarios.
+ *
+ * - Rutas de API: no-store (nunca cachear datos sensibles)
+ * - Rutas públicas/static: cache corto con Vary
+ */
+function cacheHeaders(req, res, next) {
+  const isApi = req.path.startsWith('/api/');
+
+  if (isApi) {
+    // Las respuestas de API nunca deben cachearse — contienen datos de usuario
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Vary', 'Authorization, Accept-Encoding');
+  } else {
+    // Rutas públicas: caché corto, variar por encoding y origen
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Vary', 'Accept-Encoding, Origin');
+  }
+  next();
+}
+
+// ── Safe Deserialize ──────────────────────────────────────────────────────────
+/**
+ * Previene ejecución de código en deserialización.
+ * Reemplaza JSON.parse de input externo con una versión que bloquea
+ * prototype pollution y keys peligrosas antes de parsear.
+ *
+ * Uso: safeJsonParse(rawString) en lugar de JSON.parse(rawString)
+ * @param {string} raw
+ * @param {*} fallback — valor a retornar si el parse falla
+ */
+function safeJsonParse(raw, fallback = null) {
+  if (typeof raw !== 'string') return fallback;
+
+  // Bloquear strings que contengan prototype pollution en crudo
+  const DANGEROUS = ['__proto__', 'constructor', 'prototype'];
+  if (DANGEROUS.some(d => raw.includes(d))) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(raw, (key, value) => {
+      // Reviver: bloquear keys peligrosas durante el parsing
+      if (DANGEROUS.includes(key)) return undefined;
+      return value;
+    });
+
+    // eval/Function están prohibidos — si el valor es string con eval → sanitizar
+    if (typeof parsed === 'string' && /\beval\s*\(|\bFunction\s*\(/.test(parsed)) {
+      return fallback;
+    }
+
+    return parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+// ── SRI Helper ────────────────────────────────────────────────────────────────
+/**
+ * Genera el hash de integridad (SRI) para un recurso estático cargado desde CDN.
+ * El hash se incluye en el atributo `integrity` de <script> o <link>.
+ *
+ * Uso (en generación de HTML server-side):
+ *   const { generateSriHash } = require('./security');
+ *   const hash = await generateSriHash(fileBuffer, 'sha384');
+ *   // <script src="https://cdn.../lib.js" integrity="sha384-{hash}" crossorigin="anonymous">
+ *
+ * @param {Buffer|string} content — contenido del recurso
+ * @param {'sha256'|'sha384'|'sha512'} [algorithm='sha384']
+ * @returns {string} — valor del atributo integrity, ej: "sha384-abc123..."
+ */
+function generateSriHash(content, algorithm = 'sha384') {
+  const VALID_ALGS = new Set(['sha256', 'sha384', 'sha512']);
+  if (!VALID_ALGS.has(algorithm)) throw new Error(`SRI: algoritmo no soportado: ${algorithm}`);
+
+  const buf  = Buffer.isBuffer(content) ? content : Buffer.from(content);
+  const hash = crypto.createHash(algorithm).update(buf).digest('base64');
+  return `${algorithm}-${hash}`;
+}
+
 module.exports = {
   helmetMiddleware,
   hppMiddleware,
@@ -170,4 +393,11 @@ module.exports = {
   requestId,
   ipGuard,
   idempotency,
+  // Nuevos (seguridad adicional)
+  dnsRebindingGuard,
+  openRedirectGuard,
+  contentTypeGuard,
+  cacheHeaders,
+  safeJsonParse,
+  generateSriHash,
 };

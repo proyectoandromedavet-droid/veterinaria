@@ -1,0 +1,40 @@
+PENDIENTES DE SEGURIDAD
+=======================
+
+Punto 3 — Docker con usuario no-root
+--------------------------------------
+Los contenedores actualmente corren como root. Si hay una vulnerabilidad RCE,
+el atacante obtiene privilegios de root dentro del container.
+
+QUÉ HACER:
+En cada Dockerfile de los servicios, agregar antes del CMD:
+
+    # Crear usuario sin privilegios
+    RUN addgroup --system --gid 1001 nodejs \
+     && adduser  --system --uid 1001 nodeapp
+
+    # Cambiar ownership de los archivos de la app
+    RUN chown -R nodeapp:nodejs /app
+
+    # Correr como usuario restringido
+    USER nodeapp
+
+SERVICIOS QUE NECESITAN EL CAMBIO:
+- gateway/Dockerfile
+- services/auth/Dockerfile
+- services/patients/Dockerfile
+- services/medical/Dockerfile
+- services/billing/Dockerfile
+- services/telemedicine/Dockerfile
+- services/grooming/Dockerfile
+- services/reports/Dockerfile
+- services/notifications/Dockerfile
+- services/portal/Dockerfile
+- services/ai/Dockerfile
+- services/lab-imaging/Dockerfile
+- services/plugins/Dockerfile
+
+NOTAS:
+- Verificar que los directorios de logs y uploads tengan permisos correctos para el usuario nodeapp
+- En Upsun, revisar si el platform ya aplica restricciones de usuario por defecto
+- Prioridad: media — mitigado parcialmente por el aislamiento de red Docker (vetnet)

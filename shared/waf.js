@@ -30,44 +30,45 @@ const EXCLUDE_PATHS = new Set(
 
 /**
  * SQL injection heuristics.
- * Tuned to minimise false positives on vet-domain strings.
+ * Patrones reescritos sin backtracking catastrófico (ReDoS-safe).
+ * Usamos \s+ acotado o word-boundary pairs sin .+ entre ellos.
  */
 const SQLI_PATTERNS = [
-  /(\bUNION\b.+\bSELECT\b)/i,
-  /(\bSELECT\b.+\bFROM\b)/i,
-  /(\bDROP\b.+\bTABLE\b)/i,
-  /(\bINSERT\b.+\bINTO\b)/i,
-  /(\bDELETE\b.+\bFROM\b)/i,
-  /(\bUPDATE\b.+\bSET\b)/i,
-  /(\bEXEC\b\s*\()/i,
-  /(\bxp_\w+)/i,                       // MSSQL extended procs
-  /';\s*(DROP|DELETE|UPDATE|INSERT)/i,  // Classic injection terminator
-  /--\s*$/m,                            // SQL comment at end of line
-  /\/\*[\s\S]*?\*\//,                   // Block comment
+  /\bUNION\b/i,                         // UNION solo ya es sospechoso en input de usuario
+  /\bSELECT\b[\s\S]{0,30}\bFROM\b/i,   // SELECT...FROM con límite de chars entre medio
+  /\bDROP\b[\s\S]{0,20}\bTABLE\b/i,
+  /\bINSERT\b[\s\S]{0,20}\bINTO\b/i,
+  /\bDELETE\b[\s\S]{0,20}\bFROM\b/i,
+  /\bUPDATE\b[\s\S]{0,20}\bSET\b/i,
+  /\bEXEC\b\s*\(/i,
+  /\bxp_[a-zA-Z0-9_]+/i,               // MSSQL extended procs
+  /';\s*(?:DROP|DELETE|UPDATE|INSERT)\b/i,
+  /--(?:\s|$)/m,                         // SQL comment (sin backtracking)
+  /\/\*[^*]{0,200}\*\//,                // Block comment (largo acotado)
 ];
 
 /**
- * XSS heuristics — script injection and event handlers.
+ * XSS heuristics — sin backtracking problemático.
  */
 const XSS_PATTERNS = [
   /<script[\s>]/i,
   /<\/script>/i,
-  /javascript\s*:/i,
-  /on\w+\s*=\s*["'`]/i,               // onclick=, onmouseover=, etc.
+  /javascript:/i,                        // sin \s* antes de : para evitar backtracking
+  /\bon\w{1,20}\s*=\s*["'`]/i,          // onclick=, onmouseover=, con longitud acotada
   /<iframe[\s>]/i,
-  /data\s*:\s*text\/html/i,
-  /document\s*\.\s*cookie/i,
-  /eval\s*\(/i,
+  /data:text\/html/i,
+  /document\.cookie/i,
+  /\beval\s*\(/i,
 ];
 
 /**
- * Path traversal patterns.
+ * Path traversal patterns — sin alternativas complejas.
  */
 const PATH_TRAVERSAL_PATTERNS = [
-  /\.\.(\/|\\)/,              // ../  or ..\
-  /%2e%2e(\/|%2f|%5c)/i,     // URL-encoded %2e%2e/ or %2e%2e%2f or %2e%2e%5c
-  /\.\.%2f/i,                 // ..%2f
-  /%252e%252e/i,              // Double-encoded
+  /\.\.[/\\]/,             // ../  o ..\
+  /%2e%2e[/%\\]/i,         // URL-encoded
+  /\.\.%2f/i,
+  /%252e%252e/i,           // Double-encoded
 ];
 
 const MAX_HEADER_VALUE_LENGTH = parseInt(process.env.WAF_MAX_HEADER || '8192');

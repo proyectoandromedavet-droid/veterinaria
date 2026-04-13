@@ -124,11 +124,33 @@ function signRefresh(payload) {
 }
 
 /**
+ * Rechaza explícitamente tokens con alg:none o algoritmos simétricos (HS*).
+ * Lanza JsonWebTokenError antes de intentar la verificación criptográfica.
+ * Esto previene el ataque de "algorithm confusion" donde un atacante cambia
+ * el header alg a 'none' o a HS256 para bypassear la firma.
+ */
+function _rejectUnsafeAlgorithm(token) {
+  // Decodificar header sin verificar firma (solo para inspeccionar alg)
+  const decoded = jwt.decode(token, { complete: true });
+  if (!decoded) throw new jwt.JsonWebTokenError('Token malformado');
+
+  const alg = (decoded.header?.alg || '').toLowerCase();
+
+  // Rechazar alg:none y todos los algoritmos simétricos HMAC
+  if (alg === 'none' || alg === '' || alg.startsWith('hs')) {
+    throw new jwt.JsonWebTokenError(
+      `Algoritmo no permitido: ${decoded.header?.alg || 'none'}. Solo se acepta RS256.`
+    );
+  }
+}
+
+/**
  * Verifica un access token. Lanza si es inválido o expirado.
  * Durante rotación, intenta la clave actual y luego la anterior.
  */
 function verifyAccess(token) {
   _initKeys();
+  _rejectUnsafeAlgorithm(token);   // protección alg:none antes de verify
   try {
     return jwt.verify(token, _publicKey, { algorithms: ['RS256'] });
   } catch (err) {
@@ -146,6 +168,7 @@ function verifyAccess(token) {
  */
 function verifyRefresh(token) {
   _initKeys();
+  _rejectUnsafeAlgorithm(token);   // protección alg:none antes de verify
   try {
     return jwt.verify(token, _publicKey, { algorithms: ['RS256'] });
   } catch (err) {

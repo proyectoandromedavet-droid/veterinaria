@@ -8,6 +8,7 @@ const path       = require('path');
 const swaggerUi  = require('swagger-ui-express');
 const YAML       = require('yamljs');
 
+const cookieParser    = require('cookie-parser');
 const corsMiddleware  = require('./middleware/cors');
 const { apiLimiter, tenantLimiter } = require('./middleware/rateLimiter');
 const { morganMiddleware, logger }  = require('./middleware/logger');
@@ -26,6 +27,9 @@ const {
   requestId,
   ipGuard,
   idempotency,
+  dnsRebindingGuard,
+  contentTypeGuard,
+  cacheHeaders,
 } = require('../../shared/security');
 
 const { httpMetrics, metricsHandler } = require('../../shared/metrics');
@@ -33,11 +37,21 @@ const { auditMiddleware }             = require('../../shared/audit');
 const { wafMiddleware }               = require('../../shared/waf');
 const webhookWorker                   = require('../../shared/webhooks/worker');
 const { appErrorHandler }             = require('../../shared/errors');
+const { csrfToken, csrfProtect }      = require('../../shared/csrf');
+const { securityTxtHandler }          = require('./routes/security-txt');
 
 const app    = express();
 const server = http.createServer(app);
 const PORT   = parseInt(process.env.PORT || '4050');
 const V      = process.env.API_VERSION || 'v1';
+
+// ── Security.txt (RFC 9116) ───────────────────────────────────────────────────
+app.get('/.well-known/security.txt', securityTxtHandler);
+
+// ── CSRF Token endpoint ───────────────────────────────────────────────────────
+// El frontend debe llamar GET /csrf-token antes de cualquier mutación.
+// La cookie _csrf se setea y el token se retorna en el body para ponerlo en X-CSRF-Token.
+app.get('/csrf-token', csrfToken);
 
 // ── Health check — before all middleware so it's always reachable ─────────────
 app.get('/health', async (_req, res) => {
@@ -74,22 +88,35 @@ app.use(compressionMiddleware);
 // ── Correlation ID (trace_id) — debe ir antes de cualquier log ───────────────
 app.use(correlationId);
 
-// ── Request ID + IP guard ─────────────────────────────────────────────────────
+// ── Request ID + IP guard + DNS Rebinding ────────────────────────────────────
 app.use(requestId);
 app.use(ipGuard);
+app.use(dnsRebindingGuard);
 
 // ── Subdomain tenant resolver ─────────────────────────────────────────────────
 app.use(subdomainMiddleware);
+
+// ── Cookie parser (requerido para CSRF y sesiones) ────────────────────────────
+app.use(cookieParser());
 
 // ── CORS + logging ────────────────────────────────────────────────────────────
 app.use(corsMiddleware);
 app.use(morganMiddleware);
 
 // ── Body parsing + sanitization ───────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// Límite configurable via JSON_BODY_LIMIT. Default: 512kb para APIs REST.
+// Para endpoints de upload usar multipart (createUploader de fileUpload.js).
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '512kb';
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 app.use(hppMiddleware);
 app.use(sanitize);
+
+// ── Content-Type guard ────────────────────────────────────────────────────────
+app.use(contentTypeGuard);
+
+// ── Cache headers (anti-cache-poisoning) ──────────────────────────────────────
+app.use(cacheHeaders);
 
 // ── WAF — pattern-based attack detection ──────────────────────────────────────
 app.use(wafMiddleware);
@@ -222,6 +249,9 @@ if (process.env.OPENAPI_VALIDATE !== 'false') {
 
 // ── API versioning headers (Deprecation, Sunset, API-Version) ─────────────────
 app.use(versioningMiddleware);
+
+// ── CSRF Protection (aplica a rutas mutantes de API) ─────────────────────────
+app.use(`/api/${V}`, csrfProtect);
 
 // ── DLP — Data Loss Prevention ────────────────────────────────────────────────
 app.use(dlpMiddleware);

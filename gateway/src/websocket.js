@@ -5,6 +5,29 @@ const { createClient }    = require('redis');
 const { verifyAccess }    = require('../../shared/jwt');
 const { logger }          = require('./middleware/logger');
 
+// ── Orígenes permitidos para WebSocket ───────────────────────────────────────
+// En producción, debe coincidir con ALLOWED_ORIGINS.
+// En desarrollo se permiten localhost y 127.0.0.1.
+function isAllowedOrigin(origin) {
+  if (!origin) return false;  // conexiones sin Origin header → rechazar (no son browsers)
+
+  const allowedRaw = process.env.ALLOWED_ORIGINS || '';
+
+  // Desarrollo: permitir localhost siempre
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const { hostname } = new URL(origin);
+      if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+    } catch { return false; }
+  }
+
+  if (!allowedRaw) return false;
+
+  const allowed = allowedRaw.split(',').map(o => o.trim().toLowerCase()).filter(Boolean);
+  const originLower = origin.toLowerCase().replace(/\/$/, '');
+  return allowed.some(a => originLower === a || originLower.startsWith(`${a}/`));
+}
+
 // Redis pub/sub for inter-service broadcasting
 let redisSubscriber;
 let redisPublisher;
@@ -30,8 +53,18 @@ async function getRedisClients() {
 const userSockets = new Map();
 
 function getTokenFromRequest(req) {
+  // 1. Authorization header (Bearer token)
   const header = req.headers['authorization'];
-  return header?.startsWith('Bearer ') ? header.slice(7) : null;
+  if (header?.startsWith('Bearer ')) return header.slice(7);
+
+  // 2. Query param ?token= (fallback para clientes que no pueden enviar headers)
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    const t   = url.searchParams.get('token');
+    if (t) return t;
+  } catch { /* ignore */ }
+
+  return null;
 }
 
 /**
@@ -52,7 +85,16 @@ async function attachWebSocket(httpServer) {
     }
   });
 
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', async (ws, req) => {
+    // 1. Validar origen (previene DNS rebinding y conexiones cross-origin no autorizadas)
+    const origin = req.headers['origin'];
+    if (!isAllowedOrigin(origin)) {
+      logger.warn('WS: connection rejected — invalid origin', { origin, ip: req.socket.remoteAddress });
+      ws.close(4003, 'Origin not allowed');
+      return;
+    }
+
+    // 2. Extraer y verificar token JWT
     const token = getTokenFromRequest(req);
     if (!token) {
       ws.close(4001, 'Missing token');
@@ -65,6 +107,28 @@ async function attachWebSocket(httpServer) {
     } catch (_) {
       ws.close(4001, 'Invalid or expired token');
       return;
+    }
+
+    // 3. Verificar revocación en Redis (misma lista negra que el middleware HTTP)
+    if (user.jti) {
+      try {
+        const { sub } = await getRedisClients();
+        // Usar el subscriber para no mezclar con pub/sub — creamos cliente temporal si hace falta
+        const revokeCheck = createClient({
+          socket:   { host: process.env.REDIS_HOST || 'localhost', port: parseInt(process.env.REDIS_PORT || '6379') },
+          password: process.env.REDIS_PASSWORD || undefined,
+        });
+        await revokeCheck.connect().catch(() => {});
+        const revoked = revokeCheck.isReady ? await revokeCheck.get(`revoked:${user.jti}`) : null;
+        await revokeCheck.quit().catch(() => {});
+        if (revoked) {
+          logger.warn('WS: connection rejected — revoked token', { userId: user.userId });
+          ws.close(4001, 'Token revoked');
+          return;
+        }
+      } catch (e) {
+        logger.warn('WS: revocation check failed — continuing', { error: e.message });
+      }
     }
 
     const userId = String(user.userId);

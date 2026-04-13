@@ -201,4 +201,36 @@ function placeholders(arr) {
   return arr.map(() => '?').join(',');
 }
 
-module.exports = { getPool, query, queryOne, callProc, transaction, queryGrouped, placeholders };
+/**
+ * Ejecuta una query con SELECT ... FOR UPDATE dentro de una transacción.
+ * Úsalo en operaciones críticas concurrentes para evitar race conditions.
+ *
+ * Ejemplo — debitar saldo (evita doble débito):
+ *   await db.withLock(async (conn) => {
+ *     const account = await conn.lockQuery(
+ *       'SELECT * FROM accounts WHERE id = :id FOR UPDATE',
+ *       { id: accountId }
+ *     );
+ *     if (account.balance < amount) throw new AppError('Saldo insuficiente', 422);
+ *     await conn.query('UPDATE accounts SET balance = balance - :amount WHERE id = :id', { amount, id: accountId });
+ *   });
+ *
+ * @param {(conn: DecoratedConnection) => Promise<any>} fn
+ */
+async function withLock(fn) {
+  return transaction(fn);
+}
+
+/**
+ * Shorthand: SELECT ... FOR UPDATE de una sola fila dentro de una transacción.
+ * Devuelve la fila bloqueada o null si no existe.
+ * La transacción se gestiona automáticamente.
+ *
+ * @param {string} sql    — debe incluir FOR UPDATE al final
+ * @param {object} params
+ */
+async function lockQuery(sql, params) {
+  return transaction(async (conn) => conn.queryOne(sql, params));
+}
+
+module.exports = { getPool, query, queryOne, callProc, transaction, queryGrouped, placeholders, withLock, lockQuery };

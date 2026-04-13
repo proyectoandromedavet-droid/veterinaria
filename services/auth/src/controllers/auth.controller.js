@@ -4,10 +4,11 @@ const bcrypt  = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { createClient } = require('redis');
 
-const db          = require('../../../../shared/db');
-const jwt         = require('../../../../shared/jwt');
-const R           = require('../../../../shared/response');
-const twoFactor   = require('../../../../shared/twoFactor');
+const db             = require('../../../../shared/db');
+const jwt            = require('../../../../shared/jwt');
+const R              = require('../../../../shared/response');
+const twoFactor      = require('../../../../shared/twoFactor');
+const { enforcePassword } = require('../../../../shared/passwordPolicy');
 const {
   send2faEnabled,
   sendPasswordReset: sendPwResetEmail,
@@ -47,6 +48,7 @@ function parseUserAgent(ua = '') {
  *
  * Returns { locked: true, retryAfter: <seconds> } or { locked: false }.
  */
+// ── Brute force: thresholds por IP+email ─────────────────────────────────────
 const BF_THRESHOLDS = [
   { attempts: 4, lockSecs: 30 },
   { attempts: 5, lockSecs: 60 },
@@ -55,39 +57,67 @@ const BF_THRESHOLDS = [
 ];
 const BF_COUNTER_TTL = 3600; // reset counter after 1 h of no attempts
 
+// ── Account-level lockout: por email solo (independiente de IP) ───────────────
+// Protege contra ataques distribuidos donde el atacante rota IPs.
+// Umbrales más permisivos que el per-IP para reducir falsos positivos.
+const ACCT_THRESHOLDS = [
+  { attempts: 10, lockSecs: 300   },   // 10 intentos → 5 min
+  { attempts: 15, lockSecs: 1800  },   // 15 intentos → 30 min
+  { attempts: 20, lockSecs: 86400 },   // 20 intentos → 24 h (bloqueo severo)
+];
+const ACCT_COUNTER_TTL = 7200; // ventana de conteo: 2h
+
 async function checkBruteForce(email, ip) {
   try {
     const redis = await getRedis();
-    const key   = `bf:${email}:${ip}`;
 
+    // 1. Verificar lockout por IP+email
     const lockKey = `bf:lock:${email}:${ip}`;
-    const locked  = await redis.get(lockKey);
-    if (locked) {
+    const lockedIp = await redis.get(lockKey);
+    if (lockedIp) {
       const ttl = await redis.ttl(lockKey);
-      return { locked: true, retryAfter: Math.max(ttl, 1) };
+      return { locked: true, retryAfter: Math.max(ttl, 1), reason: 'ip' };
     }
+
+    // 2. Verificar lockout por cuenta (email solo — sin importar IP)
+    const acctLockKey = `bf:acct:lock:${email}`;
+    const lockedAcct  = await redis.get(acctLockKey);
+    if (lockedAcct) {
+      const ttl = await redis.ttl(acctLockKey);
+      return { locked: true, retryAfter: Math.max(ttl, 1), reason: 'account' };
+    }
+
     return { locked: false };
   } catch (_) {
-    // In production, fail-closed: deny login when brute-force state is unavailable
     if (process.env.NODE_ENV === 'production') {
-      return { locked: true, retryAfter: 60 };
+      return { locked: true, retryAfter: 60, reason: 'unavailable' };
     }
-    return { locked: false }; // dev/test: fail-open to not block development
+    return { locked: false };
   }
 }
 
 async function recordFailedAttempt(email, ip) {
   try {
-    const redis   = await getRedis();
+    const redis = await getRedis();
+
+    // Incrementar contador IP+email
     const key     = `bf:${email}:${ip}`;
     const lockKey = `bf:lock:${email}:${ip}`;
-
     const attempts = await redis.incr(key);
     await redis.expire(key, BF_COUNTER_TTL);
-
     const rule = [...BF_THRESHOLDS].reverse().find(r => attempts >= r.attempts);
     if (rule) {
       await redis.setEx(lockKey, rule.lockSecs, '1');
+    }
+
+    // Incrementar contador de cuenta (email solo)
+    const acctKey     = `bf:acct:${email}`;
+    const acctLockKey = `bf:acct:lock:${email}`;
+    const acctAttempts = await redis.incr(acctKey);
+    await redis.expire(acctKey, ACCT_COUNTER_TTL);
+    const acctRule = [...ACCT_THRESHOLDS].reverse().find(r => acctAttempts >= r.attempts);
+    if (acctRule) {
+      await redis.setEx(acctLockKey, acctRule.lockSecs, '1');
     }
   } catch (_) {}
 }
@@ -95,8 +125,11 @@ async function recordFailedAttempt(email, ip) {
 async function clearBruteForce(email, ip) {
   try {
     const redis = await getRedis();
+    // Limpiar ambos contadores al login exitoso
     await redis.del(`bf:${email}:${ip}`);
     await redis.del(`bf:lock:${email}:${ip}`);
+    await redis.del(`bf:acct:${email}`);
+    await redis.del(`bf:acct:lock:${email}`);
   } catch (_) {}
 }
 
@@ -151,9 +184,13 @@ async function login(req, res) {
   );
 
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-    // Record failed attempt for exponential backoff
+    // Redis: backoff exponencial por IP+email y por cuenta
     await recordFailedAttempt(email, ip);
-    // Record failed attempt in login_history
+    // BD: registrar intento fallido y aplicar lockout a nivel de cuenta
+    if (user?.id) {
+      await db.callProc('sp_record_failed_login', [email, ip]).catch(() => {});
+    }
+    // Historial de login
     await db.query(
       `INSERT INTO login_history (user_id, ip_address, user_agent, success, failure_reason)
        VALUES (:userId, :ip, :ua, FALSE, 'invalid_credentials')`,
@@ -173,8 +210,9 @@ async function login(req, res) {
 
   const { accessToken, refreshToken, jti } = await buildTokenPair(user, roles);
 
-  // Clear brute-force counter on success
+  // Limpiar contadores de brute force (Redis + BD) al login exitoso
   await clearBruteForce(email, ip);
+  await db.callProc('sp_clear_failed_logins', [user.id]).catch(() => {});
 
   // Store session
   await db.query(
@@ -443,7 +481,7 @@ async function confirmPasswordReset(req, res) {
   const hash = jwt.hashToken(token);
 
   const record = await db.queryOne(
-    `SELECT prt.*, u.id AS user_id
+    `SELECT prt.*, u.id AS user_id, u.email, u.first_name, u.last_name
      FROM password_reset_tokens prt
      JOIN users u ON prt.user_id = u.id
      WHERE prt.token_hash = :hash
@@ -453,6 +491,20 @@ async function confirmPasswordReset(req, res) {
   );
 
   if (!record) return R.badRequest(res, 'Invalid or expired reset token');
+
+  // Validar fortaleza de la nueva contraseña antes de hashear
+  try {
+    enforcePassword(newPassword, {
+      email:     record.email,
+      firstName: record.first_name,
+      lastName:  record.last_name,
+    });
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      error: { message: e.message, code: e.code, details: e.details?.errors },
+    });
+  }
 
   const passwordHash = await bcrypt.hash(newPassword, 12);
 
@@ -484,12 +536,31 @@ async function confirmPasswordReset(req, res) {
 async function changePassword(req, res) {
   const { currentPassword, newPassword } = req.body;
   const user = await db.queryOne(
-    `SELECT id, password_hash FROM users WHERE id = :id`,
+    `SELECT id, password_hash, email, first_name, last_name FROM users WHERE id = :id`,
     { id: req.user.userId }
   );
 
   if (!(await bcrypt.compare(currentPassword, user.password_hash))) {
     return R.badRequest(res, 'Current password is incorrect');
+  }
+
+  // Validar fortaleza antes de hashear
+  try {
+    enforcePassword(newPassword, {
+      email:     user.email,
+      firstName: user.first_name,
+      lastName:  user.last_name,
+    });
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      error: { message: e.message, code: e.code, details: e.details?.errors },
+    });
+  }
+
+  // Verificar que la nueva contraseña no sea igual a la actual
+  if (await bcrypt.compare(newPassword, user.password_hash)) {
+    return R.badRequest(res, 'La nueva contraseña no puede ser igual a la actual');
   }
 
   const hash = await bcrypt.hash(newPassword, 12);
