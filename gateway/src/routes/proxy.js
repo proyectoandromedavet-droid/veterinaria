@@ -67,6 +67,13 @@ function makeProxy(target, pathRewrite = {}, name) {
         else breaker?.onSuccess();
       },
       proxyReq(proxyReq, req) {
+        // Re-buffer parsed body — express.json() consumes the stream so we must re-write it
+        if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+          const bodyData = JSON.stringify(req.body);
+          proxyReq.setHeader('Content-Type', 'application/json');
+          proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+          proxyReq.write(bodyData);
+        }
         // Forward user info to downstream services as internal headers
         if (req.user) {
           proxyReq.setHeader('X-User-Id',    req.user.userId  || '');
