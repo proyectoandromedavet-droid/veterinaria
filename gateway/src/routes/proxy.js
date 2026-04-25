@@ -67,13 +67,6 @@ function makeProxy(target, pathRewrite = {}, name) {
         else breaker?.onSuccess();
       },
       proxyReq(proxyReq, req) {
-        // Re-buffer parsed body — express.json() consumes the stream so we must re-write it
-        if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
-          const bodyData = JSON.stringify(req.body);
-          proxyReq.setHeader('Content-Type', 'application/json');
-          proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-          proxyReq.write(bodyData);
-        }
         // Forward user info to downstream services as internal headers
         if (req.user) {
           proxyReq.setHeader('X-User-Id',    req.user.userId  || '');
@@ -88,6 +81,12 @@ function makeProxy(target, pathRewrite = {}, name) {
         // Internal service auth — HMAC signature for gateway→service trust
         const sig = signRequest(req.method, req.path, req.user?.orgId || req.headers['x-org-id'] || '');
         if (sig) proxyReq.setHeader(INTERNAL_SIG_HEADER, sig);
+        // Re-buffer parsed body LAST — write() commits headers so all setHeader calls must precede it
+        if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+          const bodyData = JSON.stringify(req.body);
+          proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+          proxyReq.write(bodyData);
+        }
       },
     },
   });
