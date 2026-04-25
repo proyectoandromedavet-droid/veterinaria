@@ -124,18 +124,27 @@ function registerProxies(app) {
     res.json({ success: true, data: getAllStatus() })
   );
 
-  // ── AUTH (public endpoints, no JWT required) ─────────────────────────────
-  registerVersioned(app, 'use', 'auth/login',           authLimiter, makeServiceProxy('auth'));
-  registerVersioned(app, 'use', 'auth/refresh',         authLimiter, makeServiceProxy('auth'));
-  registerVersioned(app, 'use', 'auth/password-reset',  passwordResetLimiter, makeServiceProxy('auth'));
-  registerVersioned(app, 'use', 'auth/register',        makeServiceProxy('auth'));
-  // Google OAuth callback — público (Google redirige aquí con ?code=)
-  registerVersioned(app, 'use', 'auth/google/callback', makeServiceProxy('auth'));
-  // JWKS — clave pública RS256 para verificación externa
-  registerVersioned(app, 'use', 'auth/.well-known',     makeServiceProxy('auth'));
+  // ── AUTH ─────────────────────────────────────────────────────────────────
+  // Rate limiters only — no proxy here; fall through to catch-all so req.url is correct
+  registerVersioned(app, 'use', 'auth/login',          authLimiter);
+  registerVersioned(app, 'use', 'auth/refresh',        authLimiter);
+  registerVersioned(app, 'use', 'auth/password-reset', passwordResetLimiter);
 
-  // ── AUTH (protected) ─────────────────────────────────────────────────────
-  registerVersioned(app, 'use', 'auth', authMiddleware, tenantMismatchGuard, tenantLimiter, makeServiceProxy('auth'));
+  // Single proxy instance reused by both catch-alls
+  const _authProxy = makeServiceProxy('auth');
+  // Paths that bypass JWT — checked against req.path inside the /api/vN/auth mount
+  const AUTH_PUBLIC = ['/login', '/refresh', '/register', '/password-reset', '/google', '/.well-known', '/internal'];
+
+  // Public catch-all: forward without JWT check
+  registerVersioned(app, 'use', 'auth', (req, res, next) => {
+    if (AUTH_PUBLIC.some(p => req.path === p || req.path.startsWith(p + '/'))) {
+      return _authProxy(req, res, next);
+    }
+    next();  // protected path → fall through
+  });
+
+  // Protected catch-all: JWT + tenant checks
+  registerVersioned(app, 'use', 'auth', authMiddleware, tenantMismatchGuard, tenantLimiter, _authProxy);
 
   // ── PATIENTS & CLIENTS ───────────────────────────────────────────────────
   registerVersioned(app, 'use', 'clients',   authMiddleware, tenantMismatchGuard, tenantLimiter, makeServiceProxy('patients'));

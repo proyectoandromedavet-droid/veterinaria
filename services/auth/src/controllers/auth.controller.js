@@ -171,14 +171,15 @@ async function login(req, res) {
     return R.tooMany(res, `Too many failed attempts. Try again in ${bf.retryAfter} seconds.`);
   }
 
-  // Check lockout via stored procedure (DB-level lockout as second layer)
-  const [proc] = await db.callProc('sp_login_attempt', [email, ip]);
-  const result  = proc?.[0];
-
-  if (!result) return R.serverError(res, 'Login procedure failed');
-
-  if (result.locked) {
-    return R.tooMany(res, `Account locked. Try again after ${result.locked_until}`);
+  // Check lockout via stored procedure (DB-level lockout as second layer — fail-open)
+  try {
+    const [proc] = await db.callProc('sp_login_attempt', [email, ip]);
+    const result  = proc?.[0];
+    if (result?.locked) {
+      return R.tooMany(res, `Account locked. Try again after ${result.locked_until}`);
+    }
+  } catch (spErr) {
+    console.error('[auth][sp_login_attempt] failed (skipping):', spErr.message);
   }
 
   const user = await db.queryOne(
