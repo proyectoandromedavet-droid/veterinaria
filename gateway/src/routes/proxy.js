@@ -105,9 +105,21 @@ function makeProxy(target, pathRewrite = {}, name) {
   };
 }
 
+/**
+ * Universal pathRewrite: strips /api/v1/ or /api/v2/ from the original URL.
+ * Needed because app.use('/api/v1/patients', proxy) causes Express to set
+ * req.url = '/' (stripping the full prefix). Using req.originalUrl restores
+ * the full path, then we remove only the version prefix.
+ * e.g. /api/v1/patients/123 → /patients/123
+ *      /api/v1/appointments?date=x → /appointments?date=x
+ */
+const STRIP_API_VERSION = (_path, req) => req.originalUrl.replace(/^\/api\/v[12]\//, '/');
+
 /** Convenience: builds proxy using SERVICES registry and circuit breaker by name. */
-function makeServiceProxy(name, pathRewrite = {}) {
-  return makeProxy(SERVICES[name], pathRewrite, name);
+function makeServiceProxy(name, pathRewrite) {
+  // Default: use universal rewrite. Pass {} explicitly to disable (auth catch-all).
+  const rw = pathRewrite !== undefined ? pathRewrite : STRIP_API_VERSION;
+  return makeProxy(SERVICES[name], rw, name);
 }
 
 /**
@@ -130,8 +142,8 @@ function registerProxies(app) {
   registerVersioned(app, 'use', 'auth/refresh',        authLimiter);
   registerVersioned(app, 'use', 'auth/password-reset', passwordResetLimiter);
 
-  // Single proxy instance reused by both catch-alls
-  const _authProxy = makeServiceProxy('auth');
+  // Auth proxy: pass {} to disable universal rewrite — catch-all already sets req.url correctly
+  const _authProxy = makeServiceProxy('auth', {});
   // Paths that bypass JWT — checked against req.path inside the /api/vN/auth mount
   const AUTH_PUBLIC = ['/login', '/refresh', '/register', '/password-reset', '/google', '/.well-known', '/internal'];
 
