@@ -106,7 +106,7 @@ app.use('/schema', require('./routes/schema.routes'));
 // Error handler — never leak internals
 app.use((err, _req, res, _next) => {
   const isProd = process.env.NODE_ENV === 'production';
-  if (!isProd) console.error('[auth]', err.stack || err.message);
+  console.error('[auth-error]', err.stack || err.message);
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ success: false, error: { message: 'Invalid JSON body' } });
   }
