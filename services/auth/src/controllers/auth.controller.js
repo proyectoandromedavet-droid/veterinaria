@@ -19,10 +19,19 @@ const {
 let redisClient;
 async function getRedis() {
   if (!redisClient) {
-    redisClient = createClient({
-      socket:   { host: process.env.REDIS_HOST || 'redis', port: parseInt(process.env.REDIS_PORT || '6379') },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
+    const url = process.env.REDIS_URL;
+    redisClient = url
+      ? createClient({ url, socket: { connectTimeout: 3000, reconnectStrategy: false } })
+      : createClient({
+          socket: {
+            host:           process.env.REDIS_HOST || process.env.REDISHOST || 'redis',
+            port:           parseInt(process.env.REDIS_PORT || process.env.REDISPORT || '6379'),
+            connectTimeout: 3000,
+            reconnectStrategy: false,
+          },
+          password: process.env.REDIS_PASSWORD || process.env.REDISPASSWORD || undefined,
+        });
+    redisClient.on('error', () => {});
     await redisClient.connect();
   }
   return redisClient;
@@ -89,9 +98,6 @@ async function checkBruteForce(email, ip) {
 
     return { locked: false };
   } catch (_) {
-    if (process.env.NODE_ENV === 'production') {
-      return { locked: true, retryAfter: 60, reason: 'unavailable' };
-    }
     return { locked: false };
   }
 }

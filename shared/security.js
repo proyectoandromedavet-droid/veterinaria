@@ -145,10 +145,18 @@ let idempotencyRedis;
 
 async function getIdempotencyRedis() {
   if (!idempotencyRedis) {
-    idempotencyRedis = createClient({
-      socket:   { host: process.env.REDIS_HOST || 'redis', port: parseInt(process.env.REDIS_PORT || '6379') },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
+    const url = process.env.REDIS_URL;
+    idempotencyRedis = url
+      ? createClient({ url, socket: { connectTimeout: 3000, reconnectStrategy: false } })
+      : createClient({
+          socket: {
+            host:           process.env.REDIS_HOST || process.env.REDISHOST || 'redis',
+            port:           parseInt(process.env.REDIS_PORT || process.env.REDISPORT || '6379'),
+            connectTimeout: 3000,
+            reconnectStrategy: false,
+          },
+          password: process.env.REDIS_PASSWORD || process.env.REDISPASSWORD || undefined,
+        });
     idempotencyRedis.on('error', () => {});
     await idempotencyRedis.connect().catch(() => {});
   }
