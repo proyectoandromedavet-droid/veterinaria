@@ -1,0 +1,420 @@
+<template>
+  <div class="page">
+
+    <div class="page-header">
+      <div class="page-header__left">
+        <span class="page-emoji">💉</span>
+        <div>
+          <h2 class="page-title">Vacunas</h2>
+          <p class="page-sub">Control y registro del plan vacunal</p>
+        </div>
+      </div>
+      <button class="btn-primary" @click="openModal()">💉 Registrar vacuna</button>
+    </div>
+
+    <!-- Stats rápidos -->
+    <div class="stats-row">
+      <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
+        <span class="stat-card__icon">✅</span>
+        <div>
+          <strong>{{ stats.upToDate }}</strong>
+          <span>Al día</span>
+        </div>
+      </div>
+      <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
+        <span class="stat-card__icon">⚠️</span>
+        <div>
+          <strong>{{ stats.dueSoon }}</strong>
+          <span>Vencen pronto</span>
+        </div>
+      </div>
+      <div class="stat-card" style="--c:#FDEAEA;--ct:#c0392b">
+        <span class="stat-card__icon">🔴</span>
+        <div>
+          <strong>{{ stats.overdue }}</strong>
+          <span>Vencidas</span>
+        </div>
+      </div>
+      <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
+        <span class="stat-card__icon">📋</span>
+        <div>
+          <strong>{{ stats.total }}</strong>
+          <span>Total registros</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filters">
+      <input v-model.trim="search" type="search" placeholder="🔍 Buscar paciente o vacuna…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <select v-model="statusFilter" class="filter-select" @change="load()">
+        <option value="">Todos los estados</option>
+        <option value="up_to_date">Al día</option>
+        <option value="due_soon">Vence pronto</option>
+        <option value="overdue">Vencida</option>
+      </select>
+    </div>
+
+    <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando vacunas…</div>
+    <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+    <div v-else-if="items.length === 0" class="empty-state">
+      <span class="empty-state__emoji">🐾</span>
+      <p>No hay registros de vacunas</p>
+    </div>
+
+    <!-- Tabla -->
+    <div v-else class="card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Paciente</th>
+            <th>Vacuna</th>
+            <th>Fecha de aplicación</th>
+            <th>Próxima dosis</th>
+            <th>Lote</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="v in items" :key="v.id">
+            <td>
+              <div class="pet-cell">
+                <span>{{ petEmoji(v.species) }}</span>
+                <div>
+                  <strong>{{ v.patient_name || '—' }}</strong>
+                  <span class="sub">{{ v.administered_by || '' }}</span>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div>
+                <strong>{{ v.vaccine_name || '—' }}</strong>
+                <span class="sub">{{ v.manufacturer || '' }}</span>
+              </div>
+            </td>
+            <td>{{ formatDate(v.vaccination_date) }}</td>
+            <td :class="dueDateClass(v.next_dose_due)">{{ formatDate(v.next_dose_due) }}</td>
+            <td class="sub">{{ v.lot_number || '—' }}</td>
+            <td><span class="badge" :class="vacStatus(v)">{{ vacStatusLabel(v) }}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Paginación -->
+    <div v-if="pagination.totalPages > 1" class="pagination">
+      <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+      <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
+      <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+    </div>
+
+    <!-- Modal -->
+    <Transition name="modal">
+      <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
+        <div class="modal">
+          <div class="modal__header">
+            <h3>💉 Registrar vacuna</h3>
+            <button class="modal__close" @click="closeModal()">✕</button>
+          </div>
+          <form @submit.prevent="handleCreate" novalidate>
+            <div class="form-body">
+              <div class="form-grid">
+                <div class="field field--full">
+                  <label>Paciente <span class="req">*</span></label>
+                  <input v-model.trim="patientSearch" type="search" placeholder="Buscar paciente…" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <div v-if="patientResults.length" class="autocomplete">
+                    <div v-for="pt in patientResults" :key="pt.id" class="autocomplete__item" @click="selectPatient(pt)">
+                      {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
+                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                    </div>
+                  </div>
+                  <div v-if="form.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                  <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
+                </div>
+                <div class="field field--full">
+                  <label>Vacuna <span class="req">*</span></label>
+                  <select v-model="form.vaccineId" :disabled="saving" required>
+                    <option value="">Seleccioná una vacuna…</option>
+                    <option v-for="vac in vaccineList" :key="vac.id" :value="vac.id">{{ vac.name }}</option>
+                  </select>
+                  <span v-if="fe.vaccineId" class="field-error">{{ fe.vaccineId }}</span>
+                </div>
+                <div class="field">
+                  <label>Número de lote</label>
+                  <input v-model.trim="form.lotNumber" type="text" placeholder="LOT-001" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Fecha de aplicación <span class="req">*</span></label>
+                  <input v-model="form.vaccinationDate" type="date" :disabled="saving" required />
+                  <span v-if="fe.vaccinationDate" class="field-error">{{ fe.vaccinationDate }}</span>
+                </div>
+                <div class="field">
+                  <label>Próxima dosis</label>
+                  <input v-model="form.nextDoseDue" type="date" :disabled="saving" />
+                </div>
+                <div class="field field--full">
+                  <label>Observaciones</label>
+                  <textarea v-model.trim="form.notes" rows="2" placeholder="Reacciones, observaciones…" :disabled="saving" />
+                </div>
+              </div>
+            </div>
+            <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
+            <div class="modal__actions">
+              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+              <button type="submit" class="btn-primary" :disabled="saving">
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>Registrar</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import http from '../api/client'
+
+const items = ref([])
+const loading = ref(false)
+const error   = ref('')
+const search  = ref('')
+const statusFilter = ref('')
+const pagination = ref({ page: 1, totalPages: 1 })
+const stats = ref({ upToDate: 0, dueSoon: 0, overdue: 0, total: 0 })
+
+// Vaccine catalog
+const vaccineList = ref([])
+async function loadVaccines() {
+  try {
+    const { data } = await http.get('/vaccinations/vaccines')
+    vaccineList.value = data.data || []
+  } catch { vaccineList.value = [] }
+}
+
+function petEmoji(s) {
+  if (!s) return '🐾'
+  const sl = s.toLowerCase()
+  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
+  return m[sl] || '🐾'
+}
+
+function formatDate(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' })
+}
+
+function dueDateClass(dt) {
+  if (!dt) return ''
+  const days = (new Date(dt) - Date.now()) / (1000 * 60 * 60 * 24)
+  if (days < 0)  return 'overdue'
+  if (days < 30) return 'due-soon'
+  return ''
+}
+
+function vacStatus(v) {
+  if (!v.next_dose_due) return 'badge--neutral'
+  const days = (new Date(v.next_dose_due) - Date.now()) / (1000 * 60 * 60 * 24)
+  if (days < 0)  return 'badge--red'
+  if (days < 30) return 'badge--yellow'
+  return 'badge--green'
+}
+
+function vacStatusLabel(v) {
+  if (!v.next_dose_due) return 'Aplicada'
+  const days = (new Date(v.next_dose_due) - Date.now()) / (1000 * 60 * 60 * 24)
+  if (days < 0)  return 'Vencida'
+  if (days < 30) return 'Vence pronto'
+  return 'Al día'
+}
+
+// Patient autocomplete
+const patientSearch = ref('')
+const patientResults = ref([])
+const selectedPatientLabel = ref('')
+let patientTimer = null
+async function searchPatients() {
+  clearTimeout(patientTimer)
+  form.patientId = ''
+  selectedPatientLabel.value = ''
+  if (patientSearch.value.length < 2) { patientResults.value = []; return }
+  patientTimer = setTimeout(async () => {
+    try {
+      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
+      patientResults.value = data.data || []
+    } catch { patientResults.value = [] }
+  }, 300)
+}
+function selectPatient(pt) {
+  form.patientId = pt.id
+  selectedPatientLabel.value = `${pt.name} (${pt.primary_owner || ''})`
+  patientSearch.value = pt.name
+  patientResults.value = []
+}
+
+async function load(page = 1) {
+  loading.value = true; error.value = ''
+  try {
+    const params = { page, limit: 20 }
+    if (search.value)      params.search = search.value
+    if (statusFilter.value) params.status = statusFilter.value
+    const { data } = await http.get('/vaccinations', { params })
+    items.value = data.data || data.vaccinations || data || []
+    const m = data.meta || {}
+    pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
+    computeStats()
+  } catch (e) {
+    error.value = e.response?.data?.message || 'No se pudieron cargar las vacunas'
+  } finally { loading.value = false }
+}
+
+function computeStats() {
+  const all = items.value
+  stats.value.total    = all.length
+  stats.value.overdue  = all.filter(v => vacStatus(v) === 'badge--red').length
+  stats.value.dueSoon  = all.filter(v => vacStatus(v) === 'badge--yellow').length
+  stats.value.upToDate = all.filter(v => vacStatus(v) === 'badge--green').length
+}
+
+let timer = null
+function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
+
+const showModal = ref(false)
+const saving    = ref(false)
+const saveError = ref('')
+const fe        = reactive({})
+const form = reactive({ patientId:'', vaccineId:'', lotNumber:'', vaccinationDate:'', nextDoseDue:'', notes:'' })
+
+function openModal()  {
+  resetForm()
+  patientSearch.value = ''
+  patientResults.value = []
+  selectedPatientLabel.value = ''
+  showModal.value = true
+}
+function closeModal() { showModal.value = false; resetForm() }
+function resetForm() {
+  Object.keys(form).forEach(k => form[k] = '')
+  saveError.value = ''; Object.keys(fe).forEach(k => delete fe[k])
+}
+
+function validate() {
+  Object.keys(fe).forEach(k => delete fe[k])
+  if (!form.patientId)      fe.patientId      = 'Requerido'
+  if (!form.vaccineId)      fe.vaccineId      = 'Requerido'
+  if (!form.vaccinationDate) fe.vaccinationDate = 'Requerido'
+  return Object.keys(fe).length === 0
+}
+
+async function handleCreate() {
+  if (!validate()) return
+  saving.value = true; saveError.value = ''
+  try {
+    const payload = {
+      patientId:       parseInt(form.patientId),
+      vaccineId:       parseInt(form.vaccineId),
+      vaccinationDate: form.vaccinationDate,
+    }
+    if (form.lotNumber)  payload.lotNumber  = form.lotNumber
+    if (form.nextDoseDue) payload.nextDoseDue = form.nextDoseDue
+    if (form.notes)       payload.notes        = form.notes
+    await http.post('/vaccinations', payload)
+    closeModal(); await load()
+  } catch (e) {
+    saveError.value = e.response?.data?.message || 'No se pudo registrar la vacuna'
+  } finally { saving.value = false }
+}
+
+onMounted(() => { load(); loadVaccines() })
+</script>
+
+<style scoped>
+.page { display: flex; flex-direction: column; gap: 20px; }
+.page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.page-header__left { display: flex; align-items: center; gap: 14px; }
+.page-emoji { font-size: 2rem; }
+.page-title { font-size: 1.35rem; font-weight: 700; color: var(--text); }
+.page-sub   { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
+
+/* Stats */
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.stat-card { background: var(--c); border-radius: var(--radius-lg); padding: 16px; display: flex; align-items: center; gap: 12px; }
+.stat-card__icon { font-size: 1.6rem; }
+.stat-card strong { display: block; font-size: 1.4rem; font-weight: 700; color: var(--ct); }
+.stat-card span   { font-size: 0.75rem; color: var(--ct); opacity: 0.8; }
+
+.filters { display: flex; gap: 10px; flex-wrap: wrap; }
+.filter-input, .filter-select { padding: 9px 13px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 0.87rem; background: var(--white); color: var(--text); outline: none; }
+.filter-input:focus, .filter-select:focus { border-color: var(--primary); }
+.filter-input--grow { flex: 1; min-width: 200px; }
+
+/* Tabla */
+.card { background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow); overflow: hidden; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.table th { text-align: left; padding: 12px 14px; font-size: 0.78rem; font-weight: 600; color: var(--text-3); letter-spacing: 0.05em; text-transform: uppercase; background: var(--surface); border-bottom: 1px solid var(--border); }
+.table td { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; color: var(--text); vertical-align: middle; }
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: var(--surface); }
+
+.pet-cell { display: flex; align-items: center; gap: 8px; font-size: 1.2rem; }
+.pet-cell strong { display: block; font-size: 0.9rem; }
+.sub { display: block; font-size: 0.75rem; color: var(--text-3); }
+.overdue  { color: #c0392b; font-weight: 600; }
+.due-soon { color: #d68910; font-weight: 600; }
+
+/* Badges */
+.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+.badge--green   { background: #D6F3EC; color: #1A9E7F; }
+.badge--yellow  { background: #FFF3CC; color: #8A6200; }
+.badge--red     { background: #FDEAEA; color: #c0392b; }
+.badge--neutral { background: var(--surface-2); color: var(--text-3); }
+
+/* Paginación */
+.pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
+.pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
+.pagination button:hover:not(:disabled) { background: var(--surface-2); }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary { padding: 10px 20px; background: linear-gradient(135deg, var(--primary) 0%, var(--accent-mint) 100%); color: white; border: none; border-radius: var(--radius); font-size: 0.9rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: opacity var(--transition), transform var(--transition); }
+.btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-ghost { padding: 10px 20px; background: none; border: 1.5px solid var(--border); border-radius: var(--radius); color: var(--text-2); font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: background var(--transition); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.modal { background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); width: 100%; max-width: 540px; max-height: 92vh; overflow-y: auto; }
+.modal__header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 16px; border-bottom: 1px solid var(--border); }
+.modal__header h3 { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+.modal__close { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--text-3); padding: 4px 8px; border-radius: var(--radius-sm); }
+.modal__close:hover { background: var(--surface-2); }
+.form-body { padding: 20px 24px 0; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 0.82rem; font-weight: 600; color: var(--text-2); }
+.field input, .field select, .field textarea { padding: 9px 12px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 0.9rem; color: var(--text); background: var(--surface); outline: none; transition: border-color var(--transition); }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); }
+.field textarea { resize: vertical; }
+.field--full { grid-column: 1 / -1; }
+.field-error { font-size: 0.75rem; color: var(--danger); }
+.req { color: var(--danger); }
+.modal__actions { display: flex; gap: 12px; justify-content: flex-end; padding: 16px 24px 24px; }
+.alert { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.875rem; }
+.alert--error { background: #FDEAEA; color: #c0392b; border-left: 3px solid var(--danger); }
+.mx { margin: 0 24px 8px; }
+.loading-state, .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 0.9rem; background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
+.empty-state__emoji { font-size: 3rem; }
+.spin { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+.spin--sm { width: 14px; height: 14px; }
+.spin--dark { border-color: rgba(0,0,0,0.1); border-top-color: var(--primary); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } .table th:nth-child(5), .table td:nth-child(5) { display: none; } }
+.autocomplete { position: absolute; z-index: 100; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 100%; max-height: 200px; overflow-y: auto; }
+.autocomplete__item { padding: 9px 13px; cursor: pointer; font-size: 0.88rem; }
+.autocomplete__item:hover { background: var(--surface-2); }
+.autocomplete__owner { font-size: 0.78rem; color: var(--text-3); }
+.selected-patient { margin-top: 6px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
+.field { position: relative; }
+</style>

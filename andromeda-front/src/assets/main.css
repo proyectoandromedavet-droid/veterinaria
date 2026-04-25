@@ -1,0 +1,71 @@
+/* ───────────────────────────────────────────────
+   Sistema Andromeda — Paleta Veterinaria
+   Teal fresco + dorado cálido + verde natural
+─────────────────────────────────────────────── */
+:root {
+  /* Fondo — verde menta muy suave, evoca clínica fresca y natural */
+  --bg:            #EEF8F4;
+  --surface:       #FFFFFF;
+  --surface-2:     #E4F5EE;
+  --border:        #C8E8DC;
+
+  /* Primario — teal veterinario */
+  --primary:       #1A9E7F;
+  --primary-hover: #157A62;
+  --primary-light: #7DD5BF;
+  --primary-xlight:#D6F3EC;
+
+  /* Acentos */
+  --accent-gold:   #FFB703;
+  --accent-coral:  #FF8B6A;
+  --accent-sky:    #90D5F0;
+  --accent-mint:   #06D6A0;
+
+  /* Textos */
+  --text:          #0F3D30;
+  --text-2:        #3D7A65;
+  --text-3:        #88B8A8;
+  --white:         #FFFFFF;
+
+  /* Estados */
+  --success:       #06D6A0;
+  --warning:       #FFB703;
+  --danger:        #EF5350;
+  --danger-light:  #FDEAEA;
+
+  /* Forma */
+  --radius-sm:  6px;
+  --radius:    12px;
+  --radius-lg: 20px;
+  --radius-xl: 32px;
+
+  /* Sombras con tinte verde */
+  --shadow-sm: 0 2px 8px  rgba(26, 158, 127, 0.08);
+  --shadow:    0 4px 20px rgba(26, 158, 127, 0.13);
+  --shadow-lg: 0 8px 40px rgba(26, 158, 127, 0.18);
+
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --transition: 0.2s ease;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { height: 100%; }
+
+a { color: var(--primary); text-decoration: none; }
+a:hover { color: var(--primary-hover); }
+input, button, select, textarea { font-family: inherit; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--surface-2); }
+::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 3px; }
+
+.sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0; }
