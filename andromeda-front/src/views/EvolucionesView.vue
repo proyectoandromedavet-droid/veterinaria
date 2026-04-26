@@ -42,9 +42,9 @@
             <span class="evol-tag evol-tag--blue">Motivo</span>
             <p>{{ ev.chief_complaint }}</p>
           </div>
-          <div class="evol-card__vitals" v-if="ev.weight_kg || ev.temperature_c">
+          <div class="evol-card__vitals" v-if="ev.weight_kg || ev.temperature_celsius">
             <span v-if="ev.weight_kg" class="vital-chip">⚖️ {{ ev.weight_kg }} kg</span>
-            <span v-if="ev.temperature_c" class="vital-chip">🌡️ {{ ev.temperature_c }}°C</span>
+            <span v-if="ev.temperature_celsius" class="vital-chip">🌡️ {{ ev.temperature_celsius }}°C</span>
           </div>
         </div>
         <div class="evol-card__vet" v-if="ev.vet_name">
@@ -95,26 +95,38 @@
                     <div v-if="form.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
                     <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                   </div>
+
                   <div class="field field--full">
                     <label>Motivo de consulta <span class="req">*</span></label>
-                    <textarea v-model.trim="form.chiefComplaint" rows="2" placeholder="Describa el motivo principal de la visita…" :disabled="saving" />
+                    <textarea v-model.trim="form.chiefComplaint" rows="2" placeholder="Motivo principal de la visita…" :disabled="saving" />
                     <span v-if="fe.chiefComplaint" class="field-error">{{ fe.chiefComplaint }}</span>
                   </div>
+
+                  <div class="field field--full">
+                    <label>Razón de visita (detalle adicional)</label>
+                    <input v-model.trim="form.reasonForVisit" type="text" placeholder="Descripción adicional de la razón…" :disabled="saving" />
+                  </div>
+
                   <div class="field">
                     <label>Fecha de visita</label>
                     <input v-model="form.visitDate" type="date" :disabled="saving" />
+                  </div>
+
+                  <div class="field field--full">
+                    <label>Notas de la consulta</label>
+                    <textarea v-model.trim="form.notes" rows="2" placeholder="Observaciones generales de la consulta…" :disabled="saving" />
                   </div>
                 </div>
 
                 <div class="section-title" style="margin-top:18px">Signos vitales</div>
                 <div class="form-grid">
                   <div class="field">
-                    <label>Peso (kg)</label>
+                    <label>Peso en consulta (kg)</label>
                     <input v-model.number="form.weightKg" type="number" step="0.01" min="0" placeholder="4.20" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Temperatura (°C)</label>
-                    <input v-model.number="form.temperatureC" type="number" step="0.1" placeholder="38.5" :disabled="saving" />
+                    <input v-model.number="form.temperatureCelsius" type="number" step="0.1" placeholder="38.5" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Frecuencia cardíaca (lpm)</label>
@@ -134,10 +146,10 @@
                   </div>
                   <div class="field">
                     <label>SpO₂ (%)</label>
-                    <input v-model.number="form.spo2" type="number" min="0" max="100" placeholder="98" :disabled="saving" />
+                    <input v-model.number="form.spo2Percent" type="number" min="0" max="100" step="0.1" placeholder="98.0" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Condición corporal (1–9)</label>
+                    <label>Condición corporal BCS (1–9)</label>
                     <input v-model.number="form.bodyConditionScore" type="number" min="1" max="9" step="0.5" placeholder="5" :disabled="saving" />
                   </div>
                 </div>
@@ -148,31 +160,25 @@
                 <div class="section-title">Historia de la enfermedad actual</div>
                 <div class="form-grid">
                   <div class="field field--full">
-                    <label>Historia de la enfermedad actual <span class="req">*</span></label>
-                    <textarea v-model.trim="form.currentIllnessHistory" rows="3" placeholder="Describa detalladamente la historia clínica…" :disabled="saving" />
-                    <span v-if="fe.currentIllnessHistory" class="field-error">{{ fe.currentIllnessHistory }}</span>
+                    <label>Historia de la enfermedad actual</label>
+                    <textarea v-model.trim="form.currentIllnessHistory" rows="3" placeholder="Relato detallado de la historia clínica desde el inicio…" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Duración</label>
-                    <input v-model.trim="form.illnessDuration" type="text" placeholder="Ej: 3 días" :disabled="saving" />
+                    <label>Duración del cuadro</label>
+                    <input v-model.trim="form.illnessDuration" type="text" placeholder="Ej: 3 días, 2 semanas" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Inicio</label>
-                    <select v-model="form.illnessOnset" :disabled="saving">
-                      <option value="">Seleccionar…</option>
-                      <option value="agudo">Agudo (&lt; 24h)</option>
-                      <option value="subagudo">Subagudo (1–7 días)</option>
-                      <option value="crónico">Crónico (&gt; 7 días)</option>
-                    </select>
+                    <label>Tipo de inicio</label>
+                    <input v-model.trim="form.illnessOnset" type="text" placeholder="Ej: brusco, progresivo, intermitente" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Apetito</label>
                     <select v-model="form.appetite" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal</option>
-                      <option value="aumentado">Aumentado</option>
-                      <option value="disminuido">Disminuido</option>
-                      <option value="ausente">Ausente</option>
+                      <option value="increased">Aumentado (polifagia)</option>
+                      <option value="decreased">Disminuido (hiporexia)</option>
+                      <option value="absent">Ausente (anorexia)</option>
                     </select>
                   </div>
                   <div class="field">
@@ -180,9 +186,9 @@
                     <select v-model="form.thirst" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal</option>
-                      <option value="aumentada">Aumentada (polidipsia)</option>
-                      <option value="disminuida">Disminuida</option>
-                      <option value="ausente">Ausente</option>
+                      <option value="increased">Aumentada (polidipsia)</option>
+                      <option value="decreased">Disminuida</option>
+                      <option value="absent">Ausente</option>
                     </select>
                   </div>
                   <div class="field">
@@ -190,10 +196,9 @@
                     <select v-model="form.urination" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal</option>
-                      <option value="aumentada">Aumentada (poliuria)</option>
-                      <option value="disminuida">Disminuida (oliguria)</option>
-                      <option value="ausente">Ausente (anuria)</option>
-                      <option value="no_observada">No observada</option>
+                      <option value="increased">Aumentada (poliuria)</option>
+                      <option value="decreased">Disminuida (oliguria)</option>
+                      <option value="absent">Ausente (anuria)</option>
                     </select>
                   </div>
                   <div class="field">
@@ -201,10 +206,11 @@
                     <select v-model="form.defecation" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal</option>
-                      <option value="diarrea">Diarrea</option>
-                      <option value="constipacion">Constipación</option>
-                      <option value="ausente">Ausente</option>
-                      <option value="no_observada">No observada</option>
+                      <option value="increased">Aumentada</option>
+                      <option value="decreased">Disminuida</option>
+                      <option value="absent">Ausente</option>
+                      <option value="diarrhea">Diarrea</option>
+                      <option value="constipation">Constipación</option>
                     </select>
                   </div>
                 </div>
@@ -221,7 +227,7 @@
                 <div class="form-grid" style="margin-top:10px">
                   <div class="field field--full">
                     <label>Otros signos / síntomas</label>
-                    <input v-model.trim="form.otherSigns" type="text" placeholder="Describir otros signos…" :disabled="saving" />
+                    <textarea v-model.trim="form.otherSigns" rows="2" placeholder="Describir otros signos clínicos observados por el propietario…" :disabled="saving" />
                   </div>
                 </div>
 
@@ -231,66 +237,65 @@
                     <label>Tipo de alimentación</label>
                     <select v-model="form.feedingType" :disabled="saving">
                       <option value="">Seleccionar…</option>
-                      <option value="balanceado">Balanceado (pellet)</option>
-                      <option value="casero">Casero</option>
-                      <option value="mixto">Mixto</option>
-                      <option value="barf">BARF</option>
-                      <option value="otro">Otro</option>
+                      <option value="commercial">Balanceado comercial</option>
+                      <option value="homemade">Casero</option>
+                      <option value="mixed">Mixto</option>
+                      <option value="raw">BARF / Crudo</option>
                     </select>
                   </div>
                   <div class="field">
-                    <label>Marca / alimento</label>
+                    <label>Marca / alimento específico</label>
                     <input v-model.trim="form.feedingBrand" type="text" placeholder="Ej: Royal Canin Adult" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Ambiente</label>
                     <select v-model="form.environment" :disabled="saving">
                       <option value="">Seleccionar…</option>
-                      <option value="interior">Interior</option>
-                      <option value="exterior">Exterior</option>
-                      <option value="mixto">Mixto</option>
+                      <option value="indoor">Interior</option>
+                      <option value="outdoor">Exterior</option>
+                      <option value="both">Mixto (interior/exterior)</option>
                     </select>
                   </div>
                   <div class="field">
                     <label>Viajes recientes</label>
-                    <input v-model.trim="form.recentTravel" type="text" placeholder="Destino y fecha…" :disabled="saving" />
+                    <input v-model.trim="form.recentTravel" type="text" placeholder="Destino y fecha aproximada…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
                     <label>Historia de vacunación</label>
-                    <textarea v-model.trim="form.vaccinationHistory" rows="2" placeholder="Vacunas aplicadas y fechas…" :disabled="saving" />
+                    <textarea v-model.trim="form.vaccinationHistory" rows="2" placeholder="Vacunas aplicadas, fechas y laboratorio…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
                     <label>Historia de desparasitación</label>
-                    <textarea v-model.trim="form.dewormingHistory" rows="2" placeholder="Antiparasitarios internos/externos y fechas…" :disabled="saving" />
+                    <textarea v-model.trim="form.dewormingHistory" rows="2" placeholder="Antiparasitarios internos/externos, productos y fechas…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
                     <label>Enfermedades previas</label>
-                    <textarea v-model.trim="form.previousIllnesses" rows="2" placeholder="Enfermedades o condiciones anteriores…" :disabled="saving" />
+                    <textarea v-model.trim="form.previousIllnesses" rows="2" placeholder="Enfermedades o condiciones diagnosticadas anteriormente…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Cirugías previas</label>
-                    <textarea v-model.trim="form.previousSurgeries" rows="2" placeholder="Procedimientos quirúrgicos anteriores…" :disabled="saving" />
+                    <label>Cirugías / procedimientos previos</label>
+                    <textarea v-model.trim="form.previousSurgeries" rows="2" placeholder="Procedimientos quirúrgicos o intervenciones anteriores…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
                     <label>Medicaciones actuales</label>
-                    <textarea v-model.trim="form.currentMedications" rows="2" placeholder="Medicamentos que recibe actualmente…" :disabled="saving" />
+                    <textarea v-model.trim="form.currentMedications" rows="2" placeholder="Medicamentos que recibe actualmente (nombre, dosis, frecuencia)…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
                     <label>Observaciones del propietario</label>
-                    <textarea v-model.trim="form.ownerObservations" rows="2" placeholder="Comentarios adicionales del dueño…" :disabled="saving" />
+                    <textarea v-model.trim="form.ownerObservations" rows="2" placeholder="Comentarios y preocupaciones adicionales del dueño…" :disabled="saving" />
                   </div>
                 </div>
               </div>
 
               <!-- TAB 2: Examen físico -->
               <div v-show="activeTab === 2">
-                <div class="section-title">Examen físico por sistemas</div>
+                <div class="section-title">Examen físico — valores medidos en consulta</div>
                 <div class="form-grid">
                   <div class="field">
                     <label>Mucosas</label>
                     <select v-model="form.mucousMembranes" :disabled="saving">
                       <option value="">Seleccionar…</option>
-                      <option value="rosadas_humidas">Rosadas y húmedas (normal)</option>
+                      <option value="rosadas humidas">Rosadas y húmedas (normal)</option>
                       <option value="palidas">Pálidas</option>
                       <option value="cianoticas">Cianóticas</option>
                       <option value="ictericas">Ictéricas</option>
@@ -300,75 +305,69 @@
                   </div>
                   <div class="field">
                     <label>Estado de hidratación</label>
-                    <select v-model="form.hydration" :disabled="saving">
+                    <select v-model="form.hydrationStatus" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal (&lt; 5%)</option>
-                      <option value="leve">Deshidratación leve (5–7%)</option>
-                      <option value="moderada">Deshidratación moderada (8–10%)</option>
-                      <option value="severa">Deshidratación severa (&gt;10%)</option>
+                      <option value="deshidratacion leve 5%">Deshidratación leve 5%</option>
+                      <option value="deshidratacion moderada 8%">Deshidratación moderada 8%</option>
+                      <option value="deshidratacion severa 10%">Deshidratación severa ≥10%</option>
                     </select>
                   </div>
-                  <div class="field">
+                  <div class="field field--full">
                     <label>Ganglios linfáticos</label>
-                    <select v-model="form.lymphNodes" :disabled="saving">
-                      <option value="">Seleccionar…</option>
-                      <option value="normales">Normales</option>
-                      <option value="aumentados_reactivos">Aumentados reactivos</option>
-                      <option value="aumentados_dolorosos">Aumentados dolorosos</option>
-                      <option value="no_palpables">No palpables</option>
-                    </select>
+                    <input v-model.trim="form.lymphNodes" type="text" placeholder="Tamaño, consistencia, sensibilidad…" :disabled="saving" />
                   </div>
-                  <div class="field">
+                  <div class="field field--full">
                     <label>Piel y pelaje</label>
-                    <input v-model.trim="form.skinCoat" type="text" placeholder="Descripción de piel y pelo…" :disabled="saving" />
+                    <input v-model.trim="form.skinCoat" type="text" placeholder="Estado general, lesiones, ectoparásitos…" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Ojos</label>
-                    <input v-model.trim="form.eyes" type="text" placeholder="Aspecto ocular…" :disabled="saving" />
+                    <input v-model.trim="form.eyes" type="text" placeholder="Secreción, opacidad, reflejo pupilar…" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Oídos</label>
-                    <input v-model.trim="form.ears" type="text" placeholder="Aspecto auricular…" :disabled="saving" />
+                    <input v-model.trim="form.ears" type="text" placeholder="Secreción, eritema, olor…" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Nariz y faringe</label>
-                    <input v-model.trim="form.noseThroat" type="text" placeholder="Secreción nasal, faringe…" :disabled="saving" />
+                    <input v-model.trim="form.noseThroat" type="text" placeholder="Secreción nasal, mucosas, faringe…" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Cavidad oral</label>
-                    <input v-model.trim="form.oralCavity" type="text" placeholder="Dientes, encías, lengua…" :disabled="saving" />
-                  </div>
-                  <div class="field">
-                    <label>Sistema cardiovascular</label>
-                    <input v-model.trim="form.cardiovascular" type="text" placeholder="Ritmo, soplos, pulso…" :disabled="saving" />
-                  </div>
-                  <div class="field">
-                    <label>Sistema respiratorio</label>
-                    <input v-model.trim="form.respiratory" type="text" placeholder="Ruidos pulmonares, patrón respiratorio…" :disabled="saving" />
-                  </div>
-                  <div class="field">
-                    <label>Abdomen</label>
-                    <input v-model.trim="form.abdomen" type="text" placeholder="Palpación, dolor, masas…" :disabled="saving" />
-                  </div>
-                  <div class="field">
-                    <label>Musculoesquelético</label>
-                    <input v-model.trim="form.musculoskeletal" type="text" placeholder="Postura, movilidad, articulaciones…" :disabled="saving" />
-                  </div>
-                  <div class="field">
-                    <label>Sistema neurológico</label>
-                    <input v-model.trim="form.neurological" type="text" placeholder="Estado mental, reflejos…" :disabled="saving" />
-                  </div>
-                  <div class="field">
-                    <label>Sistema urogenital</label>
-                    <input v-model.trim="form.urogenital" type="text" placeholder="Riñones, vejiga, genitales…" :disabled="saving" />
-                  </div>
-                  <div class="field">
-                    <label>Evaluación del dolor (0–10)</label>
-                    <input v-model.trim="form.painAssessment" type="text" placeholder="Ej: 3/10 — dolor leve al palpar abdomen" :disabled="saving" />
+                    <input v-model.trim="form.oralCavity" type="text" placeholder="Dientes, encías, lengua, sarro…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Observaciones generales del examen</label>
-                    <textarea v-model.trim="form.generalObservations" rows="3" placeholder="Hallazgos adicionales…" :disabled="saving" />
+                    <label>Cardiovascular</label>
+                    <input v-model.trim="form.cardiovascular" type="text" placeholder="Ritmo cardíaco, soplos, calidad de pulso…" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Respiratorio</label>
+                    <input v-model.trim="form.respiratory" type="text" placeholder="Murmullo vesicular, crepitantes, sibilancias, patrón respiratorio…" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Abdomen</label>
+                    <input v-model.trim="form.abdomen" type="text" placeholder="Palpación, dolor, órganos palpables, masas, distensión…" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Sistema musculoesquelético</label>
+                    <input v-model.trim="form.musculoskeletal" type="text" placeholder="Postura, masa muscular, movilidad articular, claudicación…" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Sistema neurológico</label>
+                    <input v-model.trim="form.neurological" type="text" placeholder="Estado mental, marcha, reflejos, sensibilidad…" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Sistema urogenital</label>
+                    <input v-model.trim="form.urogenital" type="text" placeholder="Riñones, vejiga, genitales externos…" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Evaluación del dolor</label>
+                    <input v-model.trim="form.painAssessment" type="text" placeholder="Escala 0–10, localización, tipo de dolor…" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Observaciones generales del examen físico</label>
+                    <textarea v-model.trim="form.generalObservations" rows="3" placeholder="Hallazgos adicionales no incluidos en las categorías anteriores…" :disabled="saving" />
                   </div>
                 </div>
               </div>
@@ -379,7 +378,7 @@
                 <div class="form-grid">
                   <div class="field field--full">
                     <label>Nombre del diagnóstico</label>
-                    <input v-model.trim="form.diagnosisName" type="text" placeholder="Ej: Gastroenteritis aguda" :disabled="saving" />
+                    <input v-model.trim="form.diagnosisName" type="text" placeholder="Ej: Gastroenteritis aguda, Otitis externa bacteriana…" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Tipo de diagnóstico</label>
@@ -391,29 +390,30 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label>Código diagnóstico (CIE / SNOMED)</label>
+                    <label>Código diagnóstico (ICD / VeNom)</label>
                     <input v-model.trim="form.diagnosisCode" type="text" placeholder="Ej: K52.9" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Pronóstico</label>
                     <select v-model="form.prognosis" :disabled="saving">
                       <option value="">Seleccionar…</option>
-                      <option value="excelente">Excelente</option>
-                      <option value="bueno">Bueno</option>
-                      <option value="reservado">Reservado</option>
+                      <option value="excellent">Excelente</option>
+                      <option value="good">Bueno</option>
+                      <option value="fair">Regular</option>
+                      <option value="guarded">Reservado</option>
+                      <option value="poor">Malo</option>
                       <option value="grave">Grave</option>
-                      <option value="fatal">Fatal</option>
                     </select>
                   </div>
                   <div class="field field--full">
                     <label class="checkbox-label" style="flex-direction:row;align-items:center;gap:8px">
                       <input type="checkbox" v-model="form.isPrimary" :disabled="saving" />
-                      Diagnóstico principal
+                      Diagnóstico principal (is_primary)
                     </label>
                   </div>
                   <div class="field field--full">
                     <label>Notas del diagnóstico</label>
-                    <textarea v-model.trim="form.diagnosisNotes" rows="3" placeholder="Observaciones, justificación del diagnóstico…" :disabled="saving" />
+                    <textarea v-model.trim="form.diagnosisNotes" rows="3" placeholder="Justificación del diagnóstico, hallazgos complementarios…" :disabled="saving" />
                   </div>
                 </div>
               </div>
@@ -470,15 +470,16 @@ function petEmoji(s) {
 }
 
 function statusLabel(s) {
-  const map = { open: 'Abierta', signed: 'Firmada', closed: 'Cerrada' }
+  const map = { open: 'Abierta', signed: 'Firmada', amended: 'Enmendada' }
   return map[s] || s || '—'
 }
 
 // Patient autocomplete
-const patientSearch       = ref('')
-const patientResults      = ref([])
+const patientSearch        = ref('')
+const patientResults       = ref([])
 const selectedPatientLabel = ref('')
 let patientTimer = null
+
 async function searchPatients() {
   clearTimeout(patientTimer)
   form.patientId = ''
@@ -491,6 +492,7 @@ async function searchPatients() {
     } catch { patientResults.value = [] }
   }, 300)
 }
+
 function selectPatient(pt) {
   form.patientId = pt.id
   selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
@@ -522,25 +524,27 @@ async function load(page = 1) {
 let timer = null
 function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 
-const showModal  = ref(false)
-const saving     = ref(false)
-const saveError  = ref('')
-const fe         = reactive({})
+const showModal = ref(false)
+const saving    = ref(false)
+const saveError = ref('')
+const fe        = reactive({})
 
 function makeForm() {
   return {
-    // General
+    // General / medical_records
     patientId:            '',
     chiefComplaint:       '',
+    reasonForVisit:       '',
     visitDate:            new Date().toISOString().split('T')[0],
-    // Signos vitales
+    notes:                '',
+    // Signos vitales — van a medical_records Y physical_examinations
     weightKg:             '',
-    temperatureC:         '',
+    temperatureCelsius:   '',
     heartRate:            '',
     respiratoryRate:      '',
     systolicBp:           '',
     diastolicBp:          '',
-    spo2:                 '',
+    spo2Percent:          '',
     bodyConditionScore:   '',
     // Anamnesis
     currentIllnessHistory: '',
@@ -567,9 +571,9 @@ function makeForm() {
     previousSurgeries:    '',
     currentMedications:   '',
     ownerObservations:    '',
-    // Examen físico
+    // Examen físico — physical_examinations
     mucousMembranes:      '',
-    hydration:            '',
+    hydrationStatus:      '',
     lymphNodes:           '',
     skinCoat:             '',
     eyes:                 '',
@@ -598,10 +602,10 @@ const form = reactive(makeForm())
 
 function openModal() {
   Object.assign(form, makeForm())
-  patientSearch.value       = ''
-  patientResults.value      = []
+  patientSearch.value        = ''
+  patientResults.value       = []
   selectedPatientLabel.value = ''
-  saveError.value = ''
+  saveError.value            = ''
   Object.keys(fe).forEach(k => delete fe[k])
   activeTab.value = 0
   showModal.value = true
@@ -612,9 +616,7 @@ function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
   if (!form.patientId)      fe.patientId      = 'Requerido'
   if (!form.chiefComplaint) fe.chiefComplaint  = 'Requerido'
-  if (Object.keys(fe).length) {
-    activeTab.value = 0
-  }
+  if (Object.keys(fe).length) activeTab.value = 0
   return Object.keys(fe).length === 0
 }
 
@@ -629,10 +631,12 @@ function hasAnamnesisData() {
 }
 
 function hasPhysicalExamData() {
-  return !!(form.mucousMembranes || form.hydration || form.lymphNodes || form.skinCoat ||
+  return !!(form.mucousMembranes || form.hydrationStatus || form.lymphNodes || form.skinCoat ||
     form.eyes || form.ears || form.noseThroat || form.oralCavity ||
     form.cardiovascular || form.respiratory || form.abdomen || form.musculoskeletal ||
-    form.neurological || form.urogenital || form.painAssessment || form.generalObservations)
+    form.neurological || form.urogenital || form.painAssessment || form.generalObservations ||
+    form.heartRate || form.respiratoryRate || form.systolicBp || form.diastolicBp ||
+    form.spo2Percent || form.temperatureCelsius)
 }
 
 function hasDiagnosisData() {
@@ -643,80 +647,92 @@ async function handleCreate() {
   if (!validate()) return
   saving.value = true; saveError.value = ''
   try {
-    // 1 — Crear registro principal
+    // 1 — Crear registro principal (medical_records)
     const payload = {
-      patientId:           parseInt(form.patientId),
-      chiefComplaint:      form.chiefComplaint,
+      patientId:      parseInt(form.patientId),
+      chiefComplaint: form.chiefComplaint,
     }
-    if (form.weightKg)           payload.weightKg           = parseFloat(form.weightKg)
-    if (form.temperatureC)       payload.temperatureC       = parseFloat(form.temperatureC)
-    if (form.bodyConditionScore) payload.bodyConditionScore = parseFloat(form.bodyConditionScore)
+    if (form.reasonForVisit)     payload.reasonForVisit     = form.reasonForVisit
+    if (form.visitDate)          payload.visitDate           = form.visitDate
+    if (form.notes)              payload.notes               = form.notes
+    if (form.weightKg)           payload.weightKg            = parseFloat(form.weightKg)
+    if (form.temperatureCelsius) payload.temperatureC        = parseFloat(form.temperatureCelsius)
+    if (form.bodyConditionScore) payload.bodyConditionScore  = parseFloat(form.bodyConditionScore)
 
     const { data } = await http.post('/medical-records', payload)
     const recordId = data.data?.id || data.id
 
-    // 2 — Anamnesis (si hay datos)
+    // 2 — Anamnesis
     if (hasAnamnesisData()) {
-      const an = {}
-      if (form.currentIllnessHistory) an.currentIllnessHistory = form.currentIllnessHistory
-      if (form.illnessDuration)       an.illnessDuration       = form.illnessDuration
-      if (form.illnessOnset)          an.illnessOnset          = form.illnessOnset
-      if (form.appetite)              an.appetite              = form.appetite
-      if (form.thirst)                an.thirst                = form.thirst
-      if (form.urination)             an.urination             = form.urination
-      if (form.defecation)            an.defecation            = form.defecation
-      an.vomiting          = form.vomiting          ? 1 : 0
-      an.coughing          = form.coughing          ? 1 : 0
-      an.sneezing          = form.sneezing          ? 1 : 0
-      an.pruritus          = form.pruritus          ? 1 : 0
-      an.locomotionIssues  = form.locomotionIssues  ? 1 : 0
-      an.contactWithAnimals= form.contactWithAnimals ? 1 : 0
-      if (form.otherSigns)            an.otherSigns            = form.otherSigns
-      if (form.feedingType)           an.feedingType           = form.feedingType
-      if (form.feedingBrand)          an.feedingBrand          = form.feedingBrand
-      if (form.environment)           an.environment           = form.environment
-      if (form.recentTravel)          an.recentTravel          = form.recentTravel
-      if (form.vaccinationHistory)    an.vaccinationHistory    = form.vaccinationHistory
-      if (form.dewormingHistory)      an.dewormingHistory      = form.dewormingHistory
-      if (form.previousIllnesses)     an.previousIllnesses     = form.previousIllnesses
-      if (form.previousSurgeries)     an.previousSurgeries     = form.previousSurgeries
-      if (form.currentMedications)    an.currentMedications    = form.currentMedications
-      if (form.ownerObservations)     an.ownerObservations     = form.ownerObservations
-      // currentIllnessHistory is required by endpoint
-      if (!an.currentIllnessHistory) an.currentIllnessHistory = form.chiefComplaint
+      const an = {
+        // currentIllnessHistory es required por el endpoint
+        currentIllnessHistory: form.currentIllnessHistory || form.chiefComplaint,
+        vomiting:           form.vomiting          ? 1 : 0,
+        coughing:           form.coughing          ? 1 : 0,
+        sneezing:           form.sneezing          ? 1 : 0,
+        pruritus:           form.pruritus          ? 1 : 0,
+        locomotionIssues:   form.locomotionIssues  ? 1 : 0,
+        contactWithAnimals: form.contactWithAnimals ? 1 : 0,
+      }
+      if (form.illnessDuration)    an.illnessDuration    = form.illnessDuration
+      if (form.illnessOnset)       an.illnessOnset       = form.illnessOnset
+      if (form.appetite)           an.appetite           = form.appetite
+      if (form.thirst)             an.thirst             = form.thirst
+      if (form.urination)          an.urination          = form.urination
+      if (form.defecation)         an.defecation         = form.defecation
+      if (form.otherSigns)         an.otherSigns         = form.otherSigns
+      if (form.feedingType)        an.feedingType        = form.feedingType
+      if (form.feedingBrand)       an.feedingBrand       = form.feedingBrand
+      if (form.environment)        an.environment        = form.environment
+      if (form.recentTravel)       an.recentTravel       = form.recentTravel
+      if (form.vaccinationHistory) an.vaccinationHistory = form.vaccinationHistory
+      if (form.dewormingHistory)   an.dewormingHistory   = form.dewormingHistory
+      if (form.previousIllnesses)  an.previousIllnesses  = form.previousIllnesses
+      if (form.previousSurgeries)  an.previousSurgeries  = form.previousSurgeries
+      if (form.currentMedications) an.currentMedications = form.currentMedications
+      if (form.ownerObservations)  an.ownerObservations  = form.ownerObservations
       await http.post(`/medical-records/${recordId}/anamnesis`, an)
     }
 
-    // 3 — Examen físico (si hay datos)
+    // 3 — Examen físico (physical_examinations)
+    // Nombre de clave camelCase → backend convierte a snake_case automáticamente
     if (hasPhysicalExamData()) {
       const pe = {}
-      if (form.mucousMembranes)     pe.mucousMembranes     = form.mucousMembranes
-      if (form.hydration)           pe.hydration           = form.hydration
-      if (form.lymphNodes)          pe.lymphNodes          = form.lymphNodes
-      if (form.skinCoat)            pe.skinCoat            = form.skinCoat
-      if (form.eyes)                pe.eyes                = form.eyes
-      if (form.ears)                pe.ears                = form.ears
-      if (form.noseThroat)          pe.noseThroat          = form.noseThroat
-      if (form.oralCavity)          pe.oralCavity          = form.oralCavity
-      if (form.cardiovascular)      pe.cardiovascular      = form.cardiovascular
-      if (form.respiratory)         pe.respiratory         = form.respiratory
-      if (form.abdomen)             pe.abdomen             = form.abdomen
-      if (form.musculoskeletal)     pe.musculoskeletal     = form.musculoskeletal
-      if (form.neurological)        pe.neurological        = form.neurological
-      if (form.urogenital)          pe.urogenital          = form.urogenital
-      if (form.painAssessment)      pe.painAssessment      = form.painAssessment
+      if (form.temperatureCelsius) pe.temperatureCelsius = parseFloat(form.temperatureCelsius)
+      if (form.heartRate)          pe.heartRate          = parseInt(form.heartRate)
+      if (form.respiratoryRate)    pe.respiratoryRate    = parseInt(form.respiratoryRate)
+      if (form.systolicBp)         pe.systolicBp         = parseInt(form.systolicBp)
+      if (form.diastolicBp)        pe.diastolicBp        = parseInt(form.diastolicBp)
+      if (form.spo2Percent)        pe.spo2Percent        = parseFloat(form.spo2Percent)
+      if (form.weightKg)           pe.weightKg           = parseFloat(form.weightKg)
+      if (form.bodyConditionScore) pe.bodyConditionScore = parseFloat(form.bodyConditionScore)
+      if (form.mucousMembranes)    pe.mucousMembranes    = form.mucousMembranes
+      if (form.hydrationStatus)    pe.hydrationStatus    = form.hydrationStatus
+      if (form.lymphNodes)         pe.lymphNodes         = form.lymphNodes
+      if (form.skinCoat)           pe.skinCoat           = form.skinCoat
+      if (form.eyes)               pe.eyes               = form.eyes
+      if (form.ears)               pe.ears               = form.ears
+      if (form.noseThroat)         pe.noseThroat         = form.noseThroat
+      if (form.oralCavity)         pe.oralCavity         = form.oralCavity
+      if (form.cardiovascular)     pe.cardiovascular     = form.cardiovascular
+      if (form.respiratory)        pe.respiratory        = form.respiratory
+      if (form.abdomen)            pe.abdomen            = form.abdomen
+      if (form.musculoskeletal)    pe.musculoskeletal    = form.musculoskeletal
+      if (form.neurological)       pe.neurological       = form.neurological
+      if (form.urogenital)         pe.urogenital         = form.urogenital
+      if (form.painAssessment)     pe.painAssessment     = form.painAssessment
       if (form.generalObservations) pe.generalObservations = form.generalObservations
       await http.post(`/medical-records/${recordId}/physical-exam`, pe)
     }
 
-    // 4 — Diagnóstico (si hay datos)
+    // 4 — Diagnóstico
     if (hasDiagnosisData()) {
       await http.post(`/medical-records/${recordId}/diagnoses`, {
         diagnosisName: form.diagnosisName,
         diagnosisType: form.diagnosisType,
-        diagnosisCode: form.diagnosisCode || undefined,
+        diagnosisCode: form.diagnosisCode  || undefined,
         isPrimary:     form.isPrimary,
-        prognosis:     form.prognosis     || undefined,
+        prognosis:     form.prognosis      || undefined,
         notes:         form.diagnosisNotes || undefined,
       })
     }
@@ -759,15 +775,12 @@ onMounted(load)
 .vital-chip { font-size: 0.78rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px; color: var(--text-2); }
 .evol-card__vet { padding: 8px 16px; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--text-3); background: var(--surface); grid-column: 2; display: flex; align-items: center; justify-content: space-between; }
 .evol-status { font-size: 0.72rem; text-transform: capitalize; background: var(--surface-2); padding: 2px 8px; border-radius: 20px; }
-.status--open   { background: #D6F3EC; color: #1A9E7F; }
-.status--signed { background: #D6EEFF; color: #1A5FAA; }
-.status--closed { background: #f0f0f0; color: #666; }
+.status--open    { background: #D6F3EC; color: #1A9E7F; }
+.status--signed  { background: #D6EEFF; color: #1A5FAA; }
+.status--amended { background: #FFF3CC; color: #8A6200; }
 
 .evol-tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
-.evol-tag--blue   { background: #D6EEFF; color: #1A5FAA; }
-.evol-tag--purple { background: #F0E8FF; color: #7A3DAA; }
-.evol-tag--green  { background: #D6F3EC; color: #1A9E7F; }
-.evol-tag--yellow { background: #FFF3CC; color: #8A6200; }
+.evol-tag--blue { background: #D6EEFF; color: #1A5FAA; }
 
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
 .pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
@@ -788,13 +801,13 @@ onMounted(load)
 .modal__close { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--text-3); padding: 4px 8px; border-radius: var(--radius-sm); }
 .modal__close:hover { background: var(--surface-2); }
 
-.tabs { display: flex; border-bottom: 2px solid var(--border); background: var(--white); position: sticky; top: 60px; z-index: 1; padding: 0 24px; }
+.tabs { display: flex; border-bottom: 2px solid var(--border); background: var(--white); position: sticky; top: 61px; z-index: 1; padding: 0 24px; overflow-x: auto; }
 .tab-btn { padding: 10px 18px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; font-size: 0.85rem; font-weight: 500; color: var(--text-3); transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
 .tab-btn:hover { color: var(--text); }
 .tab-btn--active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
 
 .form-body { padding: 20px 24px 4px; flex: 1; }
-.section-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 0.8rem; font-weight: 600; color: var(--text-2); }
@@ -837,7 +850,5 @@ onMounted(load)
   .form-grid { grid-template-columns: 1fr; }
   .checkbox-grid { grid-template-columns: 1fr 1fr; }
   .modal { max-width: 100%; max-height: 100vh; border-radius: 0; }
-  .tabs { overflow-x: auto; }
-  .tab-btn { padding: 10px 12px; font-size: 0.78rem; }
 }
 </style>

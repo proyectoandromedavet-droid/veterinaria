@@ -132,20 +132,25 @@ router.post('/',
       }
 
       // Insertar historia clínica directamente (sin SP)
+      const { reasonForVisit, visitDate, notes } = req.body;
       const [r] = await db.query(
         `INSERT INTO medical_records
-           (appointment_id, patient_id, vet_id, branch_id, status,
-            chief_complaint, weight_kg, body_condition_score, temperature_c, opened_at)
-         VALUES (:apptId, :pid, :uid, :bid, 'open', :cc, :wt, :bcs, :temp, NOW())`,
+           (appointment_id, patient_id, vet_id, status,
+            chief_complaint, reason_for_visit, weight_kg, body_condition_score,
+            temperature_celsius, visit_date, notes, opened_at)
+         VALUES (:apptId, :pid, :uid, 'open',
+                 :cc, :rfv, :wt, :bcs, :temp, :vdate, :notes, NOW())`,
         {
           apptId: appointmentId,
           pid:    patientId,
           uid:    req.user.userId,
-          bid:    req.user.branchId,
           cc:     chiefComplaint,
-          wt:     weightKg     || null,
+          rfv:    reasonForVisit   || null,
+          wt:     weightKg         || null,
           bcs:    bodyConditionScore || null,
-          temp:   temperatureC || null,
+          temp:   temperatureC     || null,
+          vdate:  visitDate        || null,
+          notes:  notes            || null,
         }
       );
 
