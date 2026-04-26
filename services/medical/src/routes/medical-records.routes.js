@@ -84,22 +84,72 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /medical-records  (open a new HC)
+// Acepta appointmentId existente O patientId para crear cita walk-in automáticamente
 router.post('/',
-  body('appointmentId').isInt(),
-  body('chiefComplaint').notEmpty(),
+  body('chiefComplaint').notEmpty().withMessage('El motivo de consulta es requerido'),
   validate,
   async (req, res, next) => {
     try {
-      const results = await db.callProc('sp_open_medical_record', [
-        req.body.appointmentId,
-        req.user.userId,
-        req.body.chiefComplaint,
-        req.body.weightKg || null,
-        req.body.bodyConditionScore || null,
-        req.body.temperature || null,
-      ]);
-      const record = results[0]?.[0];
-      return R.created(res, record);
+      let { appointmentId, patientId, chiefComplaint, weightKg, bodyConditionScore, temperatureC } = req.body;
+
+      if (!appointmentId && !patientId) {
+        return R.badRequest(res, 'Se requiere appointmentId o patientId');
+      }
+
+      if (!appointmentId) {
+        // Buscar client_id del paciente
+        const owner = await db.queryOne(
+          `SELECT client_id FROM patient_owners
+           WHERE patient_id = :pid AND (end_date IS NULL OR end_date > NOW())
+           ORDER BY ownership_type = 'primary' DESC
+           LIMIT 1`,
+          { pid: patientId }
+        );
+
+        // Crear cita walk-in
+        const [apptResult] = await db.query(
+          `INSERT INTO appointments
+             (branch_id, patient_id, client_id, vet_id, veterinarian_id,
+              scheduled_date, appointment_date, status, reason, duration_minutes)
+           VALUES (:bid, :pid, :cid, :uid, :uid, NOW(), NOW(), 'in_progress', :reason, 30)`,
+          {
+            bid:    req.user.branchId,
+            pid:    patientId,
+            cid:    owner?.client_id || null,
+            uid:    req.user.userId,
+            reason: chiefComplaint,
+          }
+        );
+        appointmentId = apptResult.insertId;
+      } else {
+        // Obtener patient_id desde la cita
+        const appt = await db.queryOne(
+          `SELECT patient_id FROM appointments WHERE id = :id`,
+          { id: appointmentId }
+        );
+        if (!appt) return R.notFound(res, 'Cita no encontrada');
+        patientId = appt.patient_id;
+      }
+
+      // Insertar historia clínica directamente (sin SP)
+      const [r] = await db.query(
+        `INSERT INTO medical_records
+           (appointment_id, patient_id, vet_id, branch_id, status,
+            chief_complaint, weight_kg, body_condition_score, temperature_c, opened_at)
+         VALUES (:apptId, :pid, :uid, :bid, 'open', :cc, :wt, :bcs, :temp, NOW())`,
+        {
+          apptId: appointmentId,
+          pid:    patientId,
+          uid:    req.user.userId,
+          bid:    req.user.branchId,
+          cc:     chiefComplaint,
+          wt:     weightKg     || null,
+          bcs:    bodyConditionScore || null,
+          temp:   temperatureC || null,
+        }
+      );
+
+      return R.created(res, { id: r.insertId, appointmentId, patientId });
     } catch (e) { next(e); }
   }
 );
