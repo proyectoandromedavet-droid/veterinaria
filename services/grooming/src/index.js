@@ -349,11 +349,46 @@ profileRouter.post('/:patientId',
   }
 );
 
+// ── Service types ─────────────────────────────────────────────────────────────
+const serviceTypesRouter = Router();
+
+serviceTypesRouter.get('/', async (_req, res, next) => {
+  try {
+    const rows = await db.query(
+      `SELECT * FROM grooming_service_types WHERE is_active = TRUE ORDER BY name`
+    );
+    return R.ok(res, rows);
+  } catch (e) { next(e); }
+});
+
+serviceTypesRouter.post('/',
+  body('name').notEmpty(),
+  async (req, res, next) => {
+    try {
+      const { name, description, basePriceSmall, basePriceMedium, basePriceLarge,
+              durationMinSmall, durationMinMedium, durationMinLarge } = req.body;
+      const [r] = await db.query(
+        `INSERT INTO grooming_service_types
+           (name, description, base_price_small, base_price_medium, base_price_large,
+            duration_min_small, duration_min_medium, duration_min_large)
+         VALUES (:name,:desc,:ps,:pm,:pl,:ds,:dm,:dl)`,
+        {
+          name, desc: description || null,
+          ps: basePriceSmall || null, pm: basePriceMedium || null, pl: basePriceLarge || null,
+          ds: durationMinSmall || null, dm: durationMinMedium || null, dl: durationMinLarge || null,
+        }
+      );
+      return R.created(res, { id: r.insertId });
+    } catch (e) { next(e); }
+  }
+);
+
 // ── App ───────────────────────────────────────────────────────────────────────
 const app = buildApp('grooming', (app, requirePerm) => {
   app.use('/grooming/appointments',    requirePerm('grooming:read'),   guardWrite('grooming'),  apptRouter);
   app.use('/grooming/groomers',        requirePerm('grooming:read'),   guardWrite('grooming'),  groomersRouter);
   app.use('/grooming/patient-profile', requirePerm('grooming:read'),   guardWrite('grooming'),  profileRouter);
+  app.use('/grooming/service-types',   requirePerm('grooming:read'),   guardWrite('grooming'),  serviceTypesRouter);
 });
 
 const PORT = parseInt(process.env.PORT || '3007');

@@ -418,6 +418,145 @@
                 </div>
               </div>
 
+              <!-- TAB 4: Tratamientos -->
+              <div v-show="activeTab === 4">
+                <div class="section-title">Tratamiento</div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label>Tipo de tratamiento</label>
+                    <select v-model="form.treatment.treatmentType" :disabled="saving">
+                      <option value="">Seleccionar…</option>
+                      <option value="medication">Medicación</option>
+                      <option value="procedure">Procedimiento</option>
+                      <option value="surgery_ref">Derivación quirúrgica</option>
+                      <option value="specialist_ref">Derivación a especialista</option>
+                      <option value="diagnostic">Diagnóstico</option>
+                      <option value="nursing">Enfermería</option>
+                      <option value="physical_therapy">Fisioterapia</option>
+                      <option value="other">Otro</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Fecha de inicio</label>
+                    <input v-model="form.treatment.startDate" type="date" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Descripción del tratamiento</label>
+                    <textarea v-model.trim="form.treatment.description" rows="2" placeholder="Descripción detallada del tratamiento indicado…" :disabled="saving" />
+                  </div>
+                  <div class="field">
+                    <label>Dosis</label>
+                    <input v-model.trim="form.treatment.dose" type="text" placeholder="Ej: 5 mg/kg, 1 comprimido" :disabled="saving" />
+                  </div>
+                  <div class="field">
+                    <label>Unidad de dosis</label>
+                    <input v-model.trim="form.treatment.doseUnit" type="text" placeholder="Ej: mg, ml, comprimido" :disabled="saving" />
+                  </div>
+                  <div class="field">
+                    <label>Frecuencia</label>
+                    <input v-model.trim="form.treatment.frequency" type="text" placeholder="Ej: cada 12 hs, una vez al día" :disabled="saving" />
+                  </div>
+                  <div class="field">
+                    <label>Vía de administración</label>
+                    <select v-model="form.treatment.route" :disabled="saving">
+                      <option value="">Seleccionar…</option>
+                      <option value="oral">Oral</option>
+                      <option value="iv">Intravenosa (IV)</option>
+                      <option value="im">Intramuscular (IM)</option>
+                      <option value="sc">Subcutánea (SC)</option>
+                      <option value="topical">Tópica</option>
+                      <option value="inhalation">Inhalatoria</option>
+                      <option value="ophthalmic">Oftálmica</option>
+                      <option value="otic">Ótica</option>
+                      <option value="rectal">Rectal</option>
+                      <option value="other">Otra</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Duración (días)</label>
+                    <input v-model.number="form.treatment.durationDays" type="number" min="1" placeholder="7" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Notas del tratamiento</label>
+                    <textarea v-model.trim="form.treatment.notes" rows="2" placeholder="Indicaciones especiales, advertencias, seguimiento…" :disabled="saving" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- TAB 5: Recetas -->
+              <div v-show="activeTab === 5">
+                <div class="section-title">Receta médica</div>
+
+                <!-- Agregar ítem -->
+                <div class="rx-add-item">
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>Medicamento <span class="req">*</span></label>
+                      <input v-model.trim="newRxItem.medicationName" type="text" placeholder="Nombre del medicamento" :disabled="saving" />
+                    </div>
+                    <div class="field">
+                      <label>Dosis <span class="req">*</span></label>
+                      <input v-model.trim="newRxItem.dose" type="text" placeholder="Ej: 5 mg/kg" :disabled="saving" />
+                    </div>
+                    <div class="field">
+                      <label>Unidad de dosis</label>
+                      <input v-model.trim="newRxItem.doseUnit" type="text" placeholder="Ej: mg, ml" :disabled="saving" />
+                    </div>
+                    <div class="field">
+                      <label>Frecuencia <span class="req">*</span></label>
+                      <input v-model.trim="newRxItem.frequency" type="text" placeholder="Ej: cada 8 hs" :disabled="saving" />
+                    </div>
+                    <div class="field">
+                      <label>Vía</label>
+                      <input v-model.trim="newRxItem.route" type="text" placeholder="Ej: oral, tópica" :disabled="saving" />
+                    </div>
+                    <div class="field">
+                      <label>Duración (días)</label>
+                      <input v-model.number="newRxItem.durationDays" type="number" min="1" placeholder="7" :disabled="saving" />
+                    </div>
+                    <div class="field">
+                      <label>Cantidad</label>
+                      <input v-model.number="newRxItem.quantity" type="number" min="0" step="0.5" placeholder="14" :disabled="saving" />
+                    </div>
+                    <div class="field field--full">
+                      <label>Instrucciones para el propietario</label>
+                      <textarea v-model.trim="newRxItem.instructions" rows="2" placeholder="Indicaciones especiales para administrar en casa…" :disabled="saving" />
+                    </div>
+                  </div>
+                  <div style="display:flex;justify-content:flex-end;margin-top:10px">
+                    <button type="button" class="btn-ghost btn-sm" @click="addRxItem()" :disabled="saving">+ Agregar ítem</button>
+                  </div>
+                </div>
+
+                <!-- Lista de ítems agregados -->
+                <div v-if="form.prescriptionItems.length > 0" style="margin-top:14px">
+                  <div class="section-title">Ítems de la receta ({{ form.prescriptionItems.length }})</div>
+                  <div class="rx-item-list">
+                    <div v-for="(item, idx) in form.prescriptionItems" :key="idx" class="rx-item">
+                      <div class="rx-item__info">
+                        <strong>{{ item.medicationName }}</strong>
+                        <span>{{ item.dose }}{{ item.doseUnit ? ' ' + item.doseUnit : '' }} — {{ item.frequency }}</span>
+                        <span v-if="item.route" class="sub">Vía: {{ item.route }}</span>
+                        <span v-if="item.durationDays" class="sub">{{ item.durationDays }} días</span>
+                      </div>
+                      <button type="button" class="rx-item__remove" @click="removeRxItem(idx)" :disabled="saving" title="Eliminar ítem">✕</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Datos generales de la receta -->
+                <div class="form-grid" style="margin-top:14px">
+                  <div class="field">
+                    <label>Cantidad de recargas permitidas</label>
+                    <input v-model.number="form.prescriptionRefills" type="number" min="0" placeholder="0" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Notas de la receta</label>
+                    <textarea v-model.trim="form.prescriptionNotes" rows="2" placeholder="Instrucciones generales para el propietario…" :disabled="saving" />
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
@@ -455,10 +594,12 @@ const dateTo     = ref('')
 const pagination = ref({ page: 1, totalPages: 1 })
 
 const tabs = [
-  { label: 'General',       icon: '📝' },
-  { label: 'Anamnesis',     icon: '🗒️'  },
-  { label: 'Examen físico', icon: '🔬' },
-  { label: 'Diagnóstico',   icon: '🩺' },
+  { label: 'General',         icon: '📝' },
+  { label: 'Anamnesis',       icon: '🗒️'  },
+  { label: 'Examen físico',   icon: '🔬' },
+  { label: 'Diagnóstico',     icon: '🩺' },
+  { label: 'Tratamientos',    icon: '💊' },
+  { label: 'Recetas',         icon: '📄' },
 ]
 const activeTab = ref(0)
 
@@ -527,6 +668,22 @@ function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 const showModal = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
+
+// Receta — nuevo ítem pendiente de agregar
+const newRxItem = reactive({
+  medicationName: '', dose: '', doseUnit: '', frequency: '',
+  route: '', durationDays: '', quantity: '', instructions: ''
+})
+
+function addRxItem() {
+  if (!newRxItem.medicationName || !newRxItem.dose || !newRxItem.frequency) return
+  form.prescriptionItems.push({ ...newRxItem })
+  Object.keys(newRxItem).forEach(k => newRxItem[k] = '')
+}
+
+function removeRxItem(idx) {
+  form.prescriptionItems.splice(idx, 1)
+}
 const fe        = reactive({})
 
 function makeForm() {
@@ -595,6 +752,22 @@ function makeForm() {
     isPrimary:            true,
     prognosis:            '',
     diagnosisNotes:       '',
+    // Tratamiento
+    treatment: {
+      treatmentType:  '',
+      description:    '',
+      dose:           '',
+      doseUnit:       '',
+      frequency:      '',
+      route:          '',
+      durationDays:   '',
+      startDate:      '',
+      notes:          '',
+    },
+    // Receta
+    prescriptionItems:   [],
+    prescriptionNotes:   '',
+    prescriptionRefills: '',
   }
 }
 
@@ -737,6 +910,38 @@ async function handleCreate() {
       })
     }
 
+    // 5 — Tratamiento
+    if (form.treatment.treatmentType) {
+      const tr = { treatmentType: form.treatment.treatmentType }
+      if (form.treatment.description) tr.description  = form.treatment.description
+      if (form.treatment.dose)        tr.dose          = form.treatment.dose
+      if (form.treatment.doseUnit)    tr.doseUnit      = form.treatment.doseUnit
+      if (form.treatment.frequency)   tr.frequency     = form.treatment.frequency
+      if (form.treatment.route)       tr.route         = form.treatment.route
+      if (form.treatment.durationDays) tr.durationDays = parseInt(form.treatment.durationDays)
+      if (form.treatment.startDate)   tr.startDate     = form.treatment.startDate
+      if (form.treatment.notes)       tr.notes         = form.treatment.notes
+      await http.post(`/medical-records/${recordId}/treatments`, tr)
+    }
+
+    // 6 — Receta
+    if (form.prescriptionItems.length > 0) {
+      const rxPayload = {
+        items: form.prescriptionItems.map(item => {
+          const i = { medicationName: item.medicationName, dose: item.dose, frequency: item.frequency }
+          if (item.doseUnit)     i.doseUnit     = item.doseUnit
+          if (item.route)        i.route        = item.route
+          if (item.durationDays) i.durationDays = parseInt(item.durationDays)
+          if (item.quantity)     i.quantity     = parseFloat(item.quantity)
+          if (item.instructions) i.instructions = item.instructions
+          return i
+        }),
+      }
+      if (form.prescriptionNotes)   rxPayload.notes   = form.prescriptionNotes
+      if (form.prescriptionRefills !== '') rxPayload.refills = parseInt(form.prescriptionRefills)
+      await http.post(`/medical-records/${recordId}/prescriptions`, rxPayload)
+    }
+
     closeModal()
     await load()
   } catch (e) {
@@ -842,6 +1047,16 @@ onMounted(load)
 .autocomplete__item:hover { background: var(--surface-2); }
 .autocomplete__owner { font-size: 0.78rem; color: var(--text-3); }
 .selected-patient { margin-top: 5px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
+
+/* Receta */
+.rx-add-item { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; }
+.rx-item-list { display: flex; flex-direction: column; gap: 8px; }
+.rx-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 10px 14px; }
+.rx-item__info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.rx-item__info strong { font-size: 0.9rem; color: var(--text); }
+.rx-item__info span { font-size: 0.8rem; color: var(--text-2); }
+.rx-item__remove { background: none; border: none; cursor: pointer; font-size: 0.85rem; color: var(--text-3); padding: 4px 6px; border-radius: var(--radius-sm); flex-shrink: 0; }
+.rx-item__remove:hover:not(:disabled) { background: #FDEAEA; color: #c0392b; }
 
 @media (max-width: 700px) {
   .evol-card { grid-template-columns: 1fr; }

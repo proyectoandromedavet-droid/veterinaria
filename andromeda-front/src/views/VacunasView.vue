@@ -5,112 +5,201 @@
       <div class="page-header__left">
         <span class="page-emoji">💉</span>
         <div>
-          <h2 class="page-title">Vacunas</h2>
-          <p class="page-sub">Control y registro del plan vacunal</p>
+          <h2 class="page-title">Vacunas y Desparasitación</h2>
+          <p class="page-sub">Control y registro del plan sanitario</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openModal()">💉 Registrar vacuna</button>
+      <button class="btn-primary" @click="openModal()">
+        {{ mainTab === 'vacunas' ? '💉 Registrar vacuna' : '🐛 Registrar desparasitación' }}
+      </button>
     </div>
 
-    <!-- Stats rápidos -->
-    <div class="stats-row">
-      <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span class="stat-card__icon">✅</span>
-        <div>
-          <strong>{{ stats.upToDate }}</strong>
-          <span>Al día</span>
-        </div>
-      </div>
-      <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-        <span class="stat-card__icon">⚠️</span>
-        <div>
-          <strong>{{ stats.dueSoon }}</strong>
-          <span>Vencen pronto</span>
-        </div>
-      </div>
-      <div class="stat-card" style="--c:#FDEAEA;--ct:#c0392b">
-        <span class="stat-card__icon">🔴</span>
-        <div>
-          <strong>{{ stats.overdue }}</strong>
-          <span>Vencidas</span>
-        </div>
-      </div>
-      <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span class="stat-card__icon">📋</span>
-        <div>
-          <strong>{{ stats.total }}</strong>
-          <span>Total registros</span>
-        </div>
-      </div>
+    <!-- Tabs principales -->
+    <div class="main-tabs">
+      <button class="main-tab-btn" :class="{ 'main-tab-btn--active': mainTab === 'vacunas' }" @click="mainTab = 'vacunas'" type="button">
+        💉 Vacunas
+      </button>
+      <button class="main-tab-btn" :class="{ 'main-tab-btn--active': mainTab === 'deworming' }" @click="mainTab = 'deworming'" type="button">
+        🐛 Desparasitación
+      </button>
     </div>
 
-    <!-- Filtros -->
-    <div class="filters">
-      <input v-model.trim="search" type="search" placeholder="🔍 Buscar paciente o vacuna…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
-      <select v-model="statusFilter" class="filter-select" @change="load()">
-        <option value="">Todos los estados</option>
-        <option value="up_to_date">Al día</option>
-        <option value="due_soon">Vence pronto</option>
-        <option value="overdue">Vencida</option>
-      </select>
-    </div>
+    <!-- ==============================
+         SECCIÓN VACUNAS
+    ============================== -->
+    <template v-if="mainTab === 'vacunas'">
+      <!-- Stats rápidos -->
+      <div class="stats-row">
+        <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
+          <span class="stat-card__icon">✅</span>
+          <div>
+            <strong>{{ stats.upToDate }}</strong>
+            <span>Al día</span>
+          </div>
+        </div>
+        <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
+          <span class="stat-card__icon">⚠️</span>
+          <div>
+            <strong>{{ stats.dueSoon }}</strong>
+            <span>Vencen pronto</span>
+          </div>
+        </div>
+        <div class="stat-card" style="--c:#FDEAEA;--ct:#c0392b">
+          <span class="stat-card__icon">🔴</span>
+          <div>
+            <strong>{{ stats.overdue }}</strong>
+            <span>Vencidas</span>
+          </div>
+        </div>
+        <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
+          <span class="stat-card__icon">📋</span>
+          <div>
+            <strong>{{ stats.total }}</strong>
+            <span>Total registros</span>
+          </div>
+        </div>
+      </div>
 
-    <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando vacunas…</div>
-    <div v-else-if="error" class="alert alert--error">{{ error }}</div>
-    <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">🐾</span>
-      <p>No hay registros de vacunas</p>
-    </div>
+      <!-- Filtros -->
+      <div class="filters">
+        <input v-model.trim="search" type="search" placeholder="🔍 Buscar paciente o vacuna…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+        <select v-model="statusFilter" class="filter-select" @change="load()">
+          <option value="">Todos los estados</option>
+          <option value="up_to_date">Al día</option>
+          <option value="due_soon">Vence pronto</option>
+          <option value="overdue">Vencida</option>
+        </select>
+      </div>
 
-    <!-- Tabla -->
-    <div v-else class="card">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Paciente</th>
-            <th>Vacuna</th>
-            <th>Fecha de aplicación</th>
-            <th>Próxima dosis</th>
-            <th>Lote</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="v in items" :key="v.id">
-            <td>
-              <div class="pet-cell">
-                <span>{{ petEmoji(v.species) }}</span>
-                <div>
-                  <strong>{{ v.patient_name || '—' }}</strong>
-                  <span class="sub">{{ v.administered_by || '' }}</span>
+      <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando vacunas…</div>
+      <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+      <div v-else-if="items.length === 0" class="empty-state">
+        <span class="empty-state__emoji">🐾</span>
+        <p>No hay registros de vacunas</p>
+      </div>
+
+      <!-- Tabla vacunas -->
+      <div v-else class="card">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Paciente</th>
+              <th>Vacuna</th>
+              <th>Fecha de aplicación</th>
+              <th>Próxima dosis</th>
+              <th>Lote</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="v in items" :key="v.id">
+              <td>
+                <div class="pet-cell">
+                  <span>{{ petEmoji(v.species) }}</span>
+                  <div>
+                    <strong>{{ v.patient_name || '—' }}</strong>
+                    <span class="sub">{{ v.administered_by || '' }}</span>
+                  </div>
                 </div>
-              </div>
-            </td>
-            <td>
-              <div>
-                <strong>{{ v.vaccine_name || '—' }}</strong>
-                <span class="sub">{{ v.manufacturer || '' }}</span>
-              </div>
-            </td>
-            <td>{{ formatDate(v.vaccination_date) }}</td>
-            <td :class="dueDateClass(v.next_dose_due)">{{ formatDate(v.next_dose_due) }}</td>
-            <td class="sub">{{ v.lot_number || '—' }}</td>
-            <td><span class="badge" :class="vacStatus(v)">{{ vacStatusLabel(v) }}</span></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+              </td>
+              <td>
+                <div>
+                  <strong>{{ v.vaccine_name || '—' }}</strong>
+                  <span class="sub">{{ v.manufacturer || '' }}</span>
+                </div>
+              </td>
+              <td>{{ formatDate(v.vaccination_date) }}</td>
+              <td :class="dueDateClass(v.next_dose_due)">{{ formatDate(v.next_dose_due) }}</td>
+              <td class="sub">{{ v.lot_number || '—' }}</td>
+              <td><span class="badge" :class="vacStatus(v)">{{ vacStatusLabel(v) }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-    <!-- Paginación -->
-    <div v-if="pagination.totalPages > 1" class="pagination">
-      <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
-      <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-      <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
-    </div>
+      <!-- Paginación vacunas -->
+      <div v-if="pagination.totalPages > 1" class="pagination">
+        <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+        <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
+        <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+      </div>
+    </template>
 
-    <!-- Modal -->
+    <!-- ==============================
+         SECCIÓN DESPARASITACIÓN
+    ============================== -->
+    <template v-if="mainTab === 'deworming'">
+      <!-- Filtros deworming -->
+      <div class="filters">
+        <input v-model.trim="dewSearch" type="search" placeholder="🔍 Buscar paciente o producto…" class="filter-input filter-input--grow" @input="debouncedLoadDew()" />
+      </div>
+
+      <div v-if="dewLoading" class="loading-state"><span class="spin spin--dark" /> Cargando desparasitaciones…</div>
+      <div v-else-if="dewError" class="alert alert--error">{{ dewError }}</div>
+      <div v-else-if="dewItems.length === 0" class="empty-state">
+        <span class="empty-state__emoji">🐛</span>
+        <p>No hay registros de desparasitación</p>
+      </div>
+
+      <!-- Tabla deworming -->
+      <div v-else class="card">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Paciente</th>
+              <th>Producto</th>
+              <th>Tipo de parásito</th>
+              <th>Fecha</th>
+              <th>Próxima dosis</th>
+              <th>Peso / Dosis</th>
+              <th>Administrado por</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in dewItems" :key="d.id">
+              <td>
+                <div class="pet-cell">
+                  <span>{{ petEmoji(d.species) }}</span>
+                  <div>
+                    <strong>{{ d.patient_name || '—' }}</strong>
+                    <span class="sub">{{ d.species || '' }}</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div>
+                  <strong>{{ d.product_name || '—' }}</strong>
+                  <span class="sub">{{ d.active_ingredient || '' }}</span>
+                </div>
+              </td>
+              <td>{{ d.parasite_type || '—' }}</td>
+              <td>{{ formatDate(d.deworming_date) }}</td>
+              <td :class="dueDateClass(d.next_due_date)">{{ formatDate(d.next_due_date) }}</td>
+              <td>
+                <span v-if="d.weight_at_treatment">{{ d.weight_at_treatment }} kg</span>
+                <span v-if="d.weight_at_treatment && d.dose_administered"> / </span>
+                <span v-if="d.dose_administered">{{ d.dose_administered }}</span>
+                <span v-if="!d.weight_at_treatment && !d.dose_administered" class="sub">—</span>
+              </td>
+              <td class="sub">{{ d.administered_by || '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Paginación deworming -->
+      <div v-if="dewPagination.totalPages > 1" class="pagination">
+        <button :disabled="dewPagination.page <= 1" @click="loadDew(dewPagination.page - 1)">← Ant.</button>
+        <span>{{ dewPagination.page }} / {{ dewPagination.totalPages }}</span>
+        <button :disabled="dewPagination.page >= dewPagination.totalPages" @click="loadDew(dewPagination.page + 1)">Sig. →</button>
+      </div>
+    </template>
+
+    <!-- ==============================
+         MODAL VACUNA
+    ============================== -->
     <Transition name="modal">
-      <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
+      <div v-if="showModal && mainTab === 'vacunas'" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
             <h3>💉 Registrar vacuna</h3>
@@ -169,6 +258,101 @@
         </div>
       </div>
     </Transition>
+
+    <!-- ==============================
+         MODAL DESPARASITACIÓN
+    ============================== -->
+    <Transition name="modal">
+      <div v-if="showModal && mainTab === 'deworming'" class="modal-backdrop" @click.self="closeModal()">
+        <div class="modal">
+          <div class="modal__header">
+            <h3>🐛 Registrar desparasitación</h3>
+            <button class="modal__close" @click="closeModal()">✕</button>
+          </div>
+          <form @submit.prevent="handleCreateDew" novalidate>
+            <div class="form-body">
+              <div class="form-grid">
+                <!-- Paciente -->
+                <div class="field field--full">
+                  <label>Paciente <span class="req">*</span></label>
+                  <input v-model.trim="dewPatientSearch" type="search" placeholder="Buscar paciente…" :disabled="saving" @input="searchDewPatients" autocomplete="off" />
+                  <div v-if="dewPatientResults.length" class="autocomplete">
+                    <div v-for="pt in dewPatientResults" :key="pt.id" class="autocomplete__item" @click="selectDewPatient(pt)">
+                      {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
+                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                    </div>
+                  </div>
+                  <div v-if="dewForm.patientId" class="selected-patient">✅ {{ dewSelectedPatientLabel }}</div>
+                  <span v-if="dewFe.patientId" class="field-error">{{ dewFe.patientId }}</span>
+                </div>
+
+                <!-- Producto antiparasitario -->
+                <div class="field field--full">
+                  <label>Producto antiparasitario <span class="req">*</span></label>
+                  <select v-model="dewForm.productId" :disabled="saving" required>
+                    <option value="">Seleccioná un producto…</option>
+                    <option v-for="p in dewProductList" :key="p.id" :value="p.id">
+                      {{ p.name }}{{ p.parasite_type ? ' — ' + p.parasite_type : '' }}
+                    </option>
+                  </select>
+                  <span v-if="dewFe.productId" class="field-error">{{ dewFe.productId }}</span>
+                </div>
+
+                <!-- Fecha -->
+                <div class="field">
+                  <label>Fecha de aplicación <span class="req">*</span></label>
+                  <input v-model="dewForm.dewormingDate" type="date" :disabled="saving" required />
+                  <span v-if="dewFe.dewormingDate" class="field-error">{{ dewFe.dewormingDate }}</span>
+                </div>
+
+                <!-- Próxima dosis -->
+                <div class="field">
+                  <label>Próxima dosis</label>
+                  <input v-model="dewForm.nextDueDate" type="date" :disabled="saving" />
+                </div>
+
+                <!-- Peso al tratamiento -->
+                <div class="field">
+                  <label>Peso al tratamiento (kg)</label>
+                  <input v-model.number="dewForm.weightAtTreatment" type="number" step="0.01" min="0" placeholder="4.50" :disabled="saving" />
+                </div>
+
+                <!-- Dosis administrada -->
+                <div class="field">
+                  <label>Dosis administrada</label>
+                  <input v-model.trim="dewForm.doseAdministered" type="text" placeholder="Ej: 1 comprimido, 2 ml" :disabled="saving" />
+                </div>
+
+                <!-- Vía de administración -->
+                <div class="field">
+                  <label>Vía de administración</label>
+                  <select v-model="dewForm.route" :disabled="saving">
+                    <option value="">Seleccionar…</option>
+                    <option value="oral">Oral</option>
+                    <option value="topical">Tópica</option>
+                    <option value="injectable">Inyectable</option>
+                    <option value="other">Otra</option>
+                  </select>
+                </div>
+
+                <!-- Notas -->
+                <div class="field field--full">
+                  <label>Notas / observaciones</label>
+                  <textarea v-model.trim="dewForm.notes" rows="2" placeholder="Reacciones, observaciones adicionales…" :disabled="saving" />
+                </div>
+              </div>
+            </div>
+            <div v-if="dewSaveError" class="alert alert--error mx">{{ dewSaveError }}</div>
+            <div class="modal__actions">
+              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+              <button type="submit" class="btn-primary" :disabled="saving">
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>Registrar</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -176,23 +360,10 @@
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
 
-const items = ref([])
-const loading = ref(false)
-const error   = ref('')
-const search  = ref('')
-const statusFilter = ref('')
-const pagination = ref({ page: 1, totalPages: 1 })
-const stats = ref({ upToDate: 0, dueSoon: 0, overdue: 0, total: 0 })
+// ── Tab principal ──────────────────────────────────────────────
+const mainTab = ref('vacunas')
 
-// Vaccine catalog
-const vaccineList = ref([])
-async function loadVaccines() {
-  try {
-    const { data } = await http.get('/vaccinations/vaccines')
-    vaccineList.value = data.data || []
-  } catch { vaccineList.value = [] }
-}
-
+// ── Helpers compartidos ────────────────────────────────────────
 function petEmoji(s) {
   if (!s) return '🐾'
   const sl = s.toLowerCase()
@@ -213,6 +384,45 @@ function dueDateClass(dt) {
   return ''
 }
 
+// ── Modal compartido ───────────────────────────────────────────
+const showModal = ref(false)
+const saving    = ref(false)
+
+function openModal()  {
+  if (mainTab.value === 'vacunas') {
+    resetForm()
+    patientSearch.value = ''
+    patientResults.value = []
+    selectedPatientLabel.value = ''
+  } else {
+    resetDewForm()
+    dewPatientSearch.value = ''
+    dewPatientResults.value = []
+    dewSelectedPatientLabel.value = ''
+  }
+  showModal.value = true
+}
+function closeModal() { showModal.value = false; resetForm(); resetDewForm() }
+
+// ════════════════════════════════════════════════════════════════
+//  VACUNAS
+// ════════════════════════════════════════════════════════════════
+const items       = ref([])
+const loading     = ref(false)
+const error       = ref('')
+const search      = ref('')
+const statusFilter = ref('')
+const pagination  = ref({ page: 1, totalPages: 1 })
+const stats       = ref({ upToDate: 0, dueSoon: 0, overdue: 0, total: 0 })
+const vaccineList = ref([])
+
+async function loadVaccines() {
+  try {
+    const { data } = await http.get('/vaccinations/vaccines')
+    vaccineList.value = data.data || []
+  } catch { vaccineList.value = [] }
+}
+
 function vacStatus(v) {
   if (!v.next_dose_due) return 'badge--neutral'
   const days = (new Date(v.next_dose_due) - Date.now()) / (1000 * 60 * 60 * 24)
@@ -229,11 +439,12 @@ function vacStatusLabel(v) {
   return 'Al día'
 }
 
-// Patient autocomplete
-const patientSearch = ref('')
-const patientResults = ref([])
+// Patient autocomplete (vacunas)
+const patientSearch        = ref('')
+const patientResults       = ref([])
 const selectedPatientLabel = ref('')
 let patientTimer = null
+
 async function searchPatients() {
   clearTimeout(patientTimer)
   form.patientId = ''
@@ -257,7 +468,7 @@ async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
     const params = { page, limit: 20 }
-    if (search.value)      params.search = search.value
+    if (search.value)       params.search = search.value
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/vaccinations', { params })
     items.value = data.data || data.vaccinations || data || []
@@ -280,20 +491,10 @@ function computeStats() {
 let timer = null
 function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 
-const showModal = ref(false)
-const saving    = ref(false)
 const saveError = ref('')
 const fe        = reactive({})
-const form = reactive({ patientId:'', vaccineId:'', lotNumber:'', vaccinationDate:'', nextDoseDue:'', notes:'' })
+const form      = reactive({ patientId:'', vaccineId:'', lotNumber:'', vaccinationDate:'', nextDoseDue:'', notes:'' })
 
-function openModal()  {
-  resetForm()
-  patientSearch.value = ''
-  patientResults.value = []
-  selectedPatientLabel.value = ''
-  showModal.value = true
-}
-function closeModal() { showModal.value = false; resetForm() }
 function resetForm() {
   Object.keys(form).forEach(k => form[k] = '')
   saveError.value = ''; Object.keys(fe).forEach(k => delete fe[k])
@@ -301,9 +502,9 @@ function resetForm() {
 
 function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!form.patientId)      fe.patientId      = 'Requerido'
-  if (!form.vaccineId)      fe.vaccineId      = 'Requerido'
-  if (!form.vaccinationDate) fe.vaccinationDate = 'Requerido'
+  if (!form.patientId)       fe.patientId       = 'Requerido'
+  if (!form.vaccineId)       fe.vaccineId       = 'Requerido'
+  if (!form.vaccinationDate) fe.vaccinationDate  = 'Requerido'
   return Object.keys(fe).length === 0
 }
 
@@ -316,9 +517,9 @@ async function handleCreate() {
       vaccineId:       parseInt(form.vaccineId),
       vaccinationDate: form.vaccinationDate,
     }
-    if (form.lotNumber)  payload.lotNumber  = form.lotNumber
+    if (form.lotNumber)   payload.lotNumber   = form.lotNumber
     if (form.nextDoseDue) payload.nextDoseDue = form.nextDoseDue
-    if (form.notes)       payload.notes        = form.notes
+    if (form.notes)       payload.notes       = form.notes
     await http.post('/vaccinations', payload)
     closeModal(); await load()
   } catch (e) {
@@ -326,7 +527,113 @@ async function handleCreate() {
   } finally { saving.value = false }
 }
 
-onMounted(() => { load(); loadVaccines() })
+// ════════════════════════════════════════════════════════════════
+//  DESPARASITACIÓN
+// ════════════════════════════════════════════════════════════════
+const dewItems      = ref([])
+const dewLoading    = ref(false)
+const dewError      = ref('')
+const dewSearch     = ref('')
+const dewPagination = ref({ page: 1, totalPages: 1 })
+const dewProductList = ref([])
+
+async function loadDewProducts() {
+  try {
+    const { data } = await http.get('/vaccinations/deworming/products')
+    dewProductList.value = data.data || data || []
+  } catch { dewProductList.value = [] }
+}
+
+async function loadDew(page = 1) {
+  dewLoading.value = true; dewError.value = ''
+  try {
+    const params = { page, limit: 20 }
+    if (dewSearch.value) params.search = dewSearch.value
+    const { data } = await http.get('/vaccinations/deworming', { params })
+    dewItems.value = data.data || data || []
+    const m = data.meta || {}
+    dewPagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
+  } catch (e) {
+    dewError.value = e.response?.data?.message || 'No se pudieron cargar las desparasitaciones'
+  } finally { dewLoading.value = false }
+}
+
+let dewTimer = null
+function debouncedLoadDew() { clearTimeout(dewTimer); dewTimer = setTimeout(loadDew, 350) }
+
+// Patient autocomplete (deworming)
+const dewPatientSearch        = ref('')
+const dewPatientResults       = ref([])
+const dewSelectedPatientLabel = ref('')
+let dewPatientTimer = null
+
+async function searchDewPatients() {
+  clearTimeout(dewPatientTimer)
+  dewForm.patientId = ''
+  dewSelectedPatientLabel.value = ''
+  if (dewPatientSearch.value.length < 2) { dewPatientResults.value = []; return }
+  dewPatientTimer = setTimeout(async () => {
+    try {
+      const { data } = await http.get('/patients', { params: { search: dewPatientSearch.value, limit: 8 } })
+      dewPatientResults.value = data.data || []
+    } catch { dewPatientResults.value = [] }
+  }, 300)
+}
+function selectDewPatient(pt) {
+  dewForm.patientId = pt.id
+  dewSelectedPatientLabel.value = `${pt.name} (${pt.primary_owner || ''})`
+  dewPatientSearch.value = pt.name
+  dewPatientResults.value = []
+}
+
+const dewSaveError = ref('')
+const dewFe        = reactive({})
+const dewForm      = reactive({
+  patientId: '', productId: '', dewormingDate: '', nextDueDate: '',
+  weightAtTreatment: '', doseAdministered: '', route: '', notes: ''
+})
+
+function resetDewForm() {
+  Object.keys(dewForm).forEach(k => dewForm[k] = '')
+  dewSaveError.value = ''; Object.keys(dewFe).forEach(k => delete dewFe[k])
+}
+
+function validateDew() {
+  Object.keys(dewFe).forEach(k => delete dewFe[k])
+  if (!dewForm.patientId)    dewFe.patientId    = 'Requerido'
+  if (!dewForm.productId)    dewFe.productId    = 'Requerido'
+  if (!dewForm.dewormingDate) dewFe.dewormingDate = 'Requerido'
+  return Object.keys(dewFe).length === 0
+}
+
+async function handleCreateDew() {
+  if (!validateDew()) return
+  saving.value = true; dewSaveError.value = ''
+  try {
+    const payload = {
+      patientId:    parseInt(dewForm.patientId),
+      productId:    parseInt(dewForm.productId),
+      dewormingDate: dewForm.dewormingDate,
+    }
+    if (dewForm.weightAtTreatment) payload.weightAtTreatment = parseFloat(dewForm.weightAtTreatment)
+    if (dewForm.doseAdministered)  payload.doseAdministered  = dewForm.doseAdministered
+    if (dewForm.route)             payload.route             = dewForm.route
+    if (dewForm.nextDueDate)       payload.nextDueDate       = dewForm.nextDueDate
+    if (dewForm.notes)             payload.notes             = dewForm.notes
+    await http.post('/vaccinations/deworming', payload)
+    closeModal(); await loadDew()
+  } catch (e) {
+    dewSaveError.value = e.response?.data?.message || 'No se pudo registrar la desparasitación'
+  } finally { saving.value = false }
+}
+
+// ── Inicialización ─────────────────────────────────────────────
+onMounted(() => {
+  load()
+  loadVaccines()
+  loadDew()
+  loadDewProducts()
+})
 </script>
 
 <style scoped>
@@ -336,6 +643,12 @@ onMounted(() => { load(); loadVaccines() })
 .page-emoji { font-size: 2rem; }
 .page-title { font-size: 1.35rem; font-weight: 700; color: var(--text); }
 .page-sub   { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
+
+/* Tabs principales */
+.main-tabs { display: flex; border-bottom: 2px solid var(--border); gap: 0; }
+.main-tab-btn { padding: 10px 22px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; font-size: 0.9rem; font-weight: 500; color: var(--text-3); transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+.main-tab-btn:hover { color: var(--text); }
+.main-tab-btn--active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
 
 /* Stats */
 .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
@@ -390,7 +703,7 @@ onMounted(() => { load(); loadVaccines() })
 .modal__close:hover { background: var(--surface-2); }
 .form-body { padding: 20px 24px 0; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.field { display: flex; flex-direction: column; gap: 5px; }
+.field { display: flex; flex-direction: column; gap: 5px; position: relative; }
 .field label { font-size: 0.82rem; font-weight: 600; color: var(--text-2); }
 .field input, .field select, .field textarea { padding: 9px 12px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 0.9rem; color: var(--text); background: var(--surface); outline: none; transition: border-color var(--transition); }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); }
@@ -411,10 +724,9 @@ onMounted(() => { load(); loadVaccines() })
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } .table th:nth-child(5), .table td:nth-child(5) { display: none; } }
-.autocomplete { position: absolute; z-index: 100; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 100%; max-height: 200px; overflow-y: auto; }
+.autocomplete { position: absolute; z-index: 100; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 100%; max-height: 200px; overflow-y: auto; top: 100%; left: 0; }
 .autocomplete__item { padding: 9px 13px; cursor: pointer; font-size: 0.88rem; }
 .autocomplete__item:hover { background: var(--surface-2); }
 .autocomplete__owner { font-size: 0.78rem; color: var(--text-3); }
 .selected-patient { margin-top: 6px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
-.field { position: relative; }
 </style>

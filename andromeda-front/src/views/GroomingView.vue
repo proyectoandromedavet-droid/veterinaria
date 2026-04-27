@@ -165,8 +165,16 @@ const dateFilter   = ref(new Date().toISOString().split('T')[0])
 const statusFilter = ref('')
 const kpis = ref({ today: 0, pending: 0, completed: 0, revenue: '$0' })
 
-const STATUS = { scheduled:'Programado', in_progress:'En proceso', completed:'Completado', cancelled:'Cancelado' }
-const SERVICES_LIST = ['Baño y secado', 'Corte de pelo', 'Corte de uñas', 'Limpieza de oídos', 'Cepillado dental', 'Perfumado', 'Lazo / moño', 'Deslanado']
+const STATUS = { scheduled:'Programado', confirmed:'Confirmado', in_progress:'En proceso', ready:'Listo', completed:'Completado', cancelled:'Cancelado', no_show:'No se presentó' }
+
+// Tipos de servicio desde DB
+const serviceTypesList = ref([])
+async function loadServiceTypes() {
+  try {
+    const { data } = await http.get('/grooming/service-types')
+    serviceTypesList.value = data.data || []
+  } catch { serviceTypesList.value = [] }
+}
 
 function petEmoji(s) {
   const m = { dog:'🐶', cat:'🐱', rabbit:'🐰', bird:'🐦' }
@@ -256,7 +264,8 @@ const showModal = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
 const fe        = reactive({})
-const form = reactive({ scheduledAt:'', patientId:'', clientId:'', groomerId:'', services:[], price:'', notes:'' })
+// form usa serviceTypeId objects: { serviceTypeId, priceCharged }
+const form = reactive({ scheduledAt:'', patientId:'', clientId:'', groomerId:'', selectedServiceIds:[], price:'', notes:'' })
 
 function openModal()  {
   resetForm()
@@ -266,16 +275,17 @@ function openModal()  {
 function closeModal() { showModal.value = false; resetForm() }
 function resetForm() {
   form.scheduledAt = ''; form.patientId = ''; form.clientId = ''; form.groomerId = ''
-  form.services = []; form.price = ''; form.notes = ''
+  form.selectedServiceIds = []; form.price = ''; form.notes = ''
   saveError.value = ''; Object.keys(fe).forEach(k => delete fe[k])
 }
 
 function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!form.scheduledAt) fe.scheduledAt = 'Requerido'
-  if (!form.patientId)   fe.patientId   = 'Requerido'
-  if (!form.groomerId)   fe.groomerId   = 'Requerido'
-  if (!form.clientId)    fe.patientId   = (fe.patientId || '') + ' (seleccioná un paciente con dueño)'
+  if (!form.scheduledAt)              fe.scheduledAt = 'Requerido'
+  if (!form.patientId)                fe.patientId   = 'Requerido'
+  if (!form.groomerId)                fe.groomerId   = 'Requerido'
+  if (!form.clientId)                 fe.patientId   = (fe.patientId || '') + ' (seleccioná paciente con dueño)'
+  if (!form.selectedServiceIds.length) fe.services   = 'Seleccioná al menos un servicio'
   return Object.keys(fe).length === 0
 }
 
@@ -283,12 +293,13 @@ async function handleCreate() {
   if (!validate()) return
   saving.value = true; saveError.value = ''
   try {
+    const services = form.selectedServiceIds.map(id => ({ serviceTypeId: id }))
     const payload = {
       scheduledAt: form.scheduledAt,
       patientId:   parseInt(form.patientId),
       clientId:    parseInt(form.clientId),
       groomerId:   parseInt(form.groomerId),
-      services:    form.services,
+      services,
     }
     if (form.price) payload.estimatedPrice = parseFloat(form.price)
     if (form.notes) payload.notes          = form.notes
@@ -299,7 +310,58 @@ async function handleCreate() {
   } finally { saving.value = false }
 }
 
-onMounted(() => { load(); loadGroomers() })
+// ── Registro de resultado (grooming_records) ──────────────────────────────────
+const showRecordModal  = ref(false)
+const recordApptId     = ref(null)
+const recordSaving     = ref(false)
+const recordError      = ref('')
+const recordForm = reactive({
+  servicesPerformed: [],
+  productsUsed:      '',
+  behaviorObservations: '',
+  coatCondition:     '',
+  skinCondition:     '',
+  vetReferralRequired: false,
+  vetReferralReason: '',
+  finalPrice:        '',
+  groomingNotes:     '',
+})
+
+function openRecordModal(appt) {
+  recordApptId.value = appt.id
+  Object.assign(recordForm, {
+    servicesPerformed: [], productsUsed: '', behaviorObservations: '',
+    coatCondition: '', skinCondition: '', vetReferralRequired: false,
+    vetReferralReason: '', finalPrice: appt.final_price || '', groomingNotes: '',
+  })
+  recordError.value = ''
+  showRecordModal.value = true
+}
+
+async function handleRecord() {
+  if (!recordForm.servicesPerformed.length) { recordError.value = 'Indicá los servicios realizados'; return }
+  recordSaving.value = true; recordError.value = ''
+  try {
+    const payload = {
+      servicesPerformed:    recordForm.servicesPerformed,
+      behaviorObservations: recordForm.behaviorObservations || undefined,
+      coatCondition:        recordForm.coatCondition        || undefined,
+      skinCondition:        recordForm.skinCondition        || undefined,
+      vetReferralRequired:  recordForm.vetReferralRequired,
+      vetReferralReason:    recordForm.vetReferralReason    || undefined,
+      groomingNotes:        recordForm.groomingNotes        || undefined,
+    }
+    if (recordForm.finalPrice)  payload.finalPrice  = parseFloat(recordForm.finalPrice)
+    if (recordForm.productsUsed) payload.productsUsed = recordForm.productsUsed.split(',').map(s => s.trim()).filter(Boolean)
+    await http.post(`/grooming/appointments/${recordApptId.value}/record`, payload)
+    showRecordModal.value = false
+    await load()
+  } catch (e) {
+    recordError.value = e.response?.data?.error?.message || 'No se pudo guardar el registro'
+  } finally { recordSaving.value = false }
+}
+
+onMounted(() => { load(); loadGroomers(); loadServiceTypes() })
 </script>
 
 <style scoped>

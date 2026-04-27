@@ -1,0 +1,709 @@
+<template>
+  <div class="page">
+
+    <div class="page-header">
+      <div class="page-header__left">
+        <span class="page-emoji">🩻</span>
+        <div>
+          <h2 class="page-title">Diagnóstico por Imágenes</h2>
+          <p class="page-sub">Órdenes de estudios y gestión de informes</p>
+        </div>
+      </div>
+      <button class="btn-primary" @click="openNewOrder()">+ Nueva orden</button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
+        <span class="stat-card__icon">📋</span>
+        <div>
+          <strong>{{ stats.pendingReport }}</strong>
+          <span>Pendientes de informe</span>
+        </div>
+      </div>
+      <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
+        <span class="stat-card__icon">✅</span>
+        <div>
+          <strong>{{ stats.completed }}</strong>
+          <span>Completadas</span>
+        </div>
+      </div>
+      <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
+        <span class="stat-card__icon">🩻</span>
+        <div>
+          <strong>{{ stats.topModality }}</strong>
+          <span>Modalidad más usada</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filters">
+      <input
+        v-model.trim="search"
+        type="search"
+        placeholder="🔍 Buscar por paciente…"
+        class="filter-input filter-input--grow"
+        @input="debouncedLoad()"
+      />
+      <select v-model="statusFilter" class="filter-select" @change="load()">
+        <option value="">Todos los estados</option>
+        <option value="pending">Pendiente</option>
+        <option value="scheduled">Programada</option>
+        <option value="in_progress">En proceso</option>
+        <option value="reported">Con informe</option>
+        <option value="cancelled">Cancelada</option>
+      </select>
+    </div>
+
+    <div v-if="loading" class="loading-state">
+      <span class="spin spin--dark" /> Cargando órdenes…
+    </div>
+    <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+    <div v-else-if="items.length === 0" class="empty-state">
+      <span class="empty-state__emoji">🩻</span>
+      <p>No hay órdenes de imágenes</p>
+    </div>
+
+    <div v-else class="card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Paciente</th>
+            <th>Tipo / Modalidad</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+            <th>Informe</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="order in items" :key="order.id">
+            <td>
+              <div class="pet-cell">
+                <span>{{ petEmoji(order.species) }}</span>
+                <div>
+                  <strong>{{ order.patient_name || '—' }}</strong>
+                  <span class="sub">{{ order.vet_name || '' }}</span>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div>
+                <strong class="modality-name">{{ order.modality ? modalityLabel(order.modality) : '—' }}</strong>
+                <span v-if="order.study_count" class="sub">{{ order.study_count }} estudio(s)</span>
+              </div>
+              <span v-if="order.modality" class="badge" :class="modalityClass(order.modality)" style="margin-top:4px">
+                {{ order.modality.toUpperCase() }}
+              </span>
+            </td>
+            <td>
+              <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span>
+            </td>
+            <td class="sub">{{ formatDate(order.requested_at) }}</td>
+            <td>
+              <span v-if="order.has_report" class="badge badge--green">Con informe</span>
+              <span v-else class="badge badge--gray">Sin informe</span>
+            </td>
+            <td>
+              <div class="action-btns">
+                <button
+                  v-if="!order.has_report && order.status !== 'cancelled'"
+                  class="btn-action btn-action--primary"
+                  @click="openReport(order)"
+                  title="Ingresar informe"
+                >
+                  Informe
+                </button>
+                <button
+                  v-if="order.has_report"
+                  class="btn-action"
+                  @click="openReport(order)"
+                  title="Ver informe"
+                >
+                  Ver
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-if="pagination.totalPages > 1" class="pagination">
+      <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+      <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
+      <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+    </div>
+
+    <!-- Modal nueva orden -->
+    <Transition name="modal">
+      <div v-if="showNewOrder" class="modal-backdrop" @click.self="showNewOrder = false">
+        <div class="modal">
+          <div class="modal__header">
+            <h3>🩻 Nueva orden de imágenes</h3>
+            <button class="modal__close" @click="showNewOrder = false">✕</button>
+          </div>
+
+          <form @submit.prevent="handleCreateOrder" novalidate>
+            <div class="form-body">
+
+              <!-- Paciente autocomplete -->
+              <div class="field field--full" style="position:relative">
+                <label>Paciente <span class="req">*</span></label>
+                <input
+                  v-model.trim="patientSearch"
+                  type="search"
+                  placeholder="Buscar por nombre…"
+                  :disabled="saving"
+                  @input="searchPatients"
+                  autocomplete="off"
+                />
+                <div v-if="patientResults.length" class="autocomplete">
+                  <div
+                    v-for="pt in patientResults"
+                    :key="pt.id"
+                    class="autocomplete__item"
+                    @click="selectPatient(pt)"
+                  >
+                    {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
+                    <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                  </div>
+                </div>
+                <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
+              </div>
+
+              <div class="form-grid">
+                <!-- Tipo de imagen -->
+                <div class="field field--full">
+                  <label>Tipo de estudio <span class="req">*</span></label>
+                  <select v-model="orderForm.imagingTypeId" :disabled="saving || typesLoading">
+                    <option value="">{{ typesLoading ? 'Cargando tipos…' : 'Seleccioná un tipo…' }}</option>
+                    <option v-for="t in imagingTypes" :key="t.id" :value="t.id">
+                      {{ t.name }} ({{ t.modality ? t.modality.toUpperCase() : '' }})
+                    </option>
+                  </select>
+                  <span v-if="fe.imagingTypeId" class="field-error">{{ fe.imagingTypeId }}</span>
+                </div>
+
+                <!-- Info del tipo seleccionado -->
+                <div v-if="selectedTypeInfo" class="field field--full type-info">
+                  <div v-if="selectedTypeInfo.description" class="type-info__desc">{{ selectedTypeInfo.description }}</div>
+                  <div v-if="selectedTypeInfo.preparation_required" class="type-info__prep">
+                    <strong>Preparación requerida:</strong> {{ selectedTypeInfo.preparation_instructions || 'Sí' }}
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>Prioridad</label>
+                  <select v-model="orderForm.priority" :disabled="saving">
+                    <option value="routine">Rutina</option>
+                    <option value="urgent">Urgente</option>
+                    <option value="emergency">Emergencia</option>
+                  </select>
+                </div>
+
+                <div class="field" style="justify-content:flex-end;align-self:flex-end">
+                  <label class="checkbox-label">
+                    <input type="checkbox" v-model="orderForm.sedationRequired" :disabled="saving" />
+                    Sedación requerida
+                  </label>
+                </div>
+
+                <div class="field field--full">
+                  <label>Notas clínicas</label>
+                  <textarea
+                    v-model.trim="orderForm.clinicalNotes"
+                    rows="3"
+                    placeholder="Indicaciones clínicas, sospecha diagnóstica, región a estudiar…"
+                    :disabled="saving"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
+
+            <div class="modal__actions">
+              <button type="button" class="btn-ghost" @click="showNewOrder = false" :disabled="saving">Cancelar</button>
+              <button type="submit" class="btn-primary" :disabled="saving">
+                <span v-if="saving" class="spin spin--sm" />
+                <span v-else>💾 Crear orden</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Modal informe -->
+    <Transition name="modal">
+      <div v-if="showReport" class="modal-backdrop" @click.self="showReport = false">
+        <div class="modal modal--wide">
+          <div class="modal__header">
+            <h3>📋 Informe de imágenes — {{ selectedOrder?.patient_name }}</h3>
+            <button class="modal__close" @click="showReport = false">✕</button>
+          </div>
+
+          <div v-if="detailLoading" class="loading-state" style="min-height:200px">
+            <span class="spin spin--dark" /> Cargando detalle…
+          </div>
+          <template v-else>
+            <!-- Si ya tiene informe, mostrarlo de solo lectura -->
+            <div v-if="existingReport" class="form-body">
+              <div class="report-readonly">
+                <div class="report-section">
+                  <div class="section-title">Hallazgos</div>
+                  <p>{{ existingReport.findings }}</p>
+                </div>
+                <div class="report-section">
+                  <div class="section-title">Conclusión</div>
+                  <p>{{ existingReport.conclusion }}</p>
+                </div>
+                <div v-if="existingReport.recommendations" class="report-section">
+                  <div class="section-title">Recomendaciones</div>
+                  <p>{{ existingReport.recommendations }}</p>
+                </div>
+                <div v-if="existingReport.radiologist_name" class="report-meta">
+                  <strong>Radiólogo:</strong> {{ existingReport.radiologist_name }}
+                </div>
+              </div>
+              <div class="modal__actions" style="position:static;border-top:none;padding-top:0">
+                <button type="button" class="btn-ghost" @click="showReport = false">Cerrar</button>
+              </div>
+            </div>
+
+            <!-- Formulario para ingresar informe -->
+            <form v-else @submit.prevent="handleSubmitReport" novalidate>
+              <div class="form-body">
+                <div class="form-grid">
+                  <div class="field field--full">
+                    <label>Hallazgos <span class="req">*</span></label>
+                    <textarea
+                      v-model.trim="reportForm.findings"
+                      rows="4"
+                      placeholder="Describe los hallazgos observados en el estudio…"
+                      :disabled="savingReport"
+                    />
+                    <span v-if="rfe.findings" class="field-error">{{ rfe.findings }}</span>
+                  </div>
+                  <div class="field field--full">
+                    <label>Conclusión <span class="req">*</span></label>
+                    <textarea
+                      v-model.trim="reportForm.conclusion"
+                      rows="3"
+                      placeholder="Diagnóstico o conclusión del estudio…"
+                      :disabled="savingReport"
+                    />
+                    <span v-if="rfe.conclusion" class="field-error">{{ rfe.conclusion }}</span>
+                  </div>
+                  <div class="field field--full">
+                    <label>Recomendaciones</label>
+                    <textarea
+                      v-model.trim="reportForm.recommendations"
+                      rows="2"
+                      placeholder="Sugerencias de seguimiento o estudios complementarios…"
+                      :disabled="savingReport"
+                    />
+                  </div>
+                  <div class="field">
+                    <label>Nombre del radiólogo</label>
+                    <input
+                      v-model.trim="reportForm.radiologistName"
+                      type="text"
+                      placeholder="Dr./Dra. Apellido…"
+                      :disabled="savingReport"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="reportError" class="alert alert--error mx">{{ reportError }}</div>
+
+              <div class="modal__actions">
+                <button type="button" class="btn-ghost" @click="showReport = false" :disabled="savingReport">Cancelar</button>
+                <button type="submit" class="btn-primary" :disabled="savingReport">
+                  <span v-if="savingReport" class="spin spin--sm" />
+                  <span v-else>💾 Guardar informe</span>
+                </button>
+              </div>
+            </form>
+          </template>
+        </div>
+      </div>
+    </Transition>
+
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed, onMounted } from 'vue'
+import http from '../api/client'
+
+// ── Lista de órdenes ────────────────────────────────────────────────────────
+const items        = ref([])
+const loading      = ref(false)
+const error        = ref('')
+const search       = ref('')
+const statusFilter = ref('')
+const pagination   = ref({ page: 1, totalPages: 1 })
+
+const stats = reactive({ pendingReport: 0, completed: 0, topModality: '—' })
+
+async function load(page = 1) {
+  loading.value = true; error.value = ''
+  try {
+    const params = { page, limit: 15 }
+    if (search.value)       params.search = search.value
+    if (statusFilter.value) params.status = statusFilter.value
+    const { data } = await http.get('/imaging/orders', { params })
+    items.value = data.data || data.orders || data || []
+    const m = data.meta || {}
+    pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
+    computeStats()
+  } catch (e) {
+    error.value = e.response?.data?.message || 'No se pudieron cargar las órdenes'
+  } finally { loading.value = false }
+}
+
+function computeStats() {
+  let pendingReport = 0, completed = 0
+  const modalityCounts = {}
+  items.value.forEach(o => {
+    if (!o.has_report && o.status !== 'cancelled') pendingReport++
+    if (o.status === 'reported' || o.status === 'completed') completed++
+    if (o.modality) modalityCounts[o.modality] = (modalityCounts[o.modality] || 0) + 1
+  })
+  stats.pendingReport = pendingReport
+  stats.completed     = completed
+  const topEntry = Object.entries(modalityCounts).sort((a, b) => b[1] - a[1])[0]
+  stats.topModality = topEntry ? modalityLabel(topEntry[0]) : '—'
+}
+
+let loadTimer = null
+function debouncedLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(load, 350) }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function petEmoji(s) {
+  if (!s) return '🐾'
+  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
+  return m[s.toLowerCase()] || '🐾'
+}
+
+function formatDate(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function modalityLabel(m) {
+  const map = { xray: 'Radiografía', ultrasound: 'Ecografía', ct: 'Tomografía', mri: 'Resonancia', endoscopy: 'Endoscopía', other: 'Otro' }
+  return map[m] || m || '—'
+}
+
+function modalityClass(m) {
+  const map = { xray: 'badge--blue', ultrasound: 'badge--green', ct: 'badge--purple', mri: 'badge--orange', endoscopy: 'badge--red', other: 'badge--gray' }
+  return map[m] || 'badge--gray'
+}
+
+function statusClass(s) {
+  const map = { pending: 'badge--gray', scheduled: 'badge--blue', in_progress: 'badge--yellow', reported: 'badge--green', cancelled: 'badge--red' }
+  return map[s] || 'badge--gray'
+}
+
+function statusLabel(s) {
+  const map = { pending: 'Pendiente', scheduled: 'Programada', in_progress: 'En proceso', reported: 'Con informe', cancelled: 'Cancelada' }
+  return map[s] || s || '—'
+}
+
+// ── Tipos de imagen ──────────────────────────────────────────────────────────
+const imagingTypes = ref([])
+const typesLoading = ref(false)
+
+async function loadImagingTypes() {
+  typesLoading.value = true
+  try {
+    const { data } = await http.get('/imaging/types')
+    imagingTypes.value = data.data || data || []
+  } catch { imagingTypes.value = [] }
+  finally { typesLoading.value = false }
+}
+
+// ── Modal nueva orden ────────────────────────────────────────────────────────
+const showNewOrder = ref(false)
+const saving       = ref(false)
+const saveError    = ref('')
+const fe           = reactive({})
+
+const orderForm = reactive({
+  patientId: '',
+  imagingTypeId: '',
+  clinicalNotes: '',
+  priority: 'routine',
+  sedationRequired: false,
+})
+
+const selectedTypeInfo = computed(() => {
+  if (!orderForm.imagingTypeId) return null
+  return imagingTypes.value.find(t => t.id === orderForm.imagingTypeId) || null
+})
+
+// Autocomplete paciente
+const patientSearch        = ref('')
+const patientResults       = ref([])
+const selectedPatientLabel = ref('')
+let patientTimer = null
+
+async function searchPatients() {
+  clearTimeout(patientTimer)
+  orderForm.patientId = ''
+  selectedPatientLabel.value = ''
+  if (patientSearch.value.length < 2) { patientResults.value = []; return }
+  patientTimer = setTimeout(async () => {
+    try {
+      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
+      patientResults.value = data.data || []
+    } catch { patientResults.value = [] }
+  }, 300)
+}
+
+function selectPatient(pt) {
+  orderForm.patientId = pt.id
+  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
+  patientSearch.value = pt.name
+  patientResults.value = []
+}
+
+function openNewOrder() {
+  Object.assign(orderForm, { patientId: '', imagingTypeId: '', clinicalNotes: '', priority: 'routine', sedationRequired: false })
+  patientSearch.value = ''
+  patientResults.value = []
+  selectedPatientLabel.value = ''
+  saveError.value = ''
+  Object.keys(fe).forEach(k => delete fe[k])
+  showNewOrder.value = true
+  if (imagingTypes.value.length === 0) loadImagingTypes()
+}
+
+function validateOrder() {
+  Object.keys(fe).forEach(k => delete fe[k])
+  if (!orderForm.patientId)     fe.patientId     = 'Seleccioná un paciente'
+  if (!orderForm.imagingTypeId) fe.imagingTypeId = 'Seleccioná un tipo de estudio'
+  return Object.keys(fe).length === 0
+}
+
+async function handleCreateOrder() {
+  if (!validateOrder()) return
+  saving.value = true; saveError.value = ''
+  try {
+    const payload = {
+      patientId:    parseInt(orderForm.patientId),
+      imagingTypeId: parseInt(orderForm.imagingTypeId),
+      priority:     orderForm.priority,
+      sedationRequired: orderForm.sedationRequired,
+    }
+    if (orderForm.clinicalNotes) payload.clinicalNotes = orderForm.clinicalNotes
+    await http.post('/imaging/orders', payload)
+    showNewOrder.value = false
+    await load()
+  } catch (e) {
+    saveError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo crear la orden'
+  } finally { saving.value = false }
+}
+
+// ── Modal informe ────────────────────────────────────────────────────────────
+const showReport    = ref(false)
+const selectedOrder = ref(null)
+const detailLoading = ref(false)
+const existingReport = ref(null)
+
+const reportForm = reactive({ findings: '', conclusion: '', recommendations: '', radiologistName: '' })
+const rfe        = reactive({})
+const savingReport = ref(false)
+const reportError  = ref('')
+
+async function openReport(order) {
+  selectedOrder.value = order
+  detailLoading.value = true
+  showReport.value    = true
+  existingReport.value = null
+  reportError.value   = ''
+  Object.assign(reportForm, { findings: '', conclusion: '', recommendations: '', radiologistName: '' })
+  Object.keys(rfe).forEach(k => delete rfe[k])
+  try {
+    const { data } = await http.get(`/imaging/orders/${order.id}`)
+    const detail = data.data || data
+    existingReport.value = detail.report || null
+    // Pre-rellenar si ya tiene informe para edición futura (solo lectura en este caso)
+  } catch (e) {
+    reportError.value = e.response?.data?.message || 'No se pudo cargar el detalle'
+  } finally { detailLoading.value = false }
+}
+
+function validateReport() {
+  Object.keys(rfe).forEach(k => delete rfe[k])
+  if (!reportForm.findings)   rfe.findings   = 'Requerido'
+  if (!reportForm.conclusion) rfe.conclusion = 'Requerido'
+  return Object.keys(rfe).length === 0
+}
+
+async function handleSubmitReport() {
+  if (!validateReport()) return
+  savingReport.value = true; reportError.value = ''
+  try {
+    const payload = { findings: reportForm.findings, conclusion: reportForm.conclusion }
+    if (reportForm.recommendations)  payload.recommendations  = reportForm.recommendations
+    if (reportForm.radiologistName)  payload.radiologistName  = reportForm.radiologistName
+    await http.post(`/imaging/orders/${selectedOrder.value.id}/report`, payload)
+    showReport.value = false
+    await load()
+  } catch (e) {
+    reportError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo guardar el informe'
+  } finally { savingReport.value = false }
+}
+
+onMounted(load)
+</script>
+
+<style scoped>
+.page { display: flex; flex-direction: column; gap: 20px; }
+.page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.page-header__left { display: flex; align-items: center; gap: 14px; }
+.page-emoji { font-size: 2rem; }
+.page-title { font-size: 1.35rem; font-weight: 700; color: var(--text); }
+.page-sub   { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
+
+/* Stats */
+.stats-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.stat-card { display: flex; align-items: center; gap: 14px; background: var(--c, var(--surface)); border-radius: var(--radius-lg); padding: 16px 20px; flex: 1; min-width: 160px; }
+.stat-card__icon { font-size: 1.6rem; }
+.stat-card strong { display: block; font-size: 1.5rem; font-weight: 800; color: var(--ct, var(--text)); line-height: 1; }
+.stat-card span { font-size: 0.78rem; color: var(--ct, var(--text-2)); opacity: 0.85; }
+
+/* Filtros */
+.filters { display: flex; gap: 10px; flex-wrap: wrap; }
+.filter-input { padding: 9px 13px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 0.87rem; background: var(--white); color: var(--text); outline: none; }
+.filter-input:focus { border-color: var(--primary); }
+.filter-input--grow { flex: 1; min-width: 200px; }
+.filter-select { padding: 9px 13px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 0.87rem; background: var(--white); color: var(--text); outline: none; cursor: pointer; }
+.filter-select:focus { border-color: var(--primary); }
+
+/* Card / Table */
+.card { background: var(--white); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+.table thead th { background: var(--surface); padding: 11px 14px; text-align: left; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); border-bottom: 1.5px solid var(--border); white-space: nowrap; }
+.table tbody tr { border-bottom: 1px solid var(--border); transition: background 0.12s; }
+.table tbody tr:last-child { border-bottom: none; }
+.table tbody tr:hover { background: var(--surface); }
+.table tbody td { padding: 11px 14px; color: var(--text); vertical-align: middle; }
+
+.pet-cell { display: flex; align-items: center; gap: 10px; }
+.pet-cell div { display: flex; flex-direction: column; gap: 1px; }
+.pet-cell strong { font-size: 0.88rem; color: var(--text); }
+.sub { font-size: 0.75rem; color: var(--text-3); }
+.modality-name { font-size: 0.88rem; color: var(--text); display: block; }
+
+/* Badges */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.73rem; font-weight: 700; white-space: nowrap; }
+.badge--gray   { background: #EAEAEA; color: #555; }
+.badge--yellow { background: #FFF3CC; color: #8A6200; }
+.badge--blue   { background: #D6EEFF; color: #1A5FAA; }
+.badge--green  { background: #D6F3EC; color: #1A9E7F; }
+.badge--red    { background: #FDEAEA; color: #c0392b; }
+.badge--purple { background: #EDE6FF; color: #5B21B6; }
+.badge--orange { background: #FEF0E0; color: #B45309; }
+
+/* Acciones */
+.action-btns { display: flex; gap: 6px; }
+.btn-action { padding: 5px 12px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; font-size: 0.78rem; font-weight: 500; color: var(--text-2); cursor: pointer; transition: background 0.12s; }
+.btn-action:hover { background: var(--surface); }
+.btn-action--primary { background: var(--primary); color: white; border-color: var(--primary); }
+.btn-action--primary:hover { opacity: 0.88; }
+
+/* Paginación */
+.pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
+.pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
+.pagination button:hover:not(:disabled) { background: var(--surface-2); }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Botones */
+.btn-primary { padding: 10px 20px; background: linear-gradient(135deg, var(--primary) 0%, var(--accent-mint) 100%); color: white; border: none; border-radius: var(--radius); font-size: 0.9rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: opacity var(--transition), transform var(--transition); }
+.btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-ghost { padding: 10px 20px; background: none; border: 1.5px solid var(--border); border-radius: var(--radius); color: var(--text-2); font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: background var(--transition); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
+
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.modal { background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); width: 100%; max-width: 660px; max-height: 92vh; overflow-y: auto; display: flex; flex-direction: column; }
+.modal--wide { max-width: 820px; }
+.modal__header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--white); z-index: 2; }
+.modal__header h3 { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+.modal__close { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--text-3); padding: 4px 8px; border-radius: var(--radius-sm); }
+.modal__close:hover { background: var(--surface-2); }
+.modal__actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 24px 20px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--white); z-index: 1; }
+
+/* Formulario */
+.form-body { padding: 20px 24px 4px; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 0.8rem; font-weight: 600; color: var(--text-2); }
+.field input, .field select, .field textarea { padding: 8px 11px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 0.88rem; color: var(--text); background: var(--surface); outline: none; transition: border-color var(--transition); }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); background: var(--white); }
+.field textarea { resize: vertical; }
+.field--full { grid-column: 1 / -1; }
+.field-error { font-size: 0.73rem; color: var(--danger); }
+.req { color: var(--danger); }
+
+.checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; color: var(--text-2); cursor: pointer; padding: 9px 11px; border: 1.5px solid var(--border); border-radius: var(--radius); transition: background 0.12s; }
+.checkbox-label:hover { background: var(--surface-2); }
+.checkbox-label input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+
+.section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+
+/* Autocomplete */
+.autocomplete { position: absolute; z-index: 100; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 100%; max-height: 200px; overflow-y: auto; top: calc(100% + 2px); left: 0; }
+.autocomplete__item { padding: 9px 13px; cursor: pointer; font-size: 0.88rem; }
+.autocomplete__item:hover { background: var(--surface-2); }
+.autocomplete__owner { font-size: 0.78rem; color: var(--text-3); }
+.selected-patient { margin-top: 5px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
+
+/* Info tipo estudio */
+.type-info { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 10px 14px; gap: 6px; }
+.type-info__desc { font-size: 0.84rem; color: var(--text-2); }
+.type-info__prep { font-size: 0.82rem; color: #8A6200; background: #FFF3CC; border-radius: var(--radius-sm); padding: 6px 10px; margin-top: 4px; }
+
+/* Informe solo lectura */
+.report-readonly { display: flex; flex-direction: column; gap: 16px; }
+.report-section { display: flex; flex-direction: column; gap: 6px; }
+.report-section p { font-size: 0.9rem; color: var(--text); line-height: 1.6; background: var(--surface); border-radius: var(--radius); padding: 12px 14px; }
+.report-meta { font-size: 0.82rem; color: var(--text-3); padding-top: 4px; }
+
+/* Alertas */
+.alert { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.875rem; }
+.alert--error { background: #FDEAEA; color: #c0392b; border-left: 3px solid var(--danger); }
+.mx { margin: 0 24px 8px; }
+
+/* Estados */
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 0.9rem; background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 0.9rem; background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
+.empty-state__emoji { font-size: 3rem; }
+
+/* Spinner */
+.spin { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+.spin--sm { width: 14px; height: 14px; }
+.spin--dark { border-color: rgba(0,0,0,0.1); border-top-color: var(--primary); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Transición modal */
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+
+@media (max-width: 700px) {
+  .stats-row { gap: 10px; }
+  .stat-card { min-width: 130px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .modal { max-width: 100%; max-height: 100vh; border-radius: 0; }
+  .table thead th:nth-child(5), .table tbody td:nth-child(5) { display: none; }
+}
+</style>

@@ -289,6 +289,53 @@ router.post('/:id/allergies',
   }
 );
 
+// ── POST /patients/:id/chronic-conditions ────────────────────────────────────
+router.post('/:id/chronic-conditions',
+  body('conditionName').notEmpty(),
+  validate,
+  async (req, res, next) => {
+    try {
+      const { conditionName, diagnosisCode, diagnosedAt, managedWith, notes } = req.body;
+      await db.query(
+        `INSERT INTO patient_chronic_conditions
+           (patient_id, condition_name, diagnosis_code, diagnosed_at, managed_with, notes)
+         VALUES (:pid, :name, :code, :date, :managed, :notes)`,
+        {
+          pid:     req.params.id,
+          name:    conditionName,
+          code:    diagnosisCode || null,
+          date:    diagnosedAt  || null,
+          managed: managedWith  || null,
+          notes:   notes        || null,
+        }
+      );
+      return R.created(res);
+    } catch (e) { next(e); }
+  }
+);
+
+// ── DELETE /patients/:id/allergies/:aid ───────────────────────────────────────
+router.delete('/:id/allergies/:aid', async (req, res, next) => {
+  try {
+    await db.query(
+      `UPDATE patient_allergies SET is_active = 0 WHERE id = :aid AND patient_id = :pid`,
+      { aid: req.params.aid, pid: req.params.id }
+    );
+    return R.noContent(res);
+  } catch (e) { next(e); }
+});
+
+// ── DELETE /patients/:id/chronic-conditions/:cid ──────────────────────────────
+router.delete('/:id/chronic-conditions/:cid', async (req, res, next) => {
+  try {
+    await db.query(
+      `UPDATE patient_chronic_conditions SET is_active = 0 WHERE id = :cid AND patient_id = :pid`,
+      { cid: req.params.cid, pid: req.params.id }
+    );
+    return R.noContent(res);
+  } catch (e) { next(e); }
+});
+
 // ── GET /species ─────────────────────────────────────── cached 10 min ───────
 router.get('/species/all',
   httpCacheHeaders({ maxAge: 600, scope: 'public' }),

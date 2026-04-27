@@ -104,6 +104,18 @@ export const useAuthStore = defineStore('auth', () => {
     if (all || r.some(x => ['veterinarian','vet_technician','surgeon','lab_technician'].includes(x)))
       items.push({ key: 'vaccinations',   label: 'Vacunas',      icon: '💉', to: '/vacunas' })
 
+    if (all || r.some(x => ['veterinarian','vet_technician','lab_technician'].includes(x)))
+      items.push({ key: 'laboratorio',    label: 'Laboratorio',  icon: '🧪', to: '/laboratorio' })
+
+    if (all || r.some(x => ['veterinarian','vet_technician','lab_technician'].includes(x)))
+      items.push({ key: 'imagenes',       label: 'Imágenes',     icon: '🩻', to: '/imagenes' })
+
+    if (all || r.some(x => ['veterinarian','surgeon'].includes(x)))
+      items.push({ key: 'cirugias',       label: 'Cirugías',     icon: '🔪', to: '/cirugias' })
+
+    if (all || r.some(x => ['veterinarian','vet_technician','branch_manager'].includes(x)))
+      items.push({ key: 'hospitalizaciones', label: 'Internados', icon: '🏥', to: '/hospitalizaciones' })
+
     if (all || r.some(x => ['pharmacist','accountant','branch_manager','org_admin'].includes(x)))
       items.push({ key: 'inventory',      label: 'Inventario',   icon: '📦', to: '/inventario' })
 
