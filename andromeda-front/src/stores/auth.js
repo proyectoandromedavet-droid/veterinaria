@@ -110,6 +110,9 @@ export const useAuthStore = defineStore('auth', () => {
     if (all || r.some(x => ['veterinarian','vet_technician','lab_technician'].includes(x)))
       items.push({ key: 'imagenes',       label: 'Imágenes',     icon: '🩻', to: '/imagenes' })
 
+    if (all || r.some(x => ['veterinarian','vet_technician','lab_technician'].includes(x)))
+      items.push({ key: 'patologia',      label: 'Patología',    icon: '🔬', to: '/patologia' })
+
     if (all || r.some(x => ['veterinarian','surgeon'].includes(x)))
       items.push({ key: 'cirugias',       label: 'Cirugías',     icon: '🔪', to: '/cirugias' })
 

@@ -27,6 +27,7 @@ const routes = [
       { path: 'imagenes',         name: 'imagenes',         component: () => import('../views/ImagenesView.vue') },
       { path: 'cirugias',         name: 'cirugias',         component: () => import('../views/CirugiasView.vue') },
       { path: 'hospitalizaciones', name: 'hospitalizaciones', component: () => import('../views/HospitalizacionesView.vue') },
+      { path: 'patologia',        name: 'patologia',        component: () => import('../views/PatologiaView.vue') },
       { path: 'admin',     name: 'admin',        component: () => import('../views/AdminView.vue') },
     ],
   },
