@@ -12,6 +12,38 @@
       <button class="btn-primary" @click="openModal()">🐾 Nueva teleconsulta</button>
     </div>
 
+    <!-- KPI Stats bar -->
+    <div class="kpi-row">
+      <div class="kpi" style="--c:#D6EEFF;--ct:#1A5FAA">
+        <span>💻</span>
+        <div>
+          <strong>{{ statsData.total }}</strong>
+          <span>Total sesiones</span>
+        </div>
+      </div>
+      <div class="kpi" style="--c:#D6F3EC;--ct:#1A9E7F">
+        <span>✅</span>
+        <div>
+          <strong>{{ statsData.completed }}</strong>
+          <span>Completadas</span>
+        </div>
+      </div>
+      <div class="kpi" style="--c:#FFF3CC;--ct:#8A6200">
+        <span>⏱️</span>
+        <div>
+          <strong>{{ statsData.avgDuration }} min</strong>
+          <span>Duración promedio</span>
+        </div>
+      </div>
+      <div class="kpi" style="--c:#F0E6FF;--ct:#6B21A8">
+        <span>📅</span>
+        <div>
+          <strong>{{ statsData.today }}</strong>
+          <span>Sesiones hoy</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Info banner -->
     <div class="info-banner">
       <span>🎥</span>
@@ -222,6 +254,37 @@ async function changeStatus(t, status) {
   }
 }
 
+// Stats KPIs
+const statsData = reactive({ total: 0, completed: 0, avgDuration: 0, today: 0 })
+async function loadStats() {
+  try {
+    const { data } = await http.get('/tele/stats')
+    const rows = data.data || data || []
+    const todayStr = new Date().toISOString().split('T')[0]
+    let totalSessions = 0
+    let completedSessions = 0
+    let durationSum = 0
+    let durationCount = 0
+    let todaySessions = 0
+    for (const row of rows) {
+      const ts = Number(row.total_sessions) || 0
+      const cs = Number(row.completed_sessions) || 0
+      const avg = Number(row.avg_duration_minutes) || 0
+      const td = Number(row.today_sessions) || 0
+      totalSessions += ts
+      completedSessions += cs
+      if (avg > 0) { durationSum += avg; durationCount++ }
+      todaySessions += td
+    }
+    statsData.total = totalSessions
+    statsData.completed = completedSessions
+    statsData.avgDuration = durationCount > 0 ? Math.round(durationSum / durationCount) : 0
+    statsData.today = todaySessions
+  } catch {
+    // stats are non-critical; leave at zero
+  }
+}
+
 // Vet list
 const vetList = ref([])
 async function loadVets() {
@@ -270,7 +333,7 @@ const showModal = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
 const fe        = reactive({})
-const form = reactive({ scheduledAt:'', duration:'30', patientId:'', clientId:'', vetId:'', reason:'', sessionType:'consultation', platformId:'' })
+const form = reactive({ scheduledDate:'', duration:'30', patientId:'', clientId:'', vetId:'', reason:'', sessionType:'consultation', platformId:'' })
 
 function openModal()  {
   resetForm()
@@ -279,17 +342,17 @@ function openModal()  {
 }
 function closeModal() { showModal.value = false; resetForm() }
 function resetForm() {
-  form.scheduledAt = ''; form.duration = '30'; form.patientId = ''; form.clientId = ''
+  form.scheduledDate = ''; form.duration = '30'; form.patientId = ''; form.clientId = ''
   form.vetId = ''; form.reason = ''; form.sessionType = 'consultation'; form.platformId = ''
   saveError.value = ''; Object.keys(fe).forEach(k => delete fe[k])
 }
 
 function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!form.scheduledAt) fe.scheduledAt = 'Requerido'
-  if (!form.patientId)   fe.patientId   = 'Requerido'
-  if (!form.vetId)       fe.vetId       = 'Requerido'
-  if (!form.reason)      fe.reason      = 'Requerido'
+  if (!form.scheduledDate) fe.scheduledDate = 'Requerido'
+  if (!form.patientId)     fe.patientId     = 'Requerido'
+  if (!form.vetId)         fe.vetId         = 'Requerido'
+  if (!form.reason)        fe.reason        = 'Requerido'
   return Object.keys(fe).length === 0
 }
 
@@ -298,7 +361,7 @@ async function handleCreate() {
   saving.value = true; saveError.value = ''
   try {
     const payload = {
-      scheduledAt:     form.scheduledAt,
+      scheduledAt:     form.scheduledDate,
       patientId:       parseInt(form.patientId),
       clientId:        parseInt(form.clientId),
       vetId:           parseInt(form.vetId),
@@ -314,7 +377,7 @@ async function handleCreate() {
   } finally { saving.value = false }
 }
 
-onMounted(() => { load(); loadVets(); loadPlatforms() })
+onMounted(() => { load(); loadStats(); loadVets(); loadPlatforms() })
 </script>
 
 <style scoped>
@@ -324,6 +387,16 @@ onMounted(() => { load(); loadVets(); loadPlatforms() })
 .page-emoji { font-size: 2rem; }
 .page-title { font-size: 1.35rem; font-weight: 700; color: var(--text); }
 .page-sub   { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
+
+/* KPI Stats bar */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.kpi { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--c, #D6EEFF); border-radius: var(--radius-lg); }
+.kpi > span:first-child { font-size: 1.6rem; flex-shrink: 0; }
+.kpi > div { display: flex; flex-direction: column; gap: 2px; }
+.kpi strong { font-size: 1.25rem; font-weight: 700; color: var(--ct, #1A5FAA); line-height: 1.1; }
+.kpi > div > span { font-size: 0.75rem; color: var(--ct, #1A5FAA); opacity: 0.8; white-space: nowrap; }
+@media (max-width: 700px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 400px) { .kpi-row { grid-template-columns: 1fr; } }
 
 .info-banner { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; background: #EEF6FF; border-radius: var(--radius-lg); border-left: 3px solid #90D5F0; font-size: 0.85rem; }
 .info-banner span:first-child { font-size: 1.4rem; flex-shrink: 0; }
