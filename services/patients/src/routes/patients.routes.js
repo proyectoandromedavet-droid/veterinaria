@@ -360,25 +360,43 @@ router.delete('/:id/chronic-conditions/:cid', async (req, res, next) => {
 });
 
 // ── GET /species ─────────────────────────────────────── cached 10 min ───────
+async function getSpeciesAll(_req, res, next) {
+  try {
+    let rows;
+    try {
+      rows = await db.query(
+        `SELECT s.*, sc.name AS category FROM species s
+         JOIN species_categories sc ON s.category_id = sc.id
+         WHERE s.is_active = TRUE ORDER BY sc.name, s.common_name`
+      );
+    } catch (err) {
+      const msg = String(err?.message || '');
+      const isSchemaDrift =
+        /Unknown column|doesn't exist|ER_BAD_FIELD_ERROR|ER_NO_SUCH_TABLE/i.test(msg);
+
+      if (!isSchemaDrift) throw err;
+
+      // Railway/prod may still be on the legacy dump where species.active and
+      // species_categories.display_name are used instead of is_active/name.
+      rows = await db.query(
+        `SELECT s.*, COALESCE(sc.display_name, sc.name) AS category
+         FROM species s
+         JOIN species_categories sc ON s.category_id = sc.id
+         WHERE COALESCE(s.active, 1) = TRUE
+         ORDER BY category, s.common_name`
+      );
+    }
+    return R.ok(res, rows);
+  } catch (e) { next(e); }
+}
+
 router.get('/species/all',
   httpCacheHeaders({ maxAge: 600, scope: 'public' }),
   cacheMiddleware(600, () => 'ref:species:all'),
-  async (_req, res, next) => {
-  try {
-    const rows = await db.query(
-      `SELECT s.*, sc.name AS category FROM species s
-       JOIN species_categories sc ON s.category_id = sc.id
-       WHERE s.is_active = TRUE ORDER BY sc.name, s.common_name`
-    );
-    return R.ok(res, rows);
-  } catch (e) { next(e); }
-});
+  getSpeciesAll);
 
 // ── GET /breeds?speciesId= ───────────────────────────── cached 10 min ───────
-router.get('/breeds/all',
-  httpCacheHeaders({ maxAge: 600, scope: 'public' }),
-  cacheMiddleware(600, (req) => `ref:breeds:${req.query.speciesId || 'all'}`),
-  async (req, res, next) => {
+async function getBreedsAll(req, res, next) {
   try {
     const { speciesId } = req.query;
     const where = speciesId ? 'WHERE species_id = :sid' : '';
@@ -388,6 +406,21 @@ router.get('/breeds/all',
     );
     return R.ok(res, rows);
   } catch (e) { next(e); }
-});
+}
+
+router.get('/breeds/all',
+  httpCacheHeaders({ maxAge: 600, scope: 'public' }),
+  cacheMiddleware(600, (req) => `ref:breeds:${req.query.speciesId || 'all'}`),
+  getBreedsAll);
 
 module.exports = router;
+module.exports.getSpeciesAll = [
+  httpCacheHeaders({ maxAge: 600, scope: 'public' }),
+  cacheMiddleware(600, () => 'ref:species:all'),
+  getSpeciesAll,
+];
+module.exports.getBreedsAll = [
+  httpCacheHeaders({ maxAge: 600, scope: 'public' }),
+  cacheMiddleware(600, (req) => `ref:breeds:${req.query.speciesId || 'all'}`),
+  getBreedsAll,
+];

@@ -10,11 +10,11 @@ const patientsRouter = require('./routes/patients.routes');
 const branchesRouter = require('./routes/branches.routes');
 
 const app = buildApp('patients', (app, requirePerm) => {
-  app.use('/clients',   requirePerm('clients:read'),   guardWrite('clients'),   clientsRouter);
-  app.use('/patients',  requirePerm('patients:read'),  guardWrite('patients'),  patientsRouter);
-  app.use('/species',   requirePerm('patients:read'),  patientsRouter);   // solo lectura — referencia
-  app.use('/breeds',    requirePerm('patients:read'),  patientsRouter);   // solo lectura — referencia
-  app.use('/branches',  requirePerm('branches:read'),  guardWrite('branches'),  branchesRouter);
+  app.use('/clients',  requirePerm('clients:read'),  guardWrite('clients'),  clientsRouter);
+  app.use('/patients', requirePerm('patients:read'), guardWrite('patients'), patientsRouter);
+  app.get('/species/all', requirePerm('patients:read'), ...patientsRouter.getSpeciesAll);
+  app.get('/breeds/all',  requirePerm('patients:read'), ...patientsRouter.getBreedsAll);
+  app.use('/branches', requirePerm('branches:read'), guardWrite('branches'), branchesRouter);
 }, { specPath: path.join(__dirname, 'openapi.yaml') });
 
 const PORT = parseInt(process.env.PORT || '3002');
