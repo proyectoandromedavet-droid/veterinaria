@@ -207,4 +207,19 @@ describe('Contract — GET /species/all', () => {
       expect(typeof sp.common_name).toBe('string');
     }
   });
+
+  it('exposes the public alias /species/all on the full service app', async () => {
+    db.query.mockResolvedValueOnce([
+      { id: 1, common_name: 'Dog', scientific_name: 'Canis lupus', category: 'Mammal' },
+    ]);
+
+    const res = await request(app)
+      .get('/species/all')
+      .set(USER_HEADERS);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data[0].common_name).toBe('Dog');
+  });
 });
