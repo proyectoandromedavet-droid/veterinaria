@@ -16,6 +16,8 @@ describe('Gateway OpenAPI - critical frontend routes', () => {
     expect(spec.paths['/tele/platforms']?.get).toBeDefined();
     expect(spec.paths['/pathology/orders']?.get).toBeDefined();
     expect(spec.paths['/pathology/types']?.get).toBeDefined();
+    expect(spec.paths['/grooming/groomers']?.get).toBeDefined();
+    expect(spec.paths['/grooming/service-types']?.get).toBeDefined();
     expect(spec.paths['/reports/appointments']?.get).toBeDefined();
     expect(spec.paths['/reports/{type}/export']?.post).toBeDefined();
     expect(spec.paths['/billing/consolidated/summary']?.get).toBeDefined();

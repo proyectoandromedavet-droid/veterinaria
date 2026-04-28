@@ -129,7 +129,7 @@ export const groomingApi = {
     today:       ()      => http.get('/grooming/appointments/today'),
   },
   groomers: () => http.get('/grooming/groomers'),
-  services: () => http.get('/grooming/services'),
+  services: () => http.get('/grooming/service-types'),
 }
 
 export const teleApi = {

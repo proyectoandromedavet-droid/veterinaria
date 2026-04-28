@@ -1260,6 +1260,20 @@ paths:
       responses:
         '201': { description: Ficha de grooming guardada }
 
+  /grooming/groomers:
+    get:
+      tags: [Grooming]
+      summary: Listar groomers activos de la sucursal
+      responses:
+        '200': { description: Catálogo de groomers }
+
+  /grooming/service-types:
+    get:
+      tags: [Grooming]
+      summary: Listar tipos de servicio de grooming
+      responses:
+        '200': { description: Catálogo de servicios de grooming }
+
   /grooming/groomers/performance:
     get:
       tags: [Grooming]

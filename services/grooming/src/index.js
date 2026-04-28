@@ -14,6 +14,19 @@ const validate = (req, res, next) => {
   next();
 };
 
+function logGroomingError(route, err, meta = {}) {
+  console.error(`[grooming][${route}]`, {
+    message: err?.message,
+    code: err?.code,
+    errno: err?.errno,
+    sqlState: err?.sqlState,
+    sqlMessage: err?.sqlMessage,
+    sql: err?.sql,
+    stack: err?.stack,
+    ...meta,
+  });
+}
+
 // ── Appointments ──────────────────────────────────────────────────────────────
 const apptRouter = Router();
 
@@ -262,7 +275,14 @@ groomersRouter.get('/', async (req, res, next) => {
       { bid: req.user.branchId }
     );
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    logGroomingError('GET /grooming/groomers', e, {
+      branchId: req.user?.branchId,
+      orgId: req.user?.organizationId || req.user?.orgId,
+      query: req.query,
+    });
+    next(e);
+  }
 });
 
 groomersRouter.get('/performance', async (req, res, next) => {
@@ -358,7 +378,10 @@ serviceTypesRouter.get('/', async (_req, res, next) => {
       `SELECT * FROM grooming_service_types WHERE is_active = TRUE ORDER BY name`
     );
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    logGroomingError('GET /grooming/service-types', e);
+    next(e);
+  }
 });
 
 serviceTypesRouter.post('/',
@@ -392,4 +415,8 @@ const app = buildApp('grooming', (app, requirePerm) => {
 });
 
 const PORT = parseInt(process.env.PORT || '3007');
-startService(app, 'grooming', PORT);
+if (process.env.NODE_ENV !== 'test') {
+  startService(app, 'grooming', PORT);
+}
+
+module.exports = app;
