@@ -47,7 +47,7 @@ function getPool() {
  */
 async function query(sql, params) {
   const t0 = Date.now();
-  const [rows] = await getPool().execute(sql, params);
+  const [rows] = await getPool().query(sql, params);
   const ms = Date.now() - t0;
 
   if (ms >= SLOW_QUERY_MS) {
@@ -95,8 +95,9 @@ async function callProc(name, args = []) {
  * @returns {mysql.PoolConnection & { query, queryOne, savepoint, releaseSavepoint, rollbackToSavepoint }}
  */
 function decorateConn(conn) {
+  const rawQuery = conn.query.bind(conn);
   conn.query = async function(sql, params) {
-    const [rows] = await conn.execute(sql, params);
+    const [rows] = await rawQuery(sql, params);
     if (!Array.isArray(rows)) return [rows];
     return rows;
   };
