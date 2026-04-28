@@ -411,11 +411,20 @@ paths:
           name: speciesId
           schema: { type: integer }
         - in: query
+          name: species
+          schema: { type: string }
+        - in: query
           name: isActive
           schema: { type: string, enum: [true, false, all], default: 'true' }
         - in: query
+          name: is_active
+          schema: { oneOf: [{ type: string, enum: [true, false, all] }, { type: integer, enum: [0, 1] }] }
+        - in: query
           name: page
           schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Lista paginada de pacientes }
     post:
