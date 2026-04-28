@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4050'
+const ACCESS_TOKEN_KEY = 'accessToken'
 
 export const http = axios.create({
   baseURL: API_URL,
@@ -12,8 +13,9 @@ export const http = axios.create({
 // Inyecta el access token en cada request
 http.interceptors.request.use(cfg => {
   const auth = useAuthStore()
-  if (auth.accessToken) {
-    cfg.headers.Authorization = `Bearer ${auth.accessToken}`
+  const token = auth.accessToken || localStorage.getItem(ACCESS_TOKEN_KEY)
+  if (token) {
+    cfg.headers.Authorization = `Bearer ${token}`
   }
   return cfg
 })

@@ -2,6 +2,10 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '../api/auth'
 
+const ACCESS_TOKEN_KEY = 'accessToken'
+const LEGACY_ACCESS_TOKEN_KEY = 'andro_at'
+const USER_KEY = 'andro_user'
+
 function parseJwt(token) {
   try {
     return JSON.parse(atob(token.split('.')[1]))
@@ -11,8 +15,12 @@ function parseJwt(token) {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const accessToken = ref(localStorage.getItem('andro_at') || null)
-  const user        = ref(JSON.parse(localStorage.getItem('andro_user') || 'null'))
+  const accessToken = ref(
+    localStorage.getItem(ACCESS_TOKEN_KEY) ||
+    localStorage.getItem(LEGACY_ACCESS_TOKEN_KEY) ||
+    null
+  )
+  const user        = ref(JSON.parse(localStorage.getItem(USER_KEY) || 'null'))
 
   const isAuthenticated = computed(() => !!accessToken.value)
   const roles           = computed(() => user.value?.roles || [])
@@ -31,11 +39,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   function setTokens(at) {
     accessToken.value = at
-    localStorage.setItem('andro_at', at)
+    localStorage.setItem(ACCESS_TOKEN_KEY, at)
+    localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
     const payload = parseJwt(at)
     if (payload) {
       user.value = payload
-      localStorage.setItem('andro_user', JSON.stringify(payload))
+      localStorage.setItem(USER_KEY, JSON.stringify(payload))
     }
   }
 
@@ -50,7 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Merge user info from response
     if (payload.user) {
       user.value = { ...user.value, ...payload.user, roles: payload.user.roles }
-      localStorage.setItem('andro_user', JSON.stringify(user.value))
+      localStorage.setItem(USER_KEY, JSON.stringify(user.value))
     }
     return { requiresTwoFactor: false }
   }
@@ -71,15 +80,16 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await authApi.me()
     const payload = res.data?.data || res.data
     user.value = { ...user.value, ...payload }
-    localStorage.setItem('andro_user', JSON.stringify(user.value))
+    localStorage.setItem(USER_KEY, JSON.stringify(user.value))
   }
 
   function logout() {
     authApi.logout().catch(() => {})
     accessToken.value = null
     user.value = null
-    localStorage.removeItem('andro_at')
-    localStorage.removeItem('andro_user')
+    localStorage.removeItem(ACCESS_TOKEN_KEY)
+    localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
   }
 
   // Menú permitido según rol
