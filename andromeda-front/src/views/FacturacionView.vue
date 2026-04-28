@@ -462,12 +462,18 @@ async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
     const params = { page, limit: 20 }
-    if (search.value)       params.search = search.value
     if (statusFilter.value) params.status = statusFilter.value
     if (dateFrom.value)     params.from   = dateFrom.value
     if (dateTo.value)       params.to     = dateTo.value
     const { data } = await http.get('/invoices', { params })
-    items.value = data.data || data.invoices || data || []
+    let rows = data.data || data.invoices || data || []
+    const needle = search.value.trim().toLowerCase()
+    if (needle) {
+      rows = rows.filter((row) => [row.invoice_number, row.client_name, row.patient_name, row.email]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle)))
+    }
+    items.value = rows
     const m = data.meta || {}
     pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
     computeSummary()
