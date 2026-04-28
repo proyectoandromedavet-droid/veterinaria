@@ -14,6 +14,10 @@ describe('Gateway OpenAPI - critical frontend routes', () => {
     expect(spec.paths['/auth/admin/users/{id}/deactivate']?.patch).toBeDefined();
     expect(spec.paths['/tele/stats']?.get).toBeDefined();
     expect(spec.paths['/tele/platforms']?.get).toBeDefined();
+    expect(spec.paths['/reports/appointments']?.get).toBeDefined();
+    expect(spec.paths['/reports/{type}/export']?.post).toBeDefined();
+    expect(spec.paths['/billing/consolidated/summary']?.get).toBeDefined();
+    expect(spec.paths['/billing/consolidated/outstanding']?.get).toBeDefined();
   });
 
   it('documents query params used by appointment and telemedicine list screens', () => {
@@ -35,6 +39,21 @@ describe('Gateway OpenAPI - critical frontend routes', () => {
       'date',
       'page',
       'limit',
+    ]));
+  });
+
+  it('documents the real medical record creation contract accepted by the backend', () => {
+    const spec = YAML.load(path.join(__dirname, '../../gateway/docs/openapi.yaml'));
+    const schema = spec.paths['/medical-records'].post.requestBody.content['application/json'].schema;
+
+    expect(Array.isArray(schema.oneOf)).toBe(true);
+    expect(schema.oneOf).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        required: expect.arrayContaining(['appointmentId', 'chiefComplaint']),
+      }),
+      expect.objectContaining({
+        required: expect.arrayContaining(['patientId', 'chiefComplaint']),
+      }),
     ]));
   });
 });

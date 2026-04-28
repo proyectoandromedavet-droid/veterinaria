@@ -12,6 +12,19 @@ const validate = (req, res, next) => {
   next();
 };
 
+function logPathologyError(route, err, meta = {}) {
+  console.error(`[lab-imaging:pathology] ${route} failed`, {
+    message: err?.message,
+    code: err?.code,
+    errno: err?.errno,
+    sqlState: err?.sqlState,
+    sqlMessage: err?.sqlMessage,
+    sql: err?.sql,
+    meta,
+    stack: err?.stack,
+  });
+}
+
 // GET /pathology/orders
 router.get('/orders', async (req, res, next) => {
   try {
@@ -35,12 +48,21 @@ router.get('/orders', async (req, res, next) => {
        JOIN users    u         ON po.ordered_by         = u.id
        LEFT JOIN pathology_samples ps ON ps.pathology_order_id = po.id
        WHERE ${conds.join(' AND ')}
-       GROUP BY po.id ORDER BY po.ordered_at DESC
+       GROUP BY po.id, po.order_number, po.status, po.ordered_at, po.clinical_history,
+                pt.name, p.name, sp.common_name, u.first_name, u.last_name
+       ORDER BY po.ordered_at DESC
        LIMIT :limit OFFSET :offset`,
       p
     );
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    logPathologyError('GET /pathology/orders', e, {
+      branchId: req.user?.branchId,
+      orgId: req.user?.orgId,
+      query: req.query,
+    });
+    next(e);
+  }
 });
 
 // GET /pathology/orders/:id
@@ -72,7 +94,14 @@ router.get('/orders/:id', async (req, res, next) => {
       ),
     ]);
     return R.ok(res, { ...order, samples, result });
-  } catch (e) { next(e); }
+  } catch (e) {
+    logPathologyError('GET /pathology/orders/:id', e, {
+      branchId: req.user?.branchId,
+      orgId: req.user?.orgId,
+      params: req.params,
+    });
+    next(e);
+  }
 });
 
 // POST /pathology/orders
@@ -115,7 +144,14 @@ router.post('/orders',
         );
       }
       return R.created(res, { id: orderId, orderNumber });
-    } catch (e) { next(e); }
+    } catch (e) {
+      logPathologyError('POST /pathology/orders', e, {
+        branchId: req.user?.branchId,
+        orgId: req.user?.orgId,
+        body: req.body,
+      });
+      next(e);
+    }
   }
 );
 
@@ -156,16 +192,35 @@ router.post('/orders/:id/result',
         [req.params.id]
       );
       return R.created(res, { id: r.insertId });
-    } catch (e) { next(e); }
+    } catch (e) {
+      logPathologyError('POST /pathology/orders/:id/result', e, {
+        branchId: req.user?.branchId,
+        orgId: req.user?.orgId,
+        params: req.params,
+        body: req.body,
+      });
+      next(e);
+    }
   }
 );
 
 // GET /pathology/types
-router.get('/types', async (_req, res, next) => {
+router.get('/types', async (req, res, next) => {
   try {
-    const rows = await db.query(`SELECT * FROM pathology_types WHERE is_active=TRUE ORDER BY name`);
+    const rows = await db.query(
+      `SELECT id, name, is_active, created_at
+       FROM pathology_types
+       WHERE is_active = TRUE
+       ORDER BY name`
+    );
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    logPathologyError('GET /pathology/types', e, {
+      branchId: req.user?.branchId,
+      orgId: req.user?.orgId,
+    });
+    next(e);
+  }
 });
 
 module.exports = router;

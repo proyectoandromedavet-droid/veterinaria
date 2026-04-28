@@ -45,6 +45,10 @@ const USER_HEADERS = {
 };
 
 describe('Contract - medical aliases', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('maps POST /triage/:id to the appointment triage handler', async () => {
     db.query.mockResolvedValueOnce([{ insertId: 77 }]);
 
@@ -70,5 +74,22 @@ describe('Contract - medical aliases', () => {
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.data[0].medication_name).toBe('Amoxicillin');
+  });
+
+  it('lists appointment types using the live schema-compatible projection', async () => {
+    db.query.mockResolvedValueOnce([
+      { id: 1, name: 'Consulta', default_duration_minutes: 30, color_hex: '#00AEEF', requires_fasting: 0 },
+    ]);
+
+    const res = await request(app)
+      .get('/appointments/types')
+      .set(USER_HEADERS);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('COALESCE(requires_prep, 0) AS requires_fasting'),
+      expect.objectContaining({ orgId: '10', branchId: '5' })
+    );
   });
 });

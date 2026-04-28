@@ -268,7 +268,7 @@ async function load() {
     const apptMeta    = appts.status === 'fulfilled'    ? appts.value.data?.meta    : null
     const patientMeta = patients.status === 'fulfilled' ? patients.value.data?.meta : null
     const rev         = revenue.status === 'fulfilled'  ? (revenue.value.data?.data  || revenue.value.data || []) : []
-    const apptData    = apptReport.status === 'fulfilled' ? (apptReport.value.data?.data || []) : []
+    const apptData    = apptReport.status === 'fulfilled' ? (apptReport.value.data?.data || apptReport.value.data || {}) : {}
 
     // Revenue totals
     const totalRev = Array.isArray(rev)
@@ -286,14 +286,19 @@ async function load() {
       patientsBySpecies:  {},
       topDiagnoses:       [],
       topVaccines:        [],
-      revenueByMonth:     Array.isArray(rev) ? rev.slice(0, 12) : [],
+      revenueByMonth:     Array.isArray(rev)
+        ? rev.slice(0, 12).map((row) => ({ month: row.period, total: row.gross_revenue || 0 }))
+        : [],
     }
 
-    // Build appointments by status from raw list if available
-    if (Array.isArray(apptData) && apptData.length > 0) {
-      const byStatus = {}
-      apptData.forEach(a => { byStatus[a.status] = (byStatus[a.status] || 0) + 1 })
-      data.value.appointmentsByStatus = byStatus
+    if (apptData.summary) {
+      data.value.appointmentsByStatus = {
+        scheduled:   Number(apptData.summary.total_scheduled || 0),
+        completed:   Number(apptData.summary.completed || 0),
+        cancelled:   Number(apptData.summary.cancelled || 0),
+        no_show:     Number(apptData.summary.no_show || 0),
+        in_progress: Number(apptData.summary.in_progress || 0),
+      }
     }
   } catch (e) {
     error.value = ''
@@ -302,10 +307,10 @@ async function load() {
 
 async function exportReport() {
   try {
-    const params = { format: 'csv' }
-    if (dateFrom.value) params.date_from = dateFrom.value
-    if (dateTo.value)   params.date_to   = dateTo.value
-    const { data: blob } = await http.get('/reports/export', { params, responseType: 'blob' })
+    const payload = { format: 'csv' }
+    if (dateFrom.value) payload.from = dateFrom.value
+    if (dateTo.value)   payload.to   = dateTo.value
+    const { data: blob } = await http.post('/reports/revenue/export', payload, { responseType: 'blob' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url; a.download = `reporte_${dateFrom.value || 'periodo'}.csv`

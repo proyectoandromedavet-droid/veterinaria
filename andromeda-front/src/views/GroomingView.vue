@@ -198,9 +198,14 @@ async function load() {
     const params = {}
     if (dateFilter.value)   params.date   = dateFilter.value
     if (statusFilter.value) params.status = statusFilter.value
-    if (search.value)       params.search = search.value
     const { data } = await http.get('/grooming/appointments', { params })
-    items.value = data.data || data.sessions || data || []
+    const rows = data.data || data.sessions || data || []
+    const needle = search.value.trim().toLowerCase()
+    items.value = needle
+      ? rows.filter((row) => [row.patient_name, row.client_name, row.groomer_name, row.services]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)))
+      : rows
     const all = items.value
     kpis.value.today     = all.length
     kpis.value.pending   = all.filter(g => g.status === 'scheduled').length

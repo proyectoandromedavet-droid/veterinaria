@@ -14,12 +14,23 @@ const validate = (req, res, next) => {
   next();
 };
 
-const getAppointmentTypes = [async (_req, res, next) => {
+const getAppointmentTypes = [async (req, res, next) => {
   try {
     const rows = await db.query(
-      `SELECT id, name, code, category, default_duration_minutes, color_hex, requires_fasting
+      `SELECT id,
+              name,
+              NULL AS code,
+              NULL AS category,
+              default_duration_minutes,
+              color_hex,
+              COALESCE(requires_prep, 0) AS requires_fasting
        FROM appointment_types
+       WHERE COALESCE(is_active, 1) = TRUE
+         AND (organization_id IS NULL OR organization_id = :orgId)
+         AND (branch_id IS NULL OR branch_id = :branchId)
        ORDER BY name`
+      ,
+      { orgId: req.user.orgId, branchId: req.user.branchId }
     );
     return R.ok(res, rows);
   } catch (e) { next(e); }
