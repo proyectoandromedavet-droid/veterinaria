@@ -506,6 +506,42 @@ paths:
         '201': { description: Co-dueño agregado }
 
   # ── APPOINTMENTS ───────────────────────────────────────────────────────────
+  /patients/species/all:
+    get:
+      tags: [Patients]
+      summary: Listar especies de referencia
+      responses:
+        '200': { description: Lista de especies }
+
+  /species/all:
+    get:
+      tags: [Patients]
+      summary: Listar especies de referencia (alias)
+      responses:
+        '200': { description: Lista de especies }
+
+  /patients/breeds/all:
+    get:
+      tags: [Patients]
+      summary: Listar razas de referencia
+      parameters:
+        - in: query
+          name: speciesId
+          schema: { type: integer }
+      responses:
+        '200': { description: Lista de razas }
+
+  /breeds/all:
+    get:
+      tags: [Patients]
+      summary: Listar razas de referencia (alias)
+      parameters:
+        - in: query
+          name: speciesId
+          schema: { type: integer }
+      responses:
+        '200': { description: Lista de razas }
+
   /appointments:
     get:
       tags: [Appointments]
