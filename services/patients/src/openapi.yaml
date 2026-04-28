@@ -140,15 +140,30 @@ paths:
           in: query
           schema:
             type: string
+        - name: speciesId
+          in: query
+          schema:
+            type: integer
         - name: species
           in: query
           schema:
             type: string
+        - name: isActive
+          in: query
+          schema:
+            oneOf:
+              - type: string
+                enum: ['true', 'false', 'all']
+              - type: integer
+                enum: [0, 1]
         - name: is_active
           in: query
           schema:
-            type: integer
-            enum: [0, 1]
+            oneOf:
+              - type: string
+                enum: ['true', 'false', 'all']
+              - type: integer
+                enum: [0, 1]
       responses:
         '200':
           description: Paginated list of patients
@@ -264,10 +279,17 @@ paths:
                 sex:
                   type: string
                   enum: [male, female, unknown]
-                dateOfBirth:
+                birthdate:
                   type: string
                   format: date
+                birthDate:
+                  type: string
+                  format: date
+                chipNumber:
+                  type: string
                 microchip:
+                  type: string
+                microchipNumber:
                   type: string
                 notes:
                   type: string

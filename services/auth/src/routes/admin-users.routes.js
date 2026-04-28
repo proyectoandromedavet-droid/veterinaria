@@ -141,6 +141,9 @@ router.get('/users',
         params.isActive = isActive === 'true' ? 1 : 0;
       }
 
+      const countParams = { orgId: req.user.orgId };
+      if (params.isActive !== undefined) countParams.isActive = params.isActive;
+
       const [users, [{ total }]] = await Promise.all([
         db.query(
           `SELECT u.id, u.first_name, u.last_name, u.email, u.phone,
@@ -160,8 +163,8 @@ router.get('/users',
         db.query(
           `SELECT COUNT(DISTINCT u.id) AS total
            FROM users u JOIN branches b ON u.branch_id = b.id
-           WHERE b.organization_id = :orgId`,
-          { orgId: req.user.orgId }
+           WHERE ${conds.join(' AND ')}`,
+          countParams
         ),
       ]);
 

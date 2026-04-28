@@ -47,7 +47,15 @@ function validate(req, res, next) {
 // ── GET /patients ─────────────────────────────────────────────────────────────
 router.get('/', async (req, res, next) => {
   try {
-    const { search, speciesId, isActive = 'true', page = 1 } = req.query;
+    const {
+      search,
+      speciesId,
+      species,
+      isActive: isActiveQuery,
+      is_active: isActiveLegacy,
+      page = 1,
+    } = req.query;
+    const isActive = isActiveQuery ?? isActiveLegacy ?? 'true';
     const limit  = Math.min(parseInt(req.query.limit || '20'), 100);
     const offset = (Math.max(parseInt(page), 1) - 1) * limit;
     const branchId = req.user.branchId;
@@ -57,16 +65,25 @@ router.get('/', async (req, res, next) => {
 
     if (isActive !== 'all') {
       conditions.push(`p.is_active = :isActive`);
-      params.isActive = isActive === 'true' ? 1 : 0;
+      params.isActive = ['1', 1, true, 'true'].includes(isActive) ? 1 : 0;
     }
 
     if (search) {
       conditions.push(`(p.name LIKE :s OR p.chip_number LIKE :s OR p.tattoo_number LIKE :s OR CONCAT(cl.first_name,' ',cl.last_name) LIKE :s)`);
       params.s = `%${search}%`;
     }
-    if (speciesId) { conditions.push(`p.species_id = :speciesId`); params.speciesId = speciesId; }
+    if (speciesId) {
+      conditions.push(`p.species_id = :speciesId`);
+      params.speciesId = speciesId;
+    } else if (species) {
+      conditions.push(`sp.common_name = :species`);
+      params.species = species;
+    }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
+    const countParams = { ...params };
+    delete countParams.limit;
+    delete countParams.offset;
 
     const [rows, [{ total }]] = await Promise.all([
       db.query(
@@ -91,8 +108,9 @@ router.get('/', async (req, res, next) => {
          FROM patients p
          JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
          JOIN clients cl ON po.client_id = cl.id
+         LEFT JOIN species sp ON p.species_id = sp.id
          ${where}`,
-        { branchId, ...(search && { s: `%${search}%` }), ...(speciesId && { speciesId }) }
+        countParams
       ),
     ]);
 
@@ -152,12 +170,16 @@ router.post('/',
   async (req, res, next) => {
     try {
       const {
-        name, speciesId, breedId, coatColorId, sex, birthdate,
-        chipNumber, tattooNumber, passportNumber,
+        name, speciesId, breedId, coatColorId, sex,
+        birthdate: rawBirthdate, birthDate,
+        chipNumber: rawChipNumber, microchip, microchipNumber,
+        tattooNumber, passportNumber,
         weightKg, bodyConditionScore,
         isNeutered, isDeceased, photoUrl, notes,
         primaryOwnerId,
       } = req.body;
+      const birthdate = rawBirthdate ?? birthDate;
+      const chipNumber = rawChipNumber ?? microchipNumber ?? microchip;
 
       await db.transaction(async (conn) => {
         const [r] = await conn.execute(
@@ -205,6 +227,7 @@ router.put('/:id',
         'is_sterilized','is_deceased','photo_url','notes'];
       const map = {
         breedId:'breed_id', coatColorId:'coat_color_id', chipNumber:'chip_number',
+        birthDate:'birthdate', microchip:'chip_number', microchipNumber:'chip_number',
         tattooNumber:'tattoo_number', passportNumber:'passport_number',
         weightKg:'weight_kg', bodyConditionScore:'body_condition_score',
         isNeutered:'is_sterilized', isDeceased:'is_deceased', photoUrl:'photo_url',

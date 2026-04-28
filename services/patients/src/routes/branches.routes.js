@@ -46,7 +46,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /branches/:id — detalle de una sucursal
-router.get('/:id', async (req, res, next) => {
+router.get('/:id(\\d+)', async (req, res, next) => {
   try {
     const branch = await db.queryOne(
       `SELECT b.*, o.name AS org_name
