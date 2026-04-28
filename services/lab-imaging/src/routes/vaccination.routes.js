@@ -106,8 +106,7 @@ router.get('/vaccines', async (req, res, next) => {
 
 // ── Deworming ─────────────────────────────────────────────────────────────────
 
-// GET /vaccinations/deworming?patientId=
-router.get('/deworming', async (req, res, next) => {
+const getDeworming = [async (req, res, next) => {
   try {
     const { patientId, page = 1, limit = 30 } = req.query;
     const offset = (page - 1) * limit;
@@ -133,10 +132,9 @@ router.get('/deworming', async (req, res, next) => {
     );
     return R.ok(res, rows);
   } catch (e) { next(e); }
-});
+}];
 
-// GET /vaccinations/deworming/alerts
-router.get('/deworming/alerts', async (req, res, next) => {
+const getDewormingAlerts = [async (req, res, next) => {
   try {
     const rows = await db.query(
       `SELECT * FROM v_deworming_alerts WHERE branch_id = :bid ORDER BY next_due_date`,
@@ -144,10 +142,9 @@ router.get('/deworming/alerts', async (req, res, next) => {
     );
     return R.ok(res, rows);
   } catch (e) { next(e); }
-});
+}];
 
-// POST /vaccinations/deworming
-router.post('/deworming',
+const postDeworming = [
   body('patientId').isInt(),
   body('productId').isInt(),
   body('dewormingDate').isISO8601(),
@@ -174,17 +171,32 @@ router.post('/deworming',
       );
       return R.created(res, { id: r.insertId });
     } catch (e) { next(e); }
-  }
-);
+  },
+];
 
-// GET /vaccinations/deworming/products
-router.get('/deworming/products', async (_req, res, next) => {
+const getDewormingProducts = [async (_req, res, next) => {
   try {
     const rows = await db.query(
       `SELECT * FROM antiparasitic_products WHERE is_active = TRUE ORDER BY parasite_type, name`
     );
     return R.ok(res, rows);
   } catch (e) { next(e); }
-});
+}];
+
+// GET /vaccinations/deworming?patientId=
+router.get('/deworming', ...getDeworming);
+
+// GET /vaccinations/deworming/alerts
+router.get('/deworming/alerts', ...getDewormingAlerts);
+
+// POST /vaccinations/deworming
+router.post('/deworming', ...postDeworming);
+
+// GET /vaccinations/deworming/products
+router.get('/deworming/products', ...getDewormingProducts);
 
 module.exports = router;
+module.exports.getDeworming = getDeworming;
+module.exports.getDewormingAlerts = getDewormingAlerts;
+module.exports.postDeworming = postDeworming;
+module.exports.getDewormingProducts = getDewormingProducts;

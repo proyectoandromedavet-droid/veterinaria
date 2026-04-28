@@ -295,8 +295,7 @@ router.post('/:id/sign', async (req, res, next) => {
   }
 });
 
-// GET /medical-records/:id/prescriptions
-router.get('/:id/prescriptions', async (req, res, next) => {
+const getPrescriptions = [async (req, res, next) => {
   try {
     const rows = await db.query(
       `SELECT p.*, pi.medication_name, pi.dose, pi.frequency, pi.duration_days, pi.quantity, pi.instructions
@@ -307,10 +306,9 @@ router.get('/:id/prescriptions', async (req, res, next) => {
     );
     return R.ok(res, rows);
   } catch (e) { next(e); }
-});
+}];
 
-// POST /medical-records/:id/prescriptions
-router.post('/:id/prescriptions',
+const postPrescriptions = [
   body('items').isArray({ min: 1 }),
   validate,
   async (req, res, next) => {
@@ -348,7 +346,15 @@ router.post('/:id/prescriptions',
       );
       return R.created(res, { id: prescId });
     } catch (e) { next(e); }
-  }
-);
+  },
+];
+
+// GET /medical-records/:id/prescriptions
+router.get('/:id/prescriptions', ...getPrescriptions);
+
+// POST /medical-records/:id/prescriptions
+router.post('/:id/prescriptions', ...postPrescriptions);
 
 module.exports = router;
+module.exports.getPrescriptions = getPrescriptions;
+module.exports.postPrescriptions = postPrescriptions;

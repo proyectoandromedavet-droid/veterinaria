@@ -373,9 +373,61 @@ paths:
                         category:
                           type: string
 
+  /species/all:
+    get:
+      summary: List all species (public alias)
+      responses:
+        '200':
+          description: Species list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, common_name]
+                      properties:
+                        id:
+                          type: integer
+                        common_name:
+                          type: string
+                        scientific_name:
+                          type: string
+                        category:
+                          type: string
+
   /patients/breeds/all:
     get:
       summary: List all breeds (reference data)
+      parameters:
+        - name: speciesId
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Breeds list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+
+  /breeds/all:
+    get:
+      summary: List all breeds (public alias)
       parameters:
         - name: speciesId
           in: query

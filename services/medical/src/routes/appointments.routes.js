@@ -132,8 +132,7 @@ router.patch('/:id/status',
   }
 );
 
-// POST /appointments/:id/triage
-router.post('/:id/triage',
+const postTriage = [
   body('priority').isIn(['immediate','urgent','less_urgent','non_urgent']),
   body('chiefComplaint').notEmpty(),
   validate,
@@ -166,8 +165,11 @@ router.post('/:id/triage',
       );
       return R.created(res, { id: r.insertId });
     } catch (e) { next(e); }
-  }
-);
+  },
+];
+
+// POST /appointments/:id/triage
+router.post('/:id/triage', ...postTriage);
 
 // ─── iCal ─────────────────────────────────────────────────────────────────────
 
@@ -354,3 +356,4 @@ router.delete('/:id/calendar/sync', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.postTriage = postTriage;
