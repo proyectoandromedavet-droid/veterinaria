@@ -146,8 +146,8 @@ router.post('/2fa/challenge',
 // ── Google Calendar OAuth — iniciar conexión (autenticado) ───────────────────
 // GET /auth/google/connect → redirige al consentimiento de Google
 router.get('/google/connect', fromHeaders, async (req, res) => {
-  const { createClient } = require('redis');
   const { v4: uuidv4 }   = require('uuid');
+  const { getRedisSingleton } = require('../../../../shared/redis');
 
   const userId = req.user.userId;
   if (!userId) return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
@@ -156,14 +156,9 @@ router.get('/google/connect', fromHeaders, async (req, res) => {
   const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
   try {
-    const redis = createClient({
-      socket:   { host: process.env.REDIS_HOST || 'redis', port: parseInt(process.env.REDIS_PORT || '6379') },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
-    await redis.connect();
+    const redis = await getRedisSingleton('auth-oauth', 'auth-oauth');
     // Nonce expira en 10 min — solo para el tiempo del flujo OAuth
     await redis.setEx(`oauth:nonce:${nonce}`, 600, String(userId));
-    await redis.disconnect();
   } catch (_) {
     return res.status(503).json({ success: false, error: { message: 'Service temporarily unavailable' } });
   }
@@ -186,15 +181,10 @@ router.get('/google/callback', async (req, res) => {
 
   let userId;
   try {
-    const { createClient } = require('redis');
-    const redis = createClient({
-      socket:   { host: process.env.REDIS_HOST || 'redis', port: parseInt(process.env.REDIS_PORT || '6379') },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
-    await redis.connect();
+    const { getRedisSingleton } = require('../../../../shared/redis');
+    const redis = await getRedisSingleton('auth-oauth', 'auth-oauth');
     userId = await redis.get(`oauth:nonce:${nonce}`);
     if (userId) await redis.del(`oauth:nonce:${nonce}`);  // consume nonce (single use)
-    await redis.disconnect();
   } catch (_) {
     return res.redirect(`${FRONTEND_URL}/settings/calendar?error=internal_error`);
   }

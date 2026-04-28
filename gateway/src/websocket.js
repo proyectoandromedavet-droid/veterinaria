@@ -1,8 +1,8 @@
 'use strict';
 
 const { WebSocketServer } = require('ws');
-const { createClient }    = require('redis');
 const { verifyAccess }    = require('../../shared/jwt');
+const { createRedisClient, connectRedis, getRedisSingleton } = require('../../shared/redis');
 const { logger }          = require('./middleware/logger');
 
 // ── Orígenes permitidos para WebSocket ───────────────────────────────────────
@@ -34,17 +34,10 @@ let redisPublisher;
 
 async function getRedisClients() {
   if (!redisSubscriber) {
-    const opts = {
-      socket: {
-        host:     process.env.REDIS_HOST || 'localhost',
-        port:     parseInt(process.env.REDIS_PORT || '6379'),
-      },
-      password: process.env.REDIS_PASSWORD || undefined,
-    };
-    redisSubscriber = createClient(opts);
-    redisPublisher  = createClient(opts);
-    await redisSubscriber.connect();
-    await redisPublisher.connect();
+    redisSubscriber = createRedisClient('gateway-ws-sub');
+    redisPublisher  = createRedisClient('gateway-ws-pub');
+    await connectRedis(redisSubscriber, 'gateway-ws-sub');
+    await connectRedis(redisPublisher, 'gateway-ws-pub');
   }
   return { sub: redisSubscriber, pub: redisPublisher };
 }
@@ -112,15 +105,10 @@ async function attachWebSocket(httpServer) {
     // 3. Verificar revocación en Redis (misma lista negra que el middleware HTTP)
     if (user.jti) {
       try {
-        const { sub } = await getRedisClients();
+        await getRedisClients();
         // Usar el subscriber para no mezclar con pub/sub — creamos cliente temporal si hace falta
-        const revokeCheck = createClient({
-          socket:   { host: process.env.REDIS_HOST || 'localhost', port: parseInt(process.env.REDIS_PORT || '6379') },
-          password: process.env.REDIS_PASSWORD || undefined,
-        });
-        await revokeCheck.connect().catch(() => {});
+        const revokeCheck = await getRedisSingleton('gateway-auth', 'gateway-auth');
         const revoked = revokeCheck.isReady ? await revokeCheck.get(`revoked:${user.jti}`) : null;
-        await revokeCheck.quit().catch(() => {});
         if (revoked) {
           logger.warn('WS: connection rejected — revoked token', { userId: user.userId });
           ws.close(4001, 'Token revoked');

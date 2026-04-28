@@ -199,6 +199,27 @@ describe('POST /refresh', () => {
     expect(redisClient._store.get(`rt:used:${tokenHash}`)).toBe('10');
   });
 
+  test('200 — refresh degrades gracefully when Redis is unavailable', async () => {
+    const session = {
+      id: 10, user_id: 1, jti: 'test-jti',
+      email: 'vet@clinic.com', branch_id: 10, organization_id: 5,
+    };
+
+    redisClient.get.mockRejectedValueOnce(new Error('Redis down'));
+    redisClient.setEx.mockRejectedValueOnce(new Error('Redis down'));
+    redisClient.setEx.mockRejectedValueOnce(new Error('Redis down'));
+
+    db.queryOne.mockResolvedValueOnce(session);
+    db.query
+      .mockResolvedValueOnce([{ name: 'veterinarian' }])
+      .mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+    const res = await request(app).post('/refresh').send({ refreshToken });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.accessToken).toBeTruthy();
+  });
+
   test('401 — token not found in DB', async () => {
     db.queryOne.mockResolvedValueOnce(null); // session not found
 
@@ -252,6 +273,20 @@ describe('POST /logout', () => {
 
     expect(res.status).toBe(204);
     expect(redisClient._store.get('revoked:some-jti')).toBe('1');
+  });
+
+  test('204 — logout still works if Redis revoke fails', async () => {
+    redisClient.setEx.mockRejectedValueOnce(new Error('Redis down'));
+    db.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+    const res = await request(app)
+      .post('/logout')
+      .set('X-User-Id', '1')
+      .set('X-Org-Id', '5')
+      .set('X-User-Roles', 'veterinarian')
+      .set('X-Jti', 'some-jti');
+
+    expect(res.status).toBe(204);
   });
 });
 

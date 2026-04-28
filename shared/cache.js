@@ -5,24 +5,11 @@
  * Provides get/set/del/invalidatePrefix + Express middleware.
  */
 
-const { createClient } = require('redis');
 const { cacheHits, cacheMisses } = require('./metrics');
-
-let _client;
+const { getRedisSingleton } = require('./redis');
 
 async function getClient() {
-  if (!_client) {
-    _client = createClient({
-      socket: {
-        host: process.env.REDIS_HOST || 'redis',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-      },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
-    _client.on('error', () => {});
-    await _client.connect().catch(() => {});
-  }
-  return _client;
+  return getRedisSingleton('shared-cache', 'cache');
 }
 
 /**

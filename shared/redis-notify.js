@@ -10,23 +10,10 @@
  *   await notify.toBranch(branchId, 'new_appointment', { ... });
  */
 
-const { createClient } = require('redis');
-
-let publisher;
+const { getRedisSingleton } = require('./redis');
 
 async function getPublisher() {
-  if (!publisher) {
-    publisher = createClient({
-      socket: {
-        host: process.env.REDIS_HOST || 'redis',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-      },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
-    publisher.on('error', (e) => console.error('[redis-notify]', e.message));
-    await publisher.connect();
-  }
-  return publisher;
+  return getRedisSingleton('redis-notify', 'redis-notify');
 }
 
 /**

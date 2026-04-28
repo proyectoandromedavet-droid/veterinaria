@@ -73,8 +73,23 @@ describe('Contract — GET /patients', () => {
     },
   };
 
+  const LIST_SCHEMA_ROWS = [
+    { TABLE_NAME: 'patients', COLUMN_NAME: 'organization_id' },
+    { TABLE_NAME: 'patients', COLUMN_NAME: 'is_active' },
+    { TABLE_NAME: 'patients', COLUMN_NAME: 'chip_number' },
+    { TABLE_NAME: 'patients', COLUMN_NAME: 'tattoo_number' },
+    { TABLE_NAME: 'patients', COLUMN_NAME: 'sex' },
+    { TABLE_NAME: 'patients', COLUMN_NAME: 'birthdate' },
+    { TABLE_NAME: 'patients', COLUMN_NAME: 'coat_color_id' },
+    { TABLE_NAME: 'patients', COLUMN_NAME: 'body_condition_score' },
+    { TABLE_NAME: 'clients', COLUMN_NAME: 'branch_id' },
+    { TABLE_NAME: 'clients', COLUMN_NAME: 'phone' },
+    { TABLE_NAME: 'patient_owners', COLUMN_NAME: 'ownership_type' },
+  ];
+
   it('paginated response has required shape', async () => {
     db.query.mockImplementation((sql) => {
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) return Promise.resolve(LIST_SCHEMA_ROWS);
       if (sql.includes('COUNT')) return Promise.resolve([{ total: 2 }]);
       return Promise.resolve([
         { id: 1, name: 'Buddy', species: 'Dog', primary_owner: 'John Doe', owner_id: 5, is_active: 1 },
@@ -102,6 +117,7 @@ describe('Contract — GET /patients', () => {
 
   it('supports GET /patients?limit=1', async () => {
     db.query.mockImplementation((sql) => {
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) return Promise.resolve(LIST_SCHEMA_ROWS);
       if (sql.includes('COUNT')) return Promise.resolve([{ total: 1 }]);
       return Promise.resolve([
         { id: 1, name: 'Buddy', species: 'Dog', primary_owner: 'John Doe', owner_id: 5, is_active: 1 },

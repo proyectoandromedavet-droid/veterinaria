@@ -21,7 +21,7 @@
  *   router.post('/diagnose', requireFeature('ai_diagnosis'), requireUsageLimit('ai_diagnosis'), handler);
  */
 
-const { createClient } = require('redis');
+const { getRedisSingleton } = require('./redis');
 
 // ── Plan definitions ──────────────────────────────────────────────────────────
 const PLAN_LIMITS = {
@@ -81,17 +81,8 @@ const ALERT_THRESHOLD = parseFloat(process.env.USAGE_ALERT_THRESHOLD || '0.8');
 const DEFAULT_PLAN = process.env.DEFAULT_PLAN_TIER || 'free';
 
 // ── Redis client ──────────────────────────────────────────────────────────────
-let _redis;
 async function getRedis() {
-  if (!_redis) {
-    _redis = createClient({
-      socket:   { host: process.env.REDIS_HOST || 'redis', port: parseInt(process.env.REDIS_PORT || '6379') },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
-    _redis.on('error', () => {});
-    await _redis.connect().catch(() => {});
-  }
-  return _redis;
+  return getRedisSingleton('usage-limits', 'usage-limits');
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

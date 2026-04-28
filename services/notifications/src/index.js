@@ -4,11 +4,11 @@ require('dotenv').config();
 
 const http    = require('http');
 const express = require('express');
-const { createClient } = require('redis');
 const db        = require('../../../shared/db');
 const R         = require('../../../shared/response');
 const messaging = require('../../../shared/messaging');
 const fcm       = require('../../../shared/fcm');
+const { createRedisClient, connectRedis } = require('../../../shared/redis');
 
 const app    = express();
 const server = http.createServer(app);
@@ -29,17 +29,20 @@ app.use((req, _res, next) => {
 
 // ── Redis pub/sub ─────────────────────────────────────────────────────────────
 let redisPub, redisSub;
-const redisOpts = {
-  socket:   { host: process.env.REDIS_HOST || 'redis', port: parseInt(process.env.REDIS_PORT || '6379') },
-  password: process.env.REDIS_PASSWORD || undefined,
-};
 
 async function getRedis() {
   if (!redisPub) {
-    redisPub = createClient(redisOpts);
-    redisSub = createClient(redisOpts);
-    await Promise.all([redisPub.connect(), redisSub.connect()]);
-    console.log('[notifications] Redis connected');
+    redisPub = createRedisClient('notifications-pub');
+    redisSub = createRedisClient('notifications-sub');
+    await Promise.all([
+      connectRedis(redisPub, 'notifications-pub'),
+      connectRedis(redisSub, 'notifications-sub'),
+    ]);
+    if (redisPub.isReady && redisSub.isReady) {
+      console.log('[notifications] Redis connected');
+    } else {
+      console.warn('[notifications] Redis unavailable, continuing in degraded mode');
+    }
   }
   return { pub: redisPub, sub: redisSub };
 }

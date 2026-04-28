@@ -57,6 +57,29 @@ function logPatientsError(route, err, meta = {}) {
   });
 }
 
+let _patientListSchemaPromise;
+async function getPatientListSchema() {
+  if (!_patientListSchemaPromise) {
+    _patientListSchemaPromise = db.query(
+      `SELECT TABLE_NAME, COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME IN ('patients', 'clients', 'patient_owners')`
+    ).then((rows) => {
+      const schema = {
+        patients: new Set(),
+        clients: new Set(),
+        patient_owners: new Set(),
+      };
+      for (const row of rows) {
+        if (schema[row.TABLE_NAME]) schema[row.TABLE_NAME].add(row.COLUMN_NAME);
+      }
+      return schema;
+    });
+  }
+  return _patientListSchemaPromise;
+}
+
 // ── GET /patients ─────────────────────────────────────────────────────────────
 router.get('/', async (req, res, next) => {
   try {
@@ -72,17 +95,43 @@ router.get('/', async (req, res, next) => {
     const limit  = Math.min(parseInt(req.query.limit || '20'), 100);
     const offset = (Math.max(parseInt(page), 1) - 1) * limit;
     const branchId = req.user.branchId;
+    const orgId = req.user.orgId;
+    const schema = await getPatientListSchema();
+    const patientCols = schema.patients;
+    const clientCols = schema.clients;
+    const ownerCols = schema.patient_owners;
 
-    const conditions = [`cl.branch_id = :branchId`];
-    const params = { branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const activeCol = patientCols.has('is_active') ? 'p.is_active' : (patientCols.has('active') ? 'p.active' : null);
+    const chipCol = patientCols.has('chip_number') ? 'p.chip_number' : (patientCols.has('microchip_number') ? 'p.microchip_number' : 'NULL');
+    const tattooCol = patientCols.has('tattoo_number') ? 'p.tattoo_number' : (patientCols.has('tattoo_code') ? 'p.tattoo_code' : 'NULL');
+    const sexCol = patientCols.has('sex')
+      ? 'p.sex'
+      : (patientCols.has('gender') ? `CASE p.gender WHEN 'M' THEN 'male' WHEN 'F' THEN 'female' ELSE 'unknown' END` : `'unknown'`);
+    const birthdateCol = patientCols.has('birthdate') ? 'p.birthdate' : (patientCols.has('date_of_birth') ? 'p.date_of_birth' : 'NULL');
+    const coatJoinCol = patientCols.has('coat_color_id') ? 'p.coat_color_id' : (patientCols.has('color_id') ? 'p.color_id' : null);
+    const bodyConditionCol = patientCols.has('body_condition_score') ? 'p.body_condition_score' : 'NULL';
+    const ownerPhoneCol = clientCols.has('phone') ? 'cl.phone' : (clientCols.has('phone_primary') ? 'cl.phone_primary' : 'NULL');
+    const ownerScopeCondition = clientCols.has('branch_id')
+      ? 'cl.branch_id = :branchId'
+      : (patientCols.has('organization_id') ? 'p.organization_id = :orgId' : null);
+    const ownerPrimaryCondition = ownerCols.has('active')
+      ? `po.ownership_type = 'primary' AND po.active = 1`
+      : `po.ownership_type = 'primary'`;
 
-    if (isActive !== 'all') {
-      conditions.push(`p.is_active = :isActive`);
+    if (!ownerScopeCondition) {
+      throw new Error('Patients list schema unsupported: missing clients.branch_id and patients.organization_id');
+    }
+
+    const conditions = [ownerScopeCondition];
+    const params = { branchId, orgId, limit: parseInt(limit), offset: parseInt(offset) };
+
+    if (isActive !== 'all' && activeCol) {
+      conditions.push(`${activeCol} = :isActive`);
       params.isActive = ['1', 1, true, 'true'].includes(isActive) ? 1 : 0;
     }
 
     if (search) {
-      conditions.push(`(p.name LIKE :s OR p.chip_number LIKE :s OR p.tattoo_number LIKE :s OR CONCAT(cl.first_name,' ',cl.last_name) LIKE :s)`);
+      conditions.push(`(p.name LIKE :s OR ${chipCol} LIKE :s OR ${tattooCol} LIKE :s OR CONCAT(cl.first_name,' ',cl.last_name) LIKE :s)`);
       params.s = `%${search}%`;
     }
     if (speciesId) {
@@ -100,17 +149,21 @@ router.get('/', async (req, res, next) => {
 
     const [rows, [{ total }]] = await Promise.all([
       db.query(
-        `SELECT p.id, p.name, p.chip_number, p.sex, p.birthdate, p.is_active,
+        `SELECT p.id, p.name,
+                ${chipCol} AS chip_number,
+                ${sexCol} AS sex,
+                ${birthdateCol} AS birthdate,
+                ${activeCol || '1'} AS is_active,
                 sp.common_name AS species, b.name AS breed, co.name AS coat_color,
                 CONCAT(cl.first_name,' ',cl.last_name) AS primary_owner,
-                cl.id AS owner_id, cl.phone AS owner_phone,
-                p.photo_url, p.weight_kg, p.body_condition_score
+                cl.id AS owner_id, ${ownerPhoneCol} AS owner_phone,
+                p.photo_url, p.weight_kg, ${bodyConditionCol} AS body_condition_score
          FROM patients p
-         JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
+         JOIN patient_owners po ON po.patient_id = p.id AND ${ownerPrimaryCondition}
          JOIN clients cl ON po.client_id = cl.id
          LEFT JOIN species     sp ON p.species_id  = sp.id
          LEFT JOIN breeds      b  ON p.breed_id    = b.id
-         LEFT JOIN coat_colors co ON p.coat_color_id = co.id
+         LEFT JOIN coat_colors co ON ${coatJoinCol ? `${coatJoinCol} = co.id` : '1 = 0'}
          ${where}
          ORDER BY p.name
          LIMIT :limit OFFSET :offset`,
@@ -119,7 +172,7 @@ router.get('/', async (req, res, next) => {
       db.query(
         `SELECT COUNT(DISTINCT p.id) AS total
          FROM patients p
-         JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
+         JOIN patient_owners po ON po.patient_id = p.id AND ${ownerPrimaryCondition}
          JOIN clients cl ON po.client_id = cl.id
          LEFT JOIN species sp ON p.species_id = sp.id
          ${where}`,
@@ -133,6 +186,9 @@ router.get('/', async (req, res, next) => {
       branchId: req.user?.branchId,
       orgId: req.user?.orgId,
       query: req.query,
+      migrationHint: (e?.code === 'ER_NO_SUCH_TABLE' || e?.code === 'ER_BAD_FIELD_ERROR')
+        ? 'Run scripts/migrations/001_base_schema.sql for core patients/clients tables.'
+        : undefined,
     });
     next(e);
   }

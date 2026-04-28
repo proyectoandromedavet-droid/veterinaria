@@ -15,23 +15,11 @@
 
 const rateLimit       = require('express-rate-limit');
 const { RedisStore }  = require('rate-limit-redis');
-const { createClient } = require('redis');
+const { getRedisSingleton } = require('../../../shared/redis');
 
 // ── Redis client para rate limiting ───────────────────────────────────────────
-let _rlRedis;
 async function getRlRedis() {
-  if (!_rlRedis) {
-    _rlRedis = createClient({
-      socket: {
-        host: process.env.REDIS_HOST || 'redis',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-      },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
-    _rlRedis.on('error', () => {});
-    await _rlRedis.connect().catch(() => {});
-  }
-  return _rlRedis;
+  return getRedisSingleton('gateway-rate-limit', 'gateway-rate-limit');
 }
 
 let _redisScriptSupported = null;

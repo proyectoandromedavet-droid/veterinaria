@@ -140,27 +140,9 @@ function ipGuard(req, res, next) {
  * Stores key → response in Redis for 24h.
  * Only applies to POST/PUT/PATCH/DELETE.
  */
-const { createClient } = require('redis');
-let idempotencyRedis;
-
 async function getIdempotencyRedis() {
-  if (!idempotencyRedis) {
-    const url = process.env.REDIS_URL;
-    idempotencyRedis = url
-      ? createClient({ url, socket: { connectTimeout: 3000, reconnectStrategy: false } })
-      : createClient({
-          socket: {
-            host:           process.env.REDIS_HOST || process.env.REDISHOST || 'redis',
-            port:           parseInt(process.env.REDIS_PORT || process.env.REDISPORT || '6379'),
-            connectTimeout: 3000,
-            reconnectStrategy: false,
-          },
-          password: process.env.REDIS_PASSWORD || process.env.REDISPASSWORD || undefined,
-        });
-    idempotencyRedis.on('error', () => {});
-    await idempotencyRedis.connect().catch(() => {});
-  }
-  return idempotencyRedis;
+  const { getRedisSingleton } = require('./redis');
+  return getRedisSingleton('idempotency', 'idempotency');
 }
 
 async function idempotency(req, res, next) {

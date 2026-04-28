@@ -2,11 +2,11 @@
 
 const bcrypt  = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { createClient } = require('redis');
 
 const db             = require('../../../../shared/db');
 const jwt            = require('../../../../shared/jwt');
 const R              = require('../../../../shared/response');
+const { getRedisSingleton } = require('../../../../shared/redis');
 const twoFactor      = require('../../../../shared/twoFactor');
 const { enforcePassword } = require('../../../../shared/passwordPolicy');
 const {
@@ -16,25 +16,27 @@ const {
 } = require('../../../../shared/email');
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
-let redisClient;
 async function getRedis() {
-  if (!redisClient) {
-    const url = process.env.REDIS_URL;
-    redisClient = url
-      ? createClient({ url, socket: { connectTimeout: 3000, reconnectStrategy: false } })
-      : createClient({
-          socket: {
-            host:           process.env.REDIS_HOST || process.env.REDISHOST || 'redis',
-            port:           parseInt(process.env.REDIS_PORT || process.env.REDISPORT || '6379'),
-            connectTimeout: 3000,
-            reconnectStrategy: false,
-          },
-          password: process.env.REDIS_PASSWORD || process.env.REDISPASSWORD || undefined,
-        });
-    redisClient.on('error', () => {});
-    await redisClient.connect();
+  return getRedisSingleton('auth-controller', 'auth-controller');
+}
+
+function logRedisWarning(context, err) {
+  console.warn('[auth][redis]', {
+    context,
+    message: err?.message,
+    code: err?.code,
+  });
+}
+
+async function runRedis(context, op) {
+  try {
+    const redis = await getRedis();
+    if (!redis?.isReady) return null;
+    return await op(redis);
+  } catch (err) {
+    logRedisWarning(context, err);
+    return null;
   }
-  return redisClient;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -311,11 +313,12 @@ async function refresh(req, res) {
   }
 
   const tokenHash = jwt.hashToken(refreshToken);
-  const redis     = await getRedis();
 
   // ── Reuse detection ────────────────────────────────────────────────────────
   // If this hash was already rotated away, a stolen token is being replayed.
-  const reusedSessionId = await redis.get(`rt:used:${tokenHash}`);
+  const reusedSessionId = await runRedis('refresh.reuse-check', (redis) =>
+    redis.get(`rt:used:${tokenHash}`)
+  );
   if (reusedSessionId) {
     // Revoke the session that was created after this token was stolen.
     await db.query(
@@ -328,9 +331,13 @@ async function refresh(req, res) {
       `SELECT jti FROM sessions WHERE id = :id`, { id: reusedSessionId }
     );
     if (stolenSession?.jti) {
-      await redis.setEx(`revoked:${stolenSession.jti}`, 15 * 60, '1');
+      await runRedis('refresh.revoke-stolen-jti', (redis) =>
+        redis.setEx(`revoked:${stolenSession.jti}`, 15 * 60, '1')
+      );
     }
-    await redis.del(`rt:used:${tokenHash}`);
+    await runRedis('refresh.clear-used-marker', (redis) =>
+      redis.del(`rt:used:${tokenHash}`)
+    );
     return R.unauthorized(res, 'Refresh token already used — possible token theft. All sessions revoked.');
   }
 
@@ -346,7 +353,9 @@ async function refresh(req, res) {
   if (!session) return R.unauthorized(res, 'Refresh token not found or expired');
 
   // Revoke old access JTI
-  await redis.setEx(`revoked:${session.jti}`, 15 * 60, '1');
+  await runRedis('refresh.revoke-old-jti', (redis) =>
+    redis.setEx(`revoked:${session.jti}`, 15 * 60, '1')
+  );
 
   const roles = await db.query(
     `SELECT r.name FROM roles r
@@ -374,7 +383,9 @@ async function refresh(req, res) {
   );
 
   // Mark old hash as "used" — 10 min window accounts for clock skew + network latency
-  await redis.setEx(`rt:used:${tokenHash}`, 10 * 60, String(session.id));
+  await runRedis('refresh.mark-used', (redis) =>
+    redis.setEx(`rt:used:${tokenHash}`, 10 * 60, String(session.id))
+  );
 
   const isProdRefresh = process.env.NODE_ENV === 'production';
   res.cookie('refreshToken', newRefresh, {
@@ -396,8 +407,11 @@ async function logout(req, res) {
   const jti    = req.user.jti;
 
   // Revoke current token
-  const redis = await getRedis();
-  await redis.setEx(`revoked:${jti}`, 15 * 60, '1');
+  if (jti) {
+    await runRedis('logout.revoke-jti', (redis) =>
+      redis.setEx(`revoked:${jti}`, 15 * 60, '1')
+    );
+  }
 
   // Mark session as revoked
   await db.query(
@@ -406,6 +420,7 @@ async function logout(req, res) {
     { jti, userId }
   );
 
+  res.clearCookie('refreshToken', { path: '/auth/refresh' });
   return R.noContent(res);
 }
 
@@ -414,6 +429,7 @@ async function logout(req, res) {
  */
 async function logoutAll(req, res) {
   await db.callProc('sp_revoke_user_sessions', [req.user.userId]);
+  res.clearCookie('refreshToken', { path: '/auth/refresh' });
   return R.noContent(res);
 }
 
@@ -604,8 +620,9 @@ async function revokeSession(req, res) {
   );
   if (!session) return R.notFound(res, 'Session not found');
 
-  const redis = await getRedis();
-  await redis.setEx(`revoked:${session.jti}`, 15 * 60, '1');
+  await runRedis('revoke-session.revoke-jti', (redis) =>
+    redis.setEx(`revoked:${session.jti}`, 15 * 60, '1')
+  );
   await db.query(
     `UPDATE sessions SET is_revoked = TRUE, revoked_at = NOW() WHERE id = :id`,
     { id }

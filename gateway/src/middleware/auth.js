@@ -12,23 +12,11 @@
  */
 
 const { verifyAccess } = require('../../../shared/jwt');
-const { createClient } = require('redis');
+const { getRedisSingleton } = require('../../../shared/redis');
 const { logger }       = require('./logger');
 
-let redisClient;
 async function getRedis() {
-  if (!redisClient) {
-    redisClient = createClient({
-      socket: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-      },
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
-    redisClient.on('error', (e) => logger.warn('Redis auth error', { error: e.message }));
-    await redisClient.connect().catch(() => {});
-  }
-  return redisClient;
+  return getRedisSingleton('gateway-auth', 'gateway-auth');
 }
 
 function extractToken(req) {
