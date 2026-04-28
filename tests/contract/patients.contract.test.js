@@ -99,6 +99,24 @@ describe('Contract — GET /patients', () => {
       expect(typeof patient.name).toBe('string');
     }
   });
+
+  it('supports GET /patients?limit=1', async () => {
+    db.query.mockImplementation((sql) => {
+      if (sql.includes('COUNT')) return Promise.resolve([{ total: 1 }]);
+      return Promise.resolve([
+        { id: 1, name: 'Buddy', species: 'Dog', primary_owner: 'John Doe', owner_id: 5, is_active: 1 },
+      ]);
+    });
+
+    const res = await request(app)
+      .get('/patients?limit=1')
+      .set(USER_HEADERS);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.meta.limit).toBe(1);
+  });
 });
 
 // ── Contract: GET /patients/:id (detail) ─────────────────────────────────────

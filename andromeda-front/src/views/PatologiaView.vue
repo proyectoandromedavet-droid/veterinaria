@@ -362,9 +362,14 @@ async function load() {
   try {
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
-    if (search.value)       params.search = search.value
     const { data } = await http.get('/pathology/orders', { params })
-    items.value = data.data || data || []
+    const rows = data.data || data || []
+    const needle = search.value.trim().toLowerCase()
+    items.value = needle
+      ? rows.filter((row) => [row.order_number, row.patient_name, row.pathology_type, row.ordered_by]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)))
+      : rows
     kpis.value.pending    = items.value.filter(o => o.status === 'pending').length
     kpis.value.processing = items.value.filter(o => o.status === 'processing').length
     kpis.value.reported   = items.value.filter(o => o.status === 'reported').length

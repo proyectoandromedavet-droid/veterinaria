@@ -44,6 +44,19 @@ function validate(req, res, next) {
   next();
 }
 
+function logPatientsError(route, err, meta = {}) {
+  console.error(`[patients] ${route} failed`, {
+    message: err?.message,
+    code: err?.code,
+    errno: err?.errno,
+    sqlState: err?.sqlState,
+    sqlMessage: err?.sqlMessage,
+    sql: err?.sql,
+    meta,
+    stack: err?.stack,
+  });
+}
+
 // ── GET /patients ─────────────────────────────────────────────────────────────
 router.get('/', async (req, res, next) => {
   try {
@@ -115,7 +128,14 @@ router.get('/', async (req, res, next) => {
     ]);
 
     return R.paginated(res, rows, total, page, limit);
-  } catch (e) { next(e); }
+  } catch (e) {
+    logPatientsError('GET /patients', e, {
+      branchId: req.user?.branchId,
+      orgId: req.user?.orgId,
+      query: req.query,
+    });
+    next(e);
+  }
 });
 
 // ── GET /patients/:id ─────────────────────────────────────────────────────────

@@ -856,6 +856,33 @@ paths:
         '201': { description: Resultados cargados. Alertas generadas si hay valores críticos. }
 
   # ── IMAGING ────────────────────────────────────────────────────────────────
+  /pathology/orders:
+    get:
+      tags: [Lab]
+      summary: Listar Ã³rdenes de patologÃ­a
+      parameters:
+        - in: query
+          name: patientId
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200': { description: Lista de Ã³rdenes de patologÃ­a }
+
+  /pathology/types:
+    get:
+      tags: [Lab]
+      summary: CatÃ¡logo de tipos de patologÃ­a
+      responses:
+        '200': { description: Lista de tipos de patologÃ­a }
+
   /imaging/orders:
     get:
       tags: [Imaging]

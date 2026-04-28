@@ -74,4 +74,34 @@ describe('Contract - deworming alias', () => {
     expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.data[0].name).toBe('Drontal');
   });
+
+  it('exposes GET /pathology/orders', async () => {
+    db.query.mockResolvedValueOnce([
+      { id: 10, order_number: 'PAT000010', status: 'pending', patient_name: 'Luna', pathology_type: 'Biopsia' },
+    ]);
+
+    const res = await request(app)
+      .get('/pathology/orders')
+      .set(USER_HEADERS);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data[0].order_number).toBe('PAT000010');
+  });
+
+  it('exposes GET /pathology/types', async () => {
+    db.query.mockResolvedValueOnce([
+      { id: 1, name: 'Biopsia', is_active: 1 },
+    ]);
+
+    const res = await request(app)
+      .get('/pathology/types')
+      .set(USER_HEADERS);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data[0].name).toBe('Biopsia');
+  });
 });
