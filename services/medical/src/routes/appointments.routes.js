@@ -14,6 +14,17 @@ const validate = (req, res, next) => {
   next();
 };
 
+const getAppointmentTypes = [async (_req, res, next) => {
+  try {
+    const rows = await db.query(
+      `SELECT id, name, code, category, default_duration_minutes, color_hex, requires_fasting
+       FROM appointment_types
+       ORDER BY name`
+    );
+    return R.ok(res, rows);
+  } catch (e) { next(e); }
+}];
+
 // GET /appointments
 router.get('/', async (req, res, next) => {
   try {
@@ -64,6 +75,9 @@ router.get('/today', async (req, res, next) => {
     return R.ok(res, rows);
   } catch (e) { next(e); }
 });
+
+// GET /appointments/types
+router.get('/types', ...getAppointmentTypes);
 
 // GET /appointments/:id
 router.get('/:id', async (req, res, next) => {
@@ -357,3 +371,4 @@ router.delete('/:id/calendar/sync', async (req, res, next) => {
 
 module.exports = router;
 module.exports.postTriage = postTriage;
+module.exports.getAppointmentTypes = getAppointmentTypes;

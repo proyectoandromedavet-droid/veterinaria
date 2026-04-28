@@ -650,11 +650,25 @@ async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
     const params = { page, limit: 15 }
-    if (search.value)   params.search    = search.value
-    if (dateFrom.value) params.date_from = dateFrom.value
-    if (dateTo.value)   params.date_to   = dateTo.value
     const { data } = await http.get('/medical-records', { params })
-    items.value = data.data || data.records || data || []
+    let rows = data.data || data.records || data || []
+    const needle = search.value.trim().toLowerCase()
+    if (needle) {
+      rows = rows.filter((row) => [row.patient_name, row.chief_complaint, row.vet_name]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle)));
+    }
+    if (dateFrom.value || dateTo.value) {
+      rows = rows.filter((row) => {
+        const source = row.visit_date || row.opened_at;
+        if (!source) return false;
+        const day = new Date(source).toISOString().slice(0, 10);
+        if (dateFrom.value && day < dateFrom.value) return false;
+        if (dateTo.value && day > dateTo.value) return false;
+        return true;
+      });
+    }
+    items.value = rows
     const m = data.meta || {}
     pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
   } catch (e) {

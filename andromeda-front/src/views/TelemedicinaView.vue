@@ -226,9 +226,14 @@ async function load() {
     const params = {}
     if (dateFilter.value)   params.date   = dateFilter.value
     if (statusFilter.value) params.status = statusFilter.value
-    if (search.value)       params.search = search.value
     const { data } = await http.get('/tele/sessions', { params })
-    items.value = data.data || data.consultations || data || []
+    const rows = data.data || data.consultations || data || []
+    const needle = search.value.trim().toLowerCase()
+    items.value = needle
+      ? rows.filter((row) => [row.patient_name, row.client_name, row.vet_name, row.platform_name]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)))
+      : rows
   } catch (e) {
     error.value = e.response?.data?.message || 'No se pudieron cargar las teleconsultas'
   } finally { loading.value = false }

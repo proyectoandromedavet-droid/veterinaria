@@ -560,13 +560,21 @@ const stats = reactive({ active: 0, dischargedToday: 0, avgDays: '—' })
 async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
-    const params = { page, limit: 15 }
-    if (search.value)       params.search = search.value
+    const pageSize = 15
+    const params = {}
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/hospitalizations', { params })
-    items.value = data.data || data.hospitalizations || data || []
-    const m = data.meta || {}
-    pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
+    const rows = data.data || data.hospitalizations || data || []
+    const needle = search.value.trim().toLowerCase()
+    const filtered = needle
+      ? rows.filter((row) => [row.patient_name, row.species, row.responsible_vet, row.ward_name, row.kennel_number]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)))
+      : rows
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+    const safePage = Math.min(page, totalPages)
+    items.value = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+    pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
     error.value = e.response?.data?.message || 'No se pudieron cargar las internaciones'

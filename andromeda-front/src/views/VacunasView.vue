@@ -467,13 +467,27 @@ function selectPatient(pt) {
 async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
-    const params = { page, limit: 20 }
-    if (search.value)       params.search = search.value
-    if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await http.get('/vaccinations', { params })
-    items.value = data.data || data.vaccinations || data || []
-    const m = data.meta || {}
-    pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
+    const pageSize = 20
+    const { data } = await http.get('/vaccinations')
+    let rows = data.data || data.vaccinations || data || []
+    const needle = search.value.trim().toLowerCase()
+    if (needle) {
+      rows = rows.filter((row) => [row.patient_name, row.vaccine_name, row.manufacturer]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle)));
+    }
+    if (statusFilter.value) {
+      rows = rows.filter((row) => {
+        if (statusFilter.value === 'up_to_date') return vacStatus(row) === 'badge--green'
+        if (statusFilter.value === 'due_soon') return vacStatus(row) === 'badge--yellow'
+        if (statusFilter.value === 'overdue') return vacStatus(row) === 'badge--red'
+        return true
+      })
+    }
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+    const safePage = Math.min(page, totalPages)
+    items.value = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
+    pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
     error.value = e.response?.data?.message || 'No se pudieron cargar las vacunas'
@@ -547,12 +561,19 @@ async function loadDewProducts() {
 async function loadDew(page = 1) {
   dewLoading.value = true; dewError.value = ''
   try {
-    const params = { page, limit: 20 }
-    if (dewSearch.value) params.search = dewSearch.value
-    const { data } = await http.get('/vaccinations/deworming', { params })
-    dewItems.value = data.data || data || []
-    const m = data.meta || {}
-    dewPagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
+    const pageSize = 20
+    const { data } = await http.get('/vaccinations/deworming')
+    const rows = data.data || data || []
+    const needle = dewSearch.value.trim().toLowerCase()
+    const filtered = needle
+      ? rows.filter((row) => [row.patient_name, row.product_name, row.active_ingredient, row.parasite_type]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)))
+      : rows
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+    const safePage = Math.min(page, totalPages)
+    dewItems.value = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+    dewPagination.value = { page: safePage, totalPages }
   } catch (e) {
     dewError.value = e.response?.data?.message || 'No se pudieron cargar las desparasitaciones'
   } finally { dewLoading.value = false }

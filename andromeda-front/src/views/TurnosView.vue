@@ -218,9 +218,14 @@ async function load() {
     const params = { limit: 50 }
     if (filters.date)   params.date   = filters.date
     if (filters.status) params.status = filters.status
-    if (filters.search) params.search = filters.search
     const { data } = await http.get('/appointments', { params })
-    items.value = data.data || data.appointments || data || []
+    const rows = data.data || data.appointments || data || []
+    const needle = filters.search.trim().toLowerCase()
+    items.value = needle
+      ? rows.filter((row) => [row.patient_name, row.owner_name, row.reason, row.appointment_type]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)))
+      : rows
   } catch (e) {
     error.value = e.response?.data?.message || 'No se pudieron cargar los turnos'
   } finally {

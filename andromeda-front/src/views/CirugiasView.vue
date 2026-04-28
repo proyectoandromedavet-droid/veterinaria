@@ -493,13 +493,21 @@ const stats = reactive({ scheduled: 0, inProgress: 0, completedToday: 0 })
 async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
-    const params = { page, limit: 15 }
-    if (search.value)       params.search = search.value
+    const pageSize = 15
+    const params = {}
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/surgeries', { params })
-    items.value = data.data || data.surgeries || data || []
-    const m = data.meta || {}
-    pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
+    const rows = data.data || data.surgeries || data || []
+    const needle = search.value.trim().toLowerCase()
+    const filtered = needle
+      ? rows.filter((row) => [row.patient_name, row.surgery_type, row.surgery_category, row.lead_surgeon]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)))
+      : rows
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+    const safePage = Math.min(page, totalPages)
+    items.value = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+    pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
     error.value = e.response?.data?.message || 'No se pudieron cargar las cirugías'

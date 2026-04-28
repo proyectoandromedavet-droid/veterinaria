@@ -11,6 +11,7 @@ const rulesRouter  = require('./routes/rules.routes');
 const app = buildApp('medical', (app, requirePerm) => {
   app.use('/appointments',    requirePerm('appointments:read'),    guardWrite('appointments'),    apptRouter);
   app.use('/medical-records', requirePerm('medical_records:read'), guardWrite('medical_records'), mrRouter);
+  app.get('/appointments/types', requirePerm('appointments:read'), ...apptRouter.getAppointmentTypes);
   app.post('/triage/:id', requirePerm('appointments:create'), ...apptRouter.postTriage);
   app.get('/prescriptions/:id', requirePerm('medical_records:read'), ...mrRouter.getPrescriptions);
   app.post('/prescriptions/:id', requirePerm('medical_records:read'), guardWrite('medical_records'), ...mrRouter.postPrescriptions);

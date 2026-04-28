@@ -399,6 +399,40 @@ paths:
         '204': { description: Desactivado }
 
   # ── PATIENTS ───────────────────────────────────────────────────────────────
+  /auth/admin/users:
+    get:
+      tags: [Auth]
+      summary: Listar usuarios staff del org
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - in: query
+          name: isActive
+          schema: { type: boolean }
+      responses:
+        '200': { description: Lista de usuarios }
+    post:
+      tags: [Auth]
+      summary: Crear usuario staff
+      responses:
+        '201': { description: Usuario creado }
+
+  /auth/admin/users/{id}/deactivate:
+    patch:
+      tags: [Auth]
+      summary: Desactivar usuario staff
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Usuario desactivado }
+
   /patients:
     get:
       tags: [Patients]
@@ -556,6 +590,15 @@ paths:
         - in: query
           name: status
           schema: { type: string }
+        - in: query
+          name: patientId
+          schema: { type: integer }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Lista de turnos }
     post:
@@ -585,6 +628,13 @@ paths:
       summary: Turnos del día (vista agenda)
       responses:
         '200': { description: Agenda del día ordenada por hora }
+
+  /appointments/types:
+    get:
+      tags: [Appointments]
+      summary: Tipos de turno disponibles
+      responses:
+        '200': { description: Lista de tipos de turno }
 
   /appointments/{id}/status:
     patch:
@@ -643,6 +693,12 @@ paths:
         - in: query
           name: status
           schema: { type: string, enum: [open, signed, amended] }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Lista de HCs }
     post:
@@ -907,10 +963,25 @@ paths:
       responses:
         '200': { description: Lista de alertas }
 
+  /vaccinations/vaccines:
+    get:
+      tags: [Vaccination]
+      summary: Catalogo de vacunas
+      parameters:
+        - in: query
+          name: speciesId
+          schema: { type: integer }
+      responses:
+        '200': { description: Lista de vacunas }
+
   /vaccinations/deworming:
     get:
       tags: [Vaccination]
       summary: Historial de desparasitaciones
+      parameters:
+        - in: query
+          name: patientId
+          schema: { type: integer }
       responses:
         '200': { description: Lista }
     post:
@@ -920,6 +991,13 @@ paths:
         '201': { description: Registrado }
 
   # ── BILLING ────────────────────────────────────────────────────────────────
+  /vaccinations/deworming/products:
+    get:
+      tags: [Vaccination]
+      summary: Catalogo de antiparasitarios
+      responses:
+        '200': { description: Lista de productos antiparasitarios }
+
   /invoices:
     get:
       tags: [Billing]
@@ -1001,6 +1079,22 @@ paths:
     get:
       tags: [Telemedicine]
       summary: Listar sesiones de teleconsulta
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: vetId
+          schema: { type: integer }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Lista de sesiones }
     post:
@@ -1038,6 +1132,32 @@ paths:
         '201': { description: Calificación registrada }
 
   # ── GROOMING ───────────────────────────────────────────────────────────────
+  /tele/sessions/{id}/status:
+    patch:
+      tags: [Telemedicine]
+      summary: Actualizar estado de teleconsulta
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Estado actualizado }
+
+  /tele/stats:
+    get:
+      tags: [Telemedicine]
+      summary: Estadisticas de telemedicina
+      responses:
+        '200': { description: Estadisticas de teleconsultas }
+
+  /tele/platforms:
+    get:
+      tags: [Telemedicine]
+      summary: Plataformas habilitadas de telemedicina
+      responses:
+        '200': { description: Lista de plataformas }
+
   /grooming/appointments:
     get:
       tags: [Grooming]
