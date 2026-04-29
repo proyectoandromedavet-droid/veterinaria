@@ -28,6 +28,17 @@ function logRedisWarning(context, err) {
   });
 }
 
+function logAuth401(req, endpoint, extra = {}) {
+  console.warn('[auth][401]', {
+    endpoint,
+    requestId: req.headers['x-request-id'] || req.requestId || null,
+    hasAuthorization: Boolean(req.headers.authorization),
+    hasRefreshCookie: Boolean(req.cookies?.refreshToken),
+    userId: req.user?.userId || req.user?.id || null,
+    ...extra,
+  });
+}
+
 async function runRedis(context, op) {
   try {
     const redis = await getRedis();
@@ -205,6 +216,7 @@ async function login(req, res) {
        VALUES (:userId, :ip, :ua, FALSE, 'invalid_credentials')`,
       { userId: user?.id || null, ip, ua }
     );
+    logAuth401(req, 'POST /auth/login', { reason: 'invalid_credentials' });
     return R.unauthorized(res, 'Invalid email or password');
   }
 
@@ -302,12 +314,16 @@ async function login(req, res) {
  */
 async function refresh(req, res) {
   const refreshToken = req.cookies?.refreshToken;
-  if (!refreshToken) return R.unauthorized(res, 'Missing refresh token cookie');
+  if (!refreshToken) {
+    logAuth401(req, 'POST /auth/refresh', { reason: 'missing_refresh_cookie' });
+    return R.unauthorized(res, 'Missing refresh token cookie');
+  }
 
   let decoded;
   try {
     decoded = jwt.verifyRefresh(refreshToken);
   } catch (_) {
+    logAuth401(req, 'POST /auth/refresh', { reason: 'invalid_or_expired_refresh_token' });
     return R.unauthorized(res, 'Invalid or expired refresh token');
   }
 
@@ -349,7 +365,10 @@ async function refresh(req, res) {
      WHERE s.session_token = :hash AND s.is_revoked = FALSE AND s.expires_at > NOW()`,
     { hash: tokenHash }
   );
-  if (!session) return R.unauthorized(res, 'Refresh token not found or expired');
+  if (!session) {
+    logAuth401(req, 'POST /auth/refresh', { reason: 'refresh_token_not_found_or_expired' });
+    return R.unauthorized(res, 'Refresh token not found or expired');
+  }
 
   // Revoke old access JTI
   await runRedis('refresh.revoke-old-jti', (redis) =>
@@ -830,6 +849,7 @@ async function challenge2fa(req, res) {
   try {
     pending = jwt.verifyAccess(pendingToken);
   } catch (_) {
+    logAuth401(req, 'POST /auth/2fa/challenge', { reason: 'invalid_or_expired_pending_token' });
     return R.unauthorized(res, 'Invalid or expired pending token');
   }
   if (pending.scope !== '2fa_pending') return R.unauthorized(res, 'Invalid pending token scope');
@@ -844,7 +864,10 @@ async function challenge2fa(req, res) {
   if (!user || !user.two_factor_enabled) return R.badRequest(res, 'Invalid 2FA challenge');
 
   const valid = twoFactor.verifyTwoFactor(user.two_factor_secret, token);
-  if (!valid) return R.unauthorized(res, 'Invalid TOTP token');
+  if (!valid) {
+    logAuth401(req, 'POST /auth/2fa/challenge', { reason: 'invalid_totp_token' });
+    return R.unauthorized(res, 'Invalid TOTP token');
+  }
 
   // Build full token pair after successful 2FA
   const orgRow = await db.queryOne(

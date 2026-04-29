@@ -88,7 +88,9 @@ http.interceptors.response.use(
         return Promise.reject(err)
       }
     }
-    if (err.response?.status === 401 && !original._retry) {
+    const requestUrl = String(original?.url || '').toLowerCase();
+    const isAuthEndpoint = requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/login') || requestUrl.includes('/auth/2fa/challenge');
+    if (err.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       if (refreshing) {
         return new Promise((resolve, reject) => {
           queue.push({ resolve, reject, config: original })
