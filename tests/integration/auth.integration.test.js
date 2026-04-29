@@ -135,7 +135,12 @@ describe('POST /login', () => {
     expect(res.body.data).toMatchObject({
       accessToken:  expect.any(String),
     });
-    expect(res.headers['set-cookie']).toEqual(expect.arrayContaining([expect.stringContaining('refreshToken=')]));
+    expect(res.headers['set-cookie']).toEqual(expect.arrayContaining([
+      expect.stringContaining('refreshToken='),
+      expect.stringContaining('HttpOnly'),
+      expect.stringContaining('SameSite=None'),
+      expect.stringContaining('Path=/api/v1/auth/refresh'),
+    ]));
     expect(res.body.data.user.orgId).toBe(5);
   });
 
@@ -203,6 +208,12 @@ describe('POST /refresh', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.accessToken).toBeTruthy();
+    expect(res.headers['set-cookie']).toEqual(expect.arrayContaining([
+      expect.stringContaining('refreshToken='),
+      expect.stringContaining('HttpOnly'),
+      expect.stringContaining('SameSite=None'),
+      expect.stringContaining('Path=/api/v1/auth/refresh'),
+    ]));
     // Old hash should be stored in Redis as "used"
     expect(redisClient._store.get(`rt:used:${tokenHash}`)).toBe('10');
   });

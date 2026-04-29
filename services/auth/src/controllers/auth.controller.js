@@ -268,9 +268,9 @@ async function login(req, res) {
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure:   isProd,
-    sameSite: 'strict',
+    sameSite: 'none',
     maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days in ms
-    path:     '/auth/refresh',
+    path:     '/api/v1/auth/refresh',
   });
 
   return R.ok(res, {
@@ -390,9 +390,9 @@ async function refresh(req, res) {
   res.cookie('refreshToken', newRefresh, {
     httpOnly: true,
     secure:   isProdRefresh,
-    sameSite: 'strict',
+    sameSite: 'none',
     maxAge:   7 * 24 * 60 * 60 * 1000,
-    path:     '/auth/refresh',
+    path:     '/api/v1/auth/refresh',
   });
 
   return R.ok(res, { accessToken });
@@ -419,7 +419,7 @@ async function logout(req, res) {
     { jti, userId }
   );
 
-  res.clearCookie('refreshToken', { path: '/auth/refresh' });
+  res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
   return R.noContent(res);
 }
 
@@ -428,7 +428,7 @@ async function logout(req, res) {
  */
 async function logoutAll(req, res) {
   await db.callProc('sp_revoke_user_sessions', [req.user.userId]);
-  res.clearCookie('refreshToken', { path: '/auth/refresh' });
+  res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
   return R.noContent(res);
 }
 
@@ -863,9 +863,9 @@ async function challenge2fa(req, res) {
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure:   isProd2fa,
-    sameSite: 'strict',
+    sameSite: 'none',
     maxAge:   7 * 24 * 60 * 60 * 1000,
-    path:     '/auth/refresh',
+    path:     '/api/v1/auth/refresh',
   });
 
   return R.ok(res, { accessToken });
