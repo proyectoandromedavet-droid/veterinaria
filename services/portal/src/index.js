@@ -24,6 +24,13 @@ const { sendPasswordReset, sendWelcome, sendNewDeviceLogin } = require('../../..
 const { sendTemplate } = require('../../../shared/messaging');
 const fcm     = require('../../../shared/fcm');
 const { requireInternalSig } = require('../../../shared/internalAuth');
+const {
+  getNotificationSchema,
+  notificationExpr,
+  notificationReadAtExpr,
+  notificationMarkReadSet,
+  notificationOrderExpr,
+} = require('../../../shared/notificationLogSchema');
 
 // Rate limiter for auth endpoints — 10 attempts per 15 min per IP
 const authLimiter = rateLimit({
@@ -107,7 +114,8 @@ app.post('/portal/auth/register',
   validate,
   async (req, res, next) => {
     try {
-      const { email, password, firstName, lastName, phone, orgId } = req.body;
+      const { email, password, firstName, lastName, phone } = req.body;
+      const orgId = req.headers['x-org-id'] || null;
 
       // Verificar si ya existe una cuenta de portal
       const existing = await db.queryOne(
@@ -120,7 +128,11 @@ app.post('/portal/auth/register',
 
       // Si ya existe como cliente sin cuenta de portal → activar
       const client = await db.queryOne(
-        `SELECT id, organization_id FROM clients WHERE email=:email LIMIT 1`,
+        `SELECT c.id, COALESCE(c.organization_id, b.organization_id) AS organization_id
+         FROM clients c
+         LEFT JOIN branches b ON c.branch_id = b.id
+         WHERE c.email=:email
+         LIMIT 1`,
         { email }
       );
 
@@ -139,9 +151,9 @@ app.post('/portal/auth/register',
       const r = await db.query(
         `INSERT INTO clients (first_name, last_name, email, phone, portal_password_hash, organization_id)
          VALUES (:fn, :ln, :email, :phone, :hash, :orgId)`,
-        { fn: firstName, ln: lastName, email, phone: phone||null, hash, orgId: orgId||null }
+        { fn: firstName, ln: lastName, email, phone: phone||null, hash, orgId }
       );
-      const accessToken  = buildOwnerToken({ id: r.insertId, organization_id: orgId||null });
+      const accessToken  = buildOwnerToken({ id: r.insertId, organization_id: orgId });
       const refreshToken = buildOwnerRefresh({ id: r.insertId });
       sendWelcome({ to: email, name: firstName, orgName: 'VetManager Pro' }).catch(() => {});
       return R.created(res, { accessToken, refreshToken });
@@ -161,8 +173,12 @@ app.post('/portal/auth/login',
     try {
       const { email, password } = req.body;
       const client = await db.queryOne(
-        `SELECT id, first_name, last_name, email, portal_password_hash, organization_id, is_active
-         FROM clients WHERE email=:email`,
+        `SELECT c.id, c.first_name, c.last_name, c.email, c.portal_password_hash,
+                COALESCE(c.organization_id, b.organization_id) AS organization_id,
+                c.is_active
+         FROM clients c
+         LEFT JOIN branches b ON c.branch_id = b.id
+         WHERE c.email=:email`,
         { email }
       );
       if (!client || !client.portal_password_hash)
@@ -223,7 +239,10 @@ app.post('/portal/auth/refresh',
       if (decoded.role !== 'owner') return R.unauthorized(res, 'Token inválido');
 
       const client = await db.queryOne(
-        `SELECT id, email, organization_id FROM clients WHERE id=:id AND is_active=1`,
+        `SELECT c.id, c.email, COALESCE(c.organization_id, b.organization_id) AS organization_id
+         FROM clients c
+         LEFT JOIN branches b ON c.branch_id = b.id
+         WHERE c.id=:id AND c.is_active=1`,
         { id: decoded.clientId }
       );
       if (!client) return R.unauthorized(res, 'Cuenta no encontrada');
@@ -382,13 +401,18 @@ app.get('/portal/pets/:id/medical-history', portalAuth, async (req, res, next) =
     if (!owned) return R.forbidden(res, 'Sin acceso a esta mascota');
 
     const records = await db.query(
-      `SELECT mr.id, mr.visit_date, mr.reason_for_visit, mr.status,
-              mr.weight_kg, mr.temperature, mr.chief_complaint,
+      `SELECT mr.id,
+              mr.opened_at AS visit_date,
+              mr.chief_complaint AS reason_for_visit,
+              mr.status,
+              mr.weight_kg,
+              mr.temperature_celsius,
+              mr.chief_complaint,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
        FROM medical_records mr
-       JOIN users u ON mr.attending_vet_id = u.id
+       JOIN users u ON mr.vet_id = u.id
        WHERE mr.patient_id=:pid AND mr.status='signed'
-       ORDER BY mr.visit_date DESC`,
+       ORDER BY mr.opened_at DESC`,
       { pid: req.params.id }
     );
     return R.ok(res, records);
@@ -630,11 +654,20 @@ app.get('/portal/notifications', portalAuth, async (req, res, next) => {
     const { page = 1 } = req.query;
     const limit  = Math.min(parseInt(req.query.limit || '20'), 100);
     const offset = (Math.max(parseInt(page), 1) - 1) * limit;
+    const schema = await getNotificationSchema();
+    const cols = schema.notification_logs || new Set();
     const rows = await db.query(
-      `SELECT id, notification_type, title, message, severity, sent_at, read_at, action_url
-       FROM notification_logs
+      `SELECT nl.id,
+              ${notificationExpr(cols, 'nl', 'type', `'info'`)} AS notification_type,
+              ${notificationExpr(cols, 'nl', 'title', `''`)} AS title,
+              ${notificationExpr(cols, 'nl', 'message', `''`)} AS message,
+              ${notificationExpr(cols, 'nl', 'severity', `'info'`)} AS severity,
+              ${notificationExpr(cols, 'nl', 'sentAt', 'NOW()')} AS sent_at,
+              ${notificationReadAtExpr(cols, 'nl')} AS read_at,
+              ${notificationExpr(cols, 'nl', 'actionUrl', 'NULL')} AS action_url
+       FROM notification_logs nl
        WHERE client_id=:cid
-       ORDER BY sent_at DESC
+       ORDER BY ${notificationOrderExpr(cols, 'nl')} DESC
        LIMIT :limit OFFSET :offset`,
       { cid: req.owner.clientId, limit: parseInt(limit), offset: parseInt(offset) }
     );
@@ -644,8 +677,13 @@ app.get('/portal/notifications', portalAuth, async (req, res, next) => {
 
 app.patch('/portal/notifications/:id/read', portalAuth, async (req, res, next) => {
   try {
+    const schema = await getNotificationSchema();
+    const cols = schema.notification_logs || new Set();
+    const setClause = notificationMarkReadSet(cols);
+    if (!setClause) return R.noContent(res);
+
     await db.query(
-      `UPDATE notification_logs SET read_at=NOW() WHERE id=:id AND client_id=:cid`,
+      `UPDATE notification_logs SET ${setClause} WHERE id=:id AND client_id=:cid`,
       { id: req.params.id, cid: req.owner.clientId }
     );
     return R.noContent(res);

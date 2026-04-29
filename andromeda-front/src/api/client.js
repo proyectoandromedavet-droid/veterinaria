@@ -2,7 +2,34 @@ import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4050'
-const ACCESS_TOKEN_KEY = 'accessToken'
+const CSRF_TOKEN_KEY = 'csrfToken'
+
+const SAFE_METHODS = new Set(['get', 'head', 'options'])
+
+let csrfTokenPromise = null
+
+async function fetchCsrfToken() {
+  const res = await axios.get(`${API_URL}/csrf-token`, { withCredentials: true })
+  const token = res.data?.data?.csrfToken
+  if (token) {
+    localStorage.setItem(CSRF_TOKEN_KEY, token)
+    return token
+  }
+  throw new Error('CSRF token missing from gateway response')
+}
+
+async function ensureCsrfToken() {
+  const cached = localStorage.getItem(CSRF_TOKEN_KEY)
+  if (cached) return cached
+
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = fetchCsrfToken().finally(() => {
+      csrfTokenPromise = null
+    })
+  }
+
+  return csrfTokenPromise
+}
 
 export const http = axios.create({
   baseURL: API_URL,
@@ -12,10 +39,18 @@ export const http = axios.create({
 
 // Inyecta el access token en cada request
 http.interceptors.request.use(cfg => {
+  cfg.headers = cfg.headers || {}
   const auth = useAuthStore()
-  const token = auth.accessToken || localStorage.getItem(ACCESS_TOKEN_KEY)
+  const token = auth.accessToken
   if (token) {
     cfg.headers.Authorization = `Bearer ${token}`
+  }
+  const method = (cfg.method || 'get').toLowerCase()
+  if (!SAFE_METHODS.has(method) && !cfg.headers['X-Api-Key'] && !cfg.headers['x-api-key']) {
+    return ensureCsrfToken().then(csrfToken => {
+      cfg.headers['X-CSRF-Token'] = csrfToken
+      return cfg
+    })
   }
   return cfg
 })
@@ -28,6 +63,18 @@ http.interceptors.response.use(
   res => res,
   async err => {
     const original = err.config
+    const csrfCode = err.response?.data?.error?.code
+    if (['CSRF_MISSING', 'CSRF_INVALID'].includes(csrfCode) && !original?._retryCsrf) {
+      original._retryCsrf = true
+      try {
+        const csrfToken = await fetchCsrfToken()
+        original.headers = original.headers || {}
+        original.headers['X-CSRF-Token'] = csrfToken
+        return http(original)
+      } catch {
+        return Promise.reject(err)
+      }
+    }
     if (err.response?.status === 401 && !original._retry) {
       if (refreshing) {
         return new Promise((resolve, reject) => {
@@ -58,5 +105,11 @@ http.interceptors.response.use(
     return Promise.reject(err)
   }
 )
+
+export function clearCsrfToken() {
+  localStorage.removeItem(CSRF_TOKEN_KEY)
+}
+
+export { ensureCsrfToken, CSRF_TOKEN_KEY }
 
 export default http

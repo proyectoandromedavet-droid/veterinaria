@@ -230,14 +230,15 @@ paths:
       summary: Renovar access token
       security: []
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required: [refreshToken]
               properties:
-                refreshToken: { type: string }
+                refreshToken:
+                  type: string
+                  description: Fallback opcional. El flujo canónico usa cookie httpOnly `refreshToken`.
       responses:
         '200': { description: Tokens renovados }
         '401': { description: Refresh token inválido o expirado }

@@ -20,6 +20,9 @@ const db         = require('../../../shared/db');
 const R          = require('../../../shared/response');
 const ai         = require('../../../shared/ai');
 const { computeRiskScores, summarizeRisks } = require('../../../shared/riskEngine');
+const { requireInternalSig } = require('../../../shared/internalAuth');
+const { hasPermission } = require('../../../shared/rbac');
+const { getTableColumns } = require('../../../shared/schemaEngine');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,11 +34,10 @@ function validate(req, res, next) {
 
 function requirePerm(perm) {
   return (req, res, next) => {
-    const roles  = (req.headers['x-user-roles'] || '').split(',');
-    const userId = req.headers['x-user-id'];
-    if (!userId) return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
-    // Simple check: superadmin or ai:* or specific perm
-    if (roles.includes('superadmin') || roles.includes('admin') || roles.includes('vet')) return next();
+    const user  = req.user || getUser(req);
+    const roles = user.roles || [];
+    if (!user.userId) return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+    if (hasPermission(roles, perm)) return next();
     return res.status(403).json({ success: false, error: { message: 'Forbidden', required: perm } });
   };
 }
@@ -46,7 +48,34 @@ function getUser(req) {
     orgId   : req.headers['x-org-id'],
     branchId: req.headers['x-branch-id'],
     email   : req.headers['x-user-email'],
-    roles   : (req.headers['x-user-roles'] || '').split(','),
+    roles   : (req.headers['x-user-roles'] || '').split(',').map(r => r.trim()).filter(Boolean),
+  };
+}
+
+let _schemaCache = new Map();
+async function hasColumn(tableName, columnName) {
+  const key = `${tableName}.${columnName}`;
+  if (_schemaCache.has(key)) return _schemaCache.get(key);
+  const rows = await getTableColumns(tableName);
+  const columns = new Set(rows.map(r => r.COLUMN_NAME));
+  const value = columns.has(columnName);
+  _schemaCache.set(key, value);
+  return value;
+}
+
+async function buildPatientSelect({ requireWeight = false } = {}) {
+  const orgColumn = await hasColumn('patients', 'organization_id');
+  const weightExpr = await hasColumn('patients', 'weight_kg') ? 'p.weight_kg AS weight' : 'NULL AS weight';
+  const bodyConditionExpr = await hasColumn('patients', 'body_condition_score')
+    ? 'p.body_condition_score'
+    : 'NULL';
+
+  return {
+    orgFilter: orgColumn ? 'AND p.organization_id = :org' : '',
+    select: `p.id, p.name, p.birthdate, p.sex, ${weightExpr}, p.chip_number,
+             ${bodyConditionExpr} AS body_condition_score,
+             sp.common_name AS species, br.name AS breed`,
+    weightExpr,
   };
 }
 
@@ -132,6 +161,15 @@ function buildApp() {
 
   app.get('/health', (_req, res) => res.json({ ok: true, service: 'ai' }));
 
+  app.use((req, _res, next) => {
+    req.user = getUser(req);
+    next();
+  });
+  app.use((req, res, next) => {
+    if (req.path === '/health') return next();
+    return requireInternalSig(req, res, next);
+  });
+
   const auth = requirePerm('ai:use');
 
   // ── POST /ai/diagnosis ─────────────────────────────────────────────────────
@@ -146,29 +184,38 @@ function buildApp() {
       try {
         const { patientId, symptoms, anamnesis, contextLines = 3 } = req.body;
         const user = getUser(req);
+        const { select, orgFilter } = await buildPatientSelect();
 
         // Obtener datos del paciente
         const patient = await db.queryOne(
-          `SELECT p.id, p.name, p.birthdate, p.sex, p.weight, p.chip_number,
-                  sp.common_name AS species, br.name AS breed
+          `SELECT ${select}
            FROM patients p
            LEFT JOIN species sp ON p.species_id = sp.id
            LEFT JOIN breeds  br ON p.breed_id   = br.id
-           WHERE p.id = :pid`,
-          { pid: patientId }
+           WHERE p.id = :pid ${orgFilter}`,
+          { pid: patientId, org: user.orgId }
         );
         if (!patient) return R.notFound(res, 'Paciente no encontrado');
 
         // Historial reciente (últimos N registros médicos)
         const records = await db.query(
-          `SELECT mr.chief_complaint, mr.diagnosis, mr.treatment, mr.created_at
+          `SELECT mr.created_at, mr.chief_complaint, mr.notes,
+                  GROUP_CONCAT(DISTINCT d.diagnosis_name ORDER BY d.is_primary DESC SEPARATOR ', ') AS diagnoses
            FROM medical_records mr
-           WHERE mr.patient_id = :pid
+           JOIN patients p ON p.id = mr.patient_id
+           LEFT JOIN diagnoses d ON d.medical_record_id = mr.id
+           WHERE mr.patient_id = :pid AND p.organization_id = :org
+           GROUP BY mr.id, mr.created_at, mr.chief_complaint, mr.notes
            ORDER BY mr.created_at DESC LIMIT :n`,
-          { pid: patientId, n: contextLines }
+          { pid: patientId, org: user.orgId, n: contextLines }
         );
         const recentHistory = records.length
-          ? records.map(r => `[${r.created_at?.toISOString?.().slice(0,10) ?? ''}] Dx: ${r.diagnosis || 'N/A'} | Tx: ${r.treatment || 'N/A'}`).join('\n')
+          ? records.map(r => {
+              const when = r.created_at?.toISOString?.().slice(0, 10) ?? '';
+              const diagnoses = r.diagnoses || 'N/A';
+              const notes = r.notes || 'N/A';
+              return `[${when}] Motivo: ${r.chief_complaint || 'N/A'} | Dx: ${diagnoses} | Notas: ${notes}`;
+            }).join('\n')
           : null;
 
         // Llamar al modelo de IA
@@ -219,12 +266,13 @@ function buildApp() {
         if (!imageUrl && !imageBase64) return R.badRequest(res, 'Se requiere imageUrl o imageBase64');
 
         const patient = await db.queryOne(
-          `SELECT p.id, p.name, p.birthdate, sp.common_name AS species, br.name AS breed
+          `SELECT p.id, p.name, p.birthdate, p.sex, p.weight_kg AS weight,
+                  sp.common_name AS species, br.name AS breed
            FROM patients p
            LEFT JOIN species sp ON p.species_id = sp.id
            LEFT JOIN breeds  br ON p.breed_id   = br.id
-           WHERE p.id = :pid`,
-          { pid: patientId }
+           WHERE p.id = :pid AND p.organization_id = :org`,
+          { pid: patientId, org: user.orgId }
         );
         if (!patient) return R.notFound(res, 'Paciente no encontrado');
 
@@ -284,12 +332,12 @@ function buildApp() {
         // Contexto del paciente si se proporcionó
         let patientContext = '';
         if (patientId) {
-          const p = await db.queryOne(
-            `SELECT p.name, p.birthdate, sp.common_name AS species, br.name AS breed, p.sex, p.weight
+        const p = await db.queryOne(
+            `SELECT p.name, p.birthdate, sp.common_name AS species, br.name AS breed, p.sex, p.weight_kg AS weight
              FROM patients p
              LEFT JOIN species sp ON p.species_id = sp.id
              LEFT JOIN breeds  br ON p.breed_id   = br.id
-             WHERE p.id = :pid`, { pid: patientId }
+             WHERE p.id = :pid AND p.organization_id = :org`, { pid: patientId, org: user.orgId }
           );
           if (p) {
             const age = p.birthdate ? Math.floor((Date.now() - new Date(p.birthdate)) / (365.25 * 86_400_000)) : null;
@@ -402,13 +450,13 @@ function buildApp() {
 
         // Datos del paciente
         const patient = await db.queryOne(
-          `SELECT p.id, p.name, p.birthdate, p.sex, p.weight, p.ideal_weight,
+          `SELECT p.id, p.name, p.birthdate, p.sex, p.weight_kg AS weight,
                   sp.common_name AS species, br.name AS breed
            FROM patients p
            LEFT JOIN species sp ON p.species_id = sp.id
            LEFT JOIN breeds  br ON p.breed_id   = br.id
-           WHERE p.id = :pid`,
-          { pid: patientId }
+           WHERE p.id = :pid AND p.organization_id = :org`,
+          { pid: patientId, org: user.orgId }
         );
         if (!patient) return R.notFound(res, 'Paciente no encontrado');
 
@@ -428,10 +476,13 @@ function buildApp() {
 
         // Condiciones crónicas (diagnósticos recurrentes o marcados como crónicos)
         const chronicRows = await db.query(
-          `SELECT DISTINCT diagnosis FROM medical_records
-           WHERE patient_id = :pid AND diagnosis IS NOT NULL
-           ORDER BY created_at DESC LIMIT 20`,
-          { pid: patientId }
+          `SELECT DISTINCT d.diagnosis_name AS diagnosis
+           FROM medical_records mr
+           JOIN patients p ON p.id = mr.patient_id
+           JOIN diagnoses d ON d.medical_record_id = mr.id
+           WHERE mr.patient_id = :pid AND p.organization_id = :org
+           ORDER BY mr.created_at DESC LIMIT 20`,
+          { pid: patientId, org: user.orgId }
         ).catch(() => []);
         const chronicConditions = chronicRows.map(r => r.diagnosis).filter(Boolean);
 

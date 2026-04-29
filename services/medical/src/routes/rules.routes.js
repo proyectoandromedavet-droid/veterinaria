@@ -27,7 +27,7 @@ function validate(req, res, next) {
 // GET /rules
 router.get('/', async (req, res, next) => {
   try {
-    const orgId    = req.headers['x-org-id'];
+    const orgId    = req.user?.orgId;
     const { type } = req.query;
     const whereType = type ? 'AND rule_type = :type' : '';
     const rules = await db.query(
@@ -49,8 +49,8 @@ router.post('/',
   validate,
   async (req, res, next) => {
     try {
-      const orgId  = req.headers['x-org-id'];
-      const userId = req.headers['x-user-id'];
+      const orgId  = req.user?.orgId;
+      const userId = req.user?.userId;
       const { rule_type, name, description, conditions, action, action_message, branch_id, priority } = req.body;
 
       const result = await db.query(
@@ -84,7 +84,7 @@ router.put('/:id',
   validate,
   async (req, res, next) => {
     try {
-      const orgId = req.headers['x-org-id'];
+      const orgId = req.user?.orgId;
       const { name, description, conditions, action, action_message, priority, is_active } = req.body;
 
       const updates = [];
@@ -114,7 +114,7 @@ router.put('/:id',
 // DELETE /rules/:id
 router.delete('/:id', param('id').isInt(), validate, async (req, res, next) => {
   try {
-    const orgId = req.headers['x-org-id'];
+    const orgId = req.user?.orgId;
     await db.query(
       'UPDATE business_rules SET is_active = FALSE WHERE id = :id AND org_id = :orgId',
       { id: req.params.id, orgId },
@@ -131,8 +131,8 @@ router.post('/evaluate',
   validate,
   async (req, res, next) => {
     try {
-      const orgId    = req.headers['x-org-id'];
-      const branchId = req.headers['x-branch-id'];
+      const orgId    = req.user?.orgId;
+      const branchId = req.user?.branchId;
       const { rule_type, context } = req.body;
       const result = await engine.evaluate(rule_type, orgId, branchId, context);
       res.json({ success: true, data: result });

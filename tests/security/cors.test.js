@@ -29,7 +29,21 @@ describe('CORS middleware', () => {
     const res = await request(app)
       .options('/ping')
       .set('Origin', 'http://localhost:3000')
-      .set('Access-Control-Request-Method', 'POST');
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'Authorization, X-CSRF-Token, X-Request-Id, X-Branch-Id');
     expect([200, 204]).toContain(res.status);
+    expect(res.headers['access-control-allow-headers']).toContain('X-CSRF-Token');
+  });
+
+  test('does not advertise browser trust headers like X-Org-Id', async () => {
+    const res = await request(app)
+      .options('/ping')
+      .set('Origin', 'http://localhost:3000')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'Authorization, X-Org-Id, X-Tenant-Id, X-Branch-Id');
+
+    expect([200, 204]).toContain(res.status);
+    expect(res.headers['access-control-allow-headers']).not.toContain('X-Org-Id');
+    expect(res.headers['access-control-allow-headers']).not.toContain('X-Tenant-Id');
   });
 });

@@ -7,6 +7,7 @@ const { buildApp, startService } = require('../../../shared/serviceBase');
 const db           = require('../../../shared/db');
 const R            = require('../../../shared/response');
 const { toExcel, toCsv } = require('../../../shared/export');
+const { consolidatedFinancials } = require('../../../shared/multibranch');
 const {
   generateRevenuePdf,
   generateAppointmentsReportPdf,
@@ -52,22 +53,97 @@ function dateRange(query) {
   return { from, to };
 }
 
+function isSchemaError(err) {
+  return ['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR', 'ER_SP_DOES_NOT_EXIST'].includes(err?.code)
+    || /Unknown column|doesn't exist|does not exist/i.test(err?.message || '');
+}
+
+async function safeQuery(sql, params, fallback = []) {
+  try {
+    return await db.query(sql, params);
+  } catch (err) {
+    if (isSchemaError(err)) return fallback;
+    throw err;
+  }
+}
+
+async function getBranchDashboard(branchId, from, to) {
+  const [patients, appointments, revenue, payments] = await Promise.all([
+    db.query(
+      `SELECT COUNT(DISTINCT p.id) AS total_patients,
+              COUNT(DISTINCT CASE WHEN DATE(p.created_at) BETWEEN :from AND :to THEN p.id END) AS new_patients
+       FROM patients p
+       JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
+       JOIN clients cl ON cl.id = po.client_id AND cl.branch_id = :bid`,
+      { bid: branchId, from, to }
+    ),
+    db.query(
+      `SELECT COUNT(*) AS total_appointments,
+              SUM(status = 'completed') AS completed_appointments,
+              SUM(status = 'cancelled') AS cancelled_appointments,
+              SUM(status = 'no_show') AS no_show_appointments,
+              ROUND(AVG(duration_minutes), 1) AS avg_duration_minutes
+       FROM appointments
+       WHERE branch_id = :bid AND DATE(scheduled_date) BETWEEN :from AND :to`,
+      { bid: branchId, from, to }
+    ),
+    db.query(
+      `SELECT COUNT(*) AS total_invoices,
+              ROUND(COALESCE(SUM(total_amount), 0), 2) AS gross_revenue,
+              ROUND(COALESCE(SUM(paid_amount), 0), 2) AS collected_revenue,
+              ROUND(COALESCE(SUM(total_amount - paid_amount), 0), 2) AS outstanding_revenue
+       FROM invoices
+       WHERE branch_id = :bid
+         AND issued_date BETWEEN :from AND :to
+         AND status != 'cancelled'`,
+      { bid: branchId, from, to }
+    ),
+    safeQuery(
+      `SELECT COUNT(*) AS total_payments,
+              ROUND(COALESCE(SUM(amount), 0), 2) AS paid_amount
+       FROM payments
+       WHERE branch_id = :bid
+         AND DATE(payment_date) BETWEEN :from AND :to
+         AND COALESCE(payment_status, 'completed') != 'cancelled'`,
+      { bid: branchId, from, to },
+      [{ total_payments: 0, paid_amount: 0 }]
+    ),
+  ]);
+
+  return {
+    from,
+    to,
+    totalPatients: patients[0]?.total_patients || 0,
+    newPatients: patients[0]?.new_patients || 0,
+    totalAppointments: appointments[0]?.total_appointments || 0,
+    completedAppointments: appointments[0]?.completed_appointments || 0,
+    cancelledAppointments: appointments[0]?.cancelled_appointments || 0,
+    noShowAppointments: appointments[0]?.no_show_appointments || 0,
+    avgDurationMinutes: appointments[0]?.avg_duration_minutes || 0,
+    totalInvoices: revenue[0]?.total_invoices || 0,
+    grossRevenue: revenue[0]?.gross_revenue || 0,
+    collectedRevenue: revenue[0]?.collected_revenue || 0,
+    outstandingRevenue: revenue[0]?.outstanding_revenue || 0,
+    totalPayments: payments[0]?.total_payments || 0,
+    paidAmount: payments[0]?.paid_amount || 0,
+  };
+}
+
 // ── GET /reports/dashboard  (KPIs diarios de sucursal) ───────────────────────
 router.get('/dashboard', async (req, res, next) => {
   try {
-    const results = await db.callProc('sp_branch_stats', [req.user.branchId]);
-    return R.ok(res, results[0]?.[0] || {});
+    const today = new Date().toISOString().slice(0, 10);
+    const summary = await getBranchDashboard(req.user.branchId, today, today);
+    return R.ok(res, summary);
   } catch (e) { next(e); }
 });
 
 // ── GET /reports/kpis  (view v_branch_daily_kpis) ────────────────────────────
 router.get('/kpis', async (req, res, next) => {
   try {
-    const rows = await db.query(
-      `SELECT * FROM v_branch_daily_kpis WHERE branch_id = :bid`,
-      { bid: req.user.branchId }
-    );
-    return R.ok(res, rows[0] || {});
+    const { from, to } = dateRange(req.query);
+    const summary = await getBranchDashboard(req.user.branchId, from, to);
+    return R.ok(res, summary);
   } catch (e) { next(e); }
 });
 
@@ -387,11 +463,41 @@ router.get('/grooming', async (req, res, next) => {
 router.get('/security', async (req, res, next) => {
   try {
     const [failures, sessions, alerts] = await Promise.all([
-      db.query(`SELECT * FROM v_login_failures_last_24h WHERE branch_id = :bid LIMIT 50`, { bid: req.user.branchId }),
-      db.query(`SELECT * FROM v_active_sessions WHERE branch_id = :bid ORDER BY last_activity_at DESC LIMIT 100`, { bid: req.user.branchId }),
-      db.query(
-        `SELECT * FROM security_alerts WHERE branch_id = :bid AND is_resolved = FALSE ORDER BY created_at DESC LIMIT 50`,
-        { bid: req.user.branchId }
+      safeQuery(
+        `SELECT lh.id, lh.ip_address, lh.user_agent, lh.failure_reason, lh.created_at,
+                u.id AS user_id, u.email, u.first_name, u.last_name, u.branch_id
+         FROM login_history lh
+         LEFT JOIN users u ON u.id = lh.user_id
+         WHERE lh.success = 0
+           AND lh.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+           AND (u.branch_id = :bid OR lh.user_id IS NULL)
+         ORDER BY lh.created_at DESC
+         LIMIT 50`,
+        { bid: req.user.branchId },
+        []
+      ),
+      safeQuery(
+        `SELECT s.id, s.user_id, s.ip_address, s.user_agent, s.device_type,
+                s.created_at, s.last_activity_at, s.expires_at,
+                u.email, u.first_name, u.last_name
+         FROM sessions s
+         JOIN users u ON u.id = s.user_id
+         WHERE u.branch_id = :bid
+           AND s.is_revoked = FALSE
+           AND s.expires_at > NOW()
+         ORDER BY s.last_activity_at DESC
+         LIMIT 100`,
+        { bid: req.user.branchId },
+        []
+      ),
+      safeQuery(
+        `SELECT * FROM security_alerts
+         WHERE (branch_id = :bid OR org_id = :orgId)
+           AND COALESCE(is_resolved, resolved, 0) = FALSE
+         ORDER BY created_at DESC
+         LIMIT 50`,
+        { bid: req.user.branchId, orgId: req.user.orgId },
+        []
       ),
     ]);
     return R.ok(res, { loginFailures: failures, activeSessions: sessions, unresolvedAlerts: alerts });
@@ -402,15 +508,57 @@ router.get('/security', async (req, res, next) => {
 router.get('/executive', async (req, res, next) => {
   try {
     const { from, to } = dateRange(req.query);
-    const results = await db.callProc('sp_executive_dashboard', [
-      req.user.orgId, req.user.branchId || null, from, to,
+    const financials = await consolidatedFinancials(req.user.orgId, from, to);
+    const [topDiagnoses, occupancy] = await Promise.all([
+      safeQuery(
+        `SELECT d.diagnosis_name, COUNT(*) AS frequency
+         FROM diagnoses d
+         JOIN medical_records mr ON d.medical_record_id = mr.id
+         JOIN appointments a ON mr.appointment_id = a.id
+         JOIN branches b ON b.id = a.branch_id
+         WHERE b.organization_id = :orgId
+           AND DATE(d.created_at) BETWEEN :from AND :to
+           AND d.is_primary = TRUE
+         GROUP BY d.diagnosis_name
+         ORDER BY frequency DESC
+         LIMIT 10`,
+        { orgId: req.user.orgId, from, to },
+        []
+      ),
+      safeQuery(
+        `SELECT b.id AS branch_id, b.name AS branch_name,
+                COUNT(DISTINCT k.id) AS total_kennels,
+                SUM(CASE WHEN h.id IS NOT NULL THEN 1 ELSE 0 END) AS occupied_kennels,
+                ROUND(SUM(CASE WHEN h.id IS NOT NULL THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(DISTINCT k.id), 0), 2) AS occupancy_pct
+         FROM branches b
+         LEFT JOIN wards w ON w.branch_id = b.id
+         LEFT JOIN kennels k ON k.ward_id = w.id AND k.is_active = TRUE
+         LEFT JOIN hospitalizations h ON h.kennel_id = k.id AND h.discharge_date IS NULL
+         WHERE b.organization_id = :orgId
+         GROUP BY b.id, b.name
+         ORDER BY b.name`,
+        { orgId: req.user.orgId },
+        []
+      ),
     ]);
-    // Returns multiple result sets
+    const summary = {
+      from,
+      to,
+      ...financials.totals,
+      branches: financials.metricsByBranch.length,
+      totalActivePatients: financials.metricsByBranch.reduce((acc, row) => acc + (row.active_patients || 0), 0),
+      totalAppointments: financials.metricsByBranch.reduce((acc, row) => acc + (row.appointments || 0), 0),
+      averageCompletionRate: financials.metricsByBranch.length
+        ? Number((financials.metricsByBranch.reduce((acc, row) => acc + (row.completion_rate || 0), 0) / financials.metricsByBranch.length).toFixed(2))
+        : 0,
+    };
     return R.ok(res, {
-      summary:       results[0],
-      revenueByBranch: results[1],
-      topDiagnoses:  results[2],
-      occupancy:     results[3],
+      summary,
+      revenueByBranch: financials.revenueByBranch,
+      topDiagnoses,
+      occupancy,
+      topClients: financials.topClients,
+      metricsByBranch: financials.metricsByBranch,
     });
   } catch (e) { next(e); }
 });
@@ -930,4 +1078,8 @@ const app = buildApp('reports', (app, requirePerm) => {
 });
 
 const PORT = parseInt(process.env.PORT || '3008');
-startService(app, 'reports', PORT);
+if (process.env.NODE_ENV !== 'test') {
+  startService(app, 'reports', PORT);
+}
+
+module.exports = app;

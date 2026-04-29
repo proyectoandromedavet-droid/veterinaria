@@ -1,0 +1,1223 @@
+AUDITORIA_SEGURIDAD_MICROSERVICIOS
+Fecha de auditoria: 2026-04-28
+Proyecto: C:\apps\VETERINARIAPROD
+Alcance: auditoria del repositorio local + verificacion puntual contra MySQL AWS RDS real provisto por el usuario. No se modifico comportamiento ni configuracion runtime.
+
+================================================================
+1. RESUMEN EJECUTIVO
+================================================================
+
+Estado general:
+- El proyecto implementa una arquitectura de gateway + microservicios + frontend Vue + MySQL + Redis + WebSocket.
+- El diseño base de seguridad es razonable: JWT RS256, refresh token rotativo, Redis para revocacion/rate limit/cache, HMAC interno entre gateway y servicios, RBAC por permisos, hardening HTTP con Helmet/HPP/sanitizacion.
+- La implementacion real tiene desalineaciones importantes entre frontend, gateway, OpenAPI, CORS, servicios y esquema SQL.
+- Hay varias rutas y servicios que parecen endurecidos en el diseño pero no estan alineados entre si o con el esquema base.
+
+Conclusion ejecutiva:
+- El sistema NO esta listo para produccion sin una fase previa de correccion de inconsistencias.
+- El riesgo principal no es un unico fallo criptografico sino la suma de desalineaciones: headers, rutas, nombres de columnas, variables de entorno, servicios fuera del wrapper comun y diferencias entre migraciones, dump SQL y codigo.
+- La verificacion puntual contra AWS RDS confirma que el esquema productivo real existe, pero tambien confirma drift material entre la DB viva y lo que varios servicios esperan en codigo.
+- Los riesgos mas urgentes estan en: Auth/2FA, Gateway/CORS, resolucion de tenant por subdominio, Notifications service fuera del modelo zero-trust comun, AI service con autorizacion debil, y compatibilidad DB/codigo.
+
+Nivel global estimado:
+- Seguridad: ALTO
+- Arquitectura/consistencia: ALTO
+- Operabilidad: ALTO
+
+================================================================
+2. METODO Y LIMITES
+================================================================
+
+Confirmado por codigo:
+- `gateway/src/*`
+- `services/*/src/*`
+- `shared/*`
+- `andromeda-front/src/*`
+- `scripts/migrations/*`
+- `gateway/docs/openapi.yaml`
+- `services/patients/src/openapi.yaml`
+- `docker-compose.yml`
+- `docker-compose.prod.yml`
+- `ecosystem.railway.config.js`
+- `vetmanager_COMPLETO_FINAL.sql`
+
+Confirmado en runtime real:
+- Existe una instancia MySQL en AWS RDS accesible con las credenciales provistas por el usuario.
+- Esquema actual observado: 139 tablas, 9 vistas, 4 stored procedures.
+- Se confirmaron tablas reales como `patients`, `clients`, `sessions`, `notification_logs`, `scheduled_reports`, `report_runs`, `tele_sessions`, `user_fcm_tokens`.
+- Se confirmaron procedimientos reales: `sp_clear_failed_logins`, `sp_login_attempt`, `sp_record_failed_login`, `sp_revoke_user_sessions`.
+- No se exponen en este informe valores completos de secretos; cualquier referencia sensible queda enmascarada.
+
+No confirmado:
+- Variables reales de Railway/PM2
+- Estado real de Redis en produccion
+- Estado real de migraciones ejecutadas
+- Certificados/TLS/reverse proxy real
+- Contenido de un `.env` real
+- Estado real de MinIO/Stripe/SMTP/OpenAI/FCM
+
+Regla usada en este informe:
+- Si algo no surge del repo local ni de la verificacion puntual en AWS RDS, queda marcado como NO CONFIRMADO.
+
+================================================================
+3. MAPA DE ARQUITECTURA
+================================================================
+
+Flujo alto nivel confirmado:
+Frontend Vue (`andromeda-front`) ->
+Axios client (`withCredentials: true` + `Authorization: Bearer`) ->
+Gateway Express (`gateway/src/index.js`) ->
+Middlewares globales ->
+JWT/API key auth en gateway ->
+Proxy a microservicio ->
+HMAC interno `X-Internal-Sig` ->
+Microservicio Express ->
+RBAC por `req.user.roles` y filtros por `branchId`/`orgId` ->
+MySQL/Redis ->
+Respuesta JSON ->
+Gateway ->
+Frontend
+
+Componentes:
+- Frontend: Vue 3 + Pinia + Vue Router + Axios
+- API Gateway: Express + `http-proxy-middleware`
+- Auth service: Express propio, NO usa `buildApp`
+- Patients service: `buildApp`
+- Medical service: `buildApp`
+- Grooming service: `buildApp`
+- Telemedicine service: `buildApp`
+- Notifications service: Express propio, NO usa `buildApp`
+- Reports service: `buildApp`
+- Billing service: `buildApp`
+- Lab/Imaging service: `buildApp`
+- Portal service: Express propio con auth separada para owners
+- AI service: Express propio, NO usa `buildApp`
+- Redis: cache, revocacion, rate limit, OAuth nonce, pub/sub WS, brute force
+- MySQL: modelo relacional multi-organizacion/sucursal
+- WebSocket: montado en gateway `/ws`, auth por JWT
+
+Puertos esperados segun compose/PM2:
+- Gateway: 4050 / Railway `PORT`
+- Auth: 4051
+- Patients: 4052
+- Medical: 4053
+- Lab-Imaging: 4054
+- Billing: 4055
+- Telemedicine: 4056
+- Grooming: 4057
+- Reports: 4058
+- Notifications: 4059
+- Portal: 4060
+- AI: 4061
+
+================================================================
+4. FLUJO COMPLETO DE REQUEST
+================================================================
+
+Flujo nominal confirmado:
+1. Frontend llama al gateway con Axios.
+2. Axios envia:
+   - `Authorization: Bearer <accessToken>` si hay token
+   - cookies por `withCredentials: true`
+3. Gateway aplica:
+   - Helmet, compression, correlation ID, request ID
+   - IP guard, DNS rebinding guard, subdomain resolver
+   - CORS
+   - body parsers + sanitizacion + HPP
+   - content-type guard
+   - cache headers
+   - WAF
+   - rate limiting
+   - CSRF en `/api/${V}`
+   - DLP
+4. Gateway valida JWT/API key en rutas protegidas.
+5. Gateway inyecta headers internos:
+   - `X-User-Id`
+   - `X-Org-Id`
+   - `X-Branch-Id`
+   - `X-User-Roles`
+   - `X-User-Email`
+   - `X-Request-Id`
+   - `X-Trace-Id`
+   - `X-Forwarded-For`
+   - `X-Internal-Sig`
+6. Microservicio valida `X-Internal-Sig` si usa `buildApp` o su propia proteccion.
+7. Microservicio arma `req.user` desde headers.
+8. Microservicio aplica RBAC y filtros DB.
+9. MySQL/Redis responden.
+10. Gateway devuelve JSON al frontend.
+
+Headers clave usados:
+- `Authorization`
+- `Cookie: refreshToken=...` en refresh
+- `X-API-Key`
+- `X-Branch-Id`
+- `X-Org-Id`
+- `X-User-*`
+- `X-Request-Id`
+- `X-Trace-Id`
+- `X-Internal-Sig`
+- WebSocket: `Origin`, `Authorization` o `?token=`
+
+Tokens usados:
+- Access token JWT RS256
+- Refresh token JWT RS256
+- API keys hasheadas en DB
+- HMAC interno `X-Internal-Sig`
+
+Persistencia del lado cliente:
+- Access token: `localStorage` key `accessToken`
+- Legacy key aun leida: `andro_at`
+- Usuario: `localStorage` key `andro_user`
+- Refresh token: cookie httpOnly `refreshToken`
+
+Cookies vs localStorage:
+- Access token: localStorage
+- Refresh token: cookie httpOnly
+- El frontend usa un modelo hibrido, no 100% cookie-based
+
+`credentials: include`:
+- En Axios: SI, via `withCredentials: true`
+
+Validacion de usuario:
+- Primaria: gateway `gateway/src/middleware/auth.js`
+- Secundaria en WS: `gateway/src/websocket.js`
+- Microservicios comunes no validan JWT, confian en gateway + HMAC
+
+Validacion de organizacion/tenant:
+- JWT trae `orgId`
+- gateway reinyecta `X-Org-Id`
+- `tenantMismatchGuard` compara `req.user.orgId` con `req.tenantOrgId` si hay subdominio resuelto
+- Muchos servicios filtran por `branchId`; algunos por `orgId`
+
+Validacion de rol/permisos:
+- Gateway protege rutas con JWT, pero el control de permisos finos ocurre mayormente en microservicios via `requirePerm()` / `guardWrite()`
+- Excepcion importante: AI service usa un `requirePerm()` propio y muy debil
+
+================================================================
+5. ESTADO DE AUTH
+================================================================
+
+Confirmado:
+- Login con email/password + bcrypt
+- JWT RS256 asimetrico en `shared/jwt.js`
+- Refresh token rotation en `services/auth/src/controllers/auth.controller.js`
+- Reuse detection de refresh via Redis `rt:used:*`
+- Revocacion de access token por `revoked:<jti>` en Redis
+- Cookie httpOnly para refresh token
+- Logout y logoutAll
+- Sesiones persistidas en tabla `sessions`
+- Brute force en Redis + stored procedures DB
+- JWKS publico en `/.well-known/jwks.json`
+
+Problemas confirmados:
+1. `logout`/`logoutAll` en auth service esperan `req.user.jti` desde header `x-jti`, pero el gateway NO reenvia `X-JTI`.
+   Impacto:
+   - Revocacion precisa del token actual puede no ejecutarse como se espera.
+   - `logout` depende de DB `UPDATE sessions SET ... WHERE jti=:jti`, con `jti` potencialmente undefined.
+
+2. Frontend 2FA roto:
+   - Frontend envia `POST /auth/2fa/challenge` con `{ pendingToken, code }`
+   - Backend valida `body('userId')` y `body('token')`
+   - Controller espera `{ pendingToken, token }`
+   Impacto:
+   - El flujo 2FA no alinea request frontend/backend.
+   - Riesgo operacional alto; posible bloqueo total de usuarios con 2FA.
+
+3. `/auth/refresh`:
+   - Backend acepta cookie o body `refreshToken`
+   - Ruta publica en auth exige `body('refreshToken').notEmpty()`
+   - Frontend llama `authApi.refresh()` con body `{}` y confia en cookie
+   Impacto:
+   - Puede romper por validacion express-validator antes de llegar al controller.
+
+4. El frontend mezcla payload JWT y payload `user`:
+   - Store calcula `orgId` desde `user.value?.org_id`
+   - Login backend devuelve `user.orgId`
+   - JWT trae `orgId`
+   Impacto:
+   - Estado de tenant inconsistente del lado cliente.
+
+5. Comentarios/documentacion desalineados:
+   - Gateway/OpenAPI mencionan JWT + refresh body.
+   - Implementacion real usa cookie httpOnly para refresh.
+
+Cookies:
+- `refreshToken`
+- `httpOnly: true`
+- `sameSite: strict`
+- `secure: true` solo en produccion
+- Path: `/auth/refresh`
+
+Riesgo auth global:
+- ALTO
+
+================================================================
+6. ESTADO DE CORS
+================================================================
+
+Configuracion real confirmada:
+- Archivo: `gateway/src/middleware/cors.js`
+- `credentials: true`
+- Origins permitidos:
+  - desarrollo: todos si `ALLOWED_ORIGINS` esta vacio o contiene `*`
+  - produccion: `ALLOWED_ORIGINS` obligatorio y no puede ser `*`
+- Headers permitidos:
+  - `Content-Type`
+  - `Authorization`
+  - `X-API-Key`
+  - `X-Branch-Id`
+  - `X-Request-Id`
+
+Problemas confirmados:
+1. Faltan `X-Org-Id` y `X-Tenant-Id` en `allowedHeaders`.
+   Impacto:
+   - Si el frontend o un cliente browser los manda, el preflight puede fallar con:
+     `Request header field x-org-id is not allowed by Access-Control-Allow-Headers`
+
+2. Tampoco esta `X-CSRF-Token` en `allowedHeaders`.
+   Impacto:
+   - El gateway tiene endpoint `/csrf-token` y `csrfProtect`, pero el header esperado para mutaciones no esta permitido en CORS.
+
+3. `ALLOWED_ORIGINS` vs `CORS_ORIGINS`:
+   - Gateway usa `ALLOWED_ORIGINS`
+   - `.env.production.example` define `CORS_ORIGINS`
+   Impacto:
+   - En produccion puede arrancar mal o bloquear trafico legitimo si solo se setea `CORS_ORIGINS`.
+
+4. WebSocket usa tambien `ALLOWED_ORIGINS`, no `CORS_ORIGINS`.
+
+Headers que deberian permitirse:
+- `Authorization`
+- `Content-Type`
+- `X-Request-Id`
+- `X-CSRF-Token`
+- `X-Branch-Id`
+- `X-Org-Id` si realmente se usa desde browser
+- `X-Tenant-Id` solo si existe un caso de uso real de browser
+
+Headers que sobran o son delicados:
+- `X-API-Key` para browser no deberia ser la via principal si hay frontend publico
+- `X-Org-Id` y `X-Tenant-Id` son peligrosos si el backend los considera fuente de verdad
+
+Estado CORS:
+- ALTO riesgo de desalineacion
+
+================================================================
+7. GATEWAY
+================================================================
+
+Fortalezas confirmadas:
+- Hardening HTTP amplio
+- OpenAPI validation
+- Rate limiting global, auth, password reset, tenant
+- HMAC interno `X-Internal-Sig`
+- Correlation/request IDs
+- Circuit breaker
+- CSRF y DLP
+- Swagger deshabilitable en prod
+
+Debilidades confirmadas:
+1. `subdomainMiddleware` llama a auth service con header `X-Internal-Token`, pero auth service valida `requireInternalSig`.
+   Impacto:
+   - La resolucion de slug->org probablemente NO funcione como esta implementada.
+   - `tenantMismatchGuard` puede quedar inoperante.
+
+2. Proxy NO reenvia `X-JTI`.
+
+3. No hay filtrado explicito de headers peligrosos enviados por cliente antes de proxyear.
+   Observacion:
+   - Se pisan algunos headers internos con `setHeader`, pero no hay limpieza exhaustiva de `X-User-*`, `X-Org-Id`, `X-Forwarded-*` de origen cliente.
+
+4. `proxyReq` firma `signRequest(req.method, req.path, orgId)` usando `req.path`.
+   Riesgo:
+   - Si el servicio verifica con `req.path` despues de rewrite, la firma puede desalinearse segun montaje/ruta.
+   - NO CONFIRMADO que hoy falle en todos los casos, pero es punto fragil.
+
+5. OpenAPI del gateway dice multi-tenant por `branchId` del token, pero el sistema real mezcla `branchId`, `orgId`, subdominio y ownership por cliente.
+
+6. `csrfProtect` aplicado globalmente a `/api/${V}`, pero el frontend no muestra manejo explicito de obtencion/envio de token CSRF.
+
+Allowed origins / headers:
+- Ver seccion CORS
+
+Credentials:
+- `true`
+
+Rate limit:
+- global por usuario/IP
+- auth por IP
+- tenant por org
+- fallback a MemoryStore si Redis/SCRIPT no disponible
+
+Manejo de errores:
+- envelope consistente
+- 500 generico en produccion
+- logs de errores existentes
+
+Estado gateway:
+- Arquitectura: buena
+- Implementacion: inconsistente
+- Riesgo: ALTO
+
+================================================================
+8. FRONTEND
+================================================================
+
+Login:
+- Usa `authApi.login('/auth/login')`
+- Guarda access token en localStorage
+- Espera refresh token en cookie
+
+Cliente HTTP:
+- Axios `withCredentials: true`
+- Interceptor inyecta `Authorization`
+- Interceptor intenta `refresh()` en 401
+
+Problemas confirmados:
+1. `refresh()` del frontend envia body vacio.
+2. 2FA del frontend usa campo `code`; backend espera `token`.
+3. Store lee `org_id`, pero backend/JWT usan `orgId`.
+4. Router solo protege por existencia de token, no por permisos.
+5. No se observa manejo explicito de 403 global.
+6. No se observa manejo explicito de CSRF token.
+7. No se ve WebSocket client en frontend inspeccionado. NO CONFIRMADO su uso real.
+
+Logout:
+- Limpia localStorage
+- llama `authApi.logout().catch(() => {})`
+- si logout backend falla, igual borra estado local
+
+Pacientes frontend:
+- `GET /patients` con `page`, `limit`, `search`, `species`
+- `GET /patients/species/all`
+- Crea cliente y luego paciente
+
+Errores actuales probables en patients:
+- Si el backend/gateway valida distinto `page/limit`, 400
+- Si falta tabla/columna/vista/procedure, 500
+- Si `clients` o `patients` tienen drift de esquema, 500
+- Si `clients` POST devuelve formato inesperado y no trae `id`, falla la creacion encadenada
+
+Estado frontend:
+- Riesgo: ALTO por desalineacion con auth/CORS/CSRF
+
+================================================================
+9. PATIENTS ENDPOINT ESPECIFICO
+================================================================
+
+Endpoint auditado:
+- `GET /api/v1/patients`
+- `GET /api/v1/patients?page=1&limit=12`
+- `GET /api/v1/patients?limit=1`
+
+Ruta efectiva:
+- Frontend -> gateway `/patients`
+- gateway proxy -> patients service `/patients`
+
+Validacion:
+- Gateway OpenAPI:
+  - `page` y `limit` documentados como string regex numerica
+- Patients service OpenAPI:
+  - `page` y `limit` documentados como integer
+- Handler real:
+  - `parseInt(req.query.limit || '20')`
+  - `parseInt(page)`
+
+Por que puede devolver 400 `Request validation failed`:
+- Si la validacion activa que corre es la del servicio y no la del gateway, hay tension string vs integer.
+- Los tests del repo muestran que el gateway fue adaptado para aceptar strings numericos en query.
+- Si el validator del patients service no coercea y toma query string literal, puede rechazar `page=1&limit=12`.
+- NO CONFIRMADO el comportamiento exacto en runtime sin ejecutar el stack completo, pero la desalineacion existe.
+
+Por que puede devolver 500 `Internal server error`:
+- Falta de tablas `patients`, `clients`, `patient_owners`
+- Drift de columnas:
+  - `chip_number` vs `microchip_number`
+  - `birthdate` vs `date_of_birth`
+  - `is_active` vs `active`
+- Falta de `clients.branch_id` o `patients.organization_id`
+- Falta de vistas/tablas secundarias (`species`, `breeds`, `coat_colors`)
+- DB vacia pero con esquema incompleto
+
+Sobre `page/limit`:
+- Llegan como string desde query string
+- El handler real los parsea manualmente
+- El sistema depende de que la validacion OpenAPI no rechace esos strings antes
+
+Si DB esta vacia:
+- Con esquema correcto, deberia devolver 200 con array vacio y `total=0`
+- No hay razon funcional para 500 solo por no tener registros
+
+Observaciones de ownership/tenant:
+- `GET /patients` filtra por `clients.branch_id` o por `patients.organization_id`
+- `GET /patients/:id` filtra por `p.organization_id = :orgId`
+- `POST /patients` NO inserta `organization_id` ni `branch_id` en `patients`
+  Impacto:
+  - Alta probabilidad de incompatibilidad con el esquema base que si incluye `organization_id` y otros campos
+  - Riesgo de registros huerfanos o insercion fallida segun DB real
+
+Estado de patients:
+- Riesgo: ALTO
+
+================================================================
+10. BASE DE DATOS
+================================================================
+
+Conexion confirmada:
+- `shared/db.js` usa:
+  - `MYSQL_HOST`
+  - `MYSQL_PORT`
+  - `MYSQL_DATABASE`
+  - `MYSQL_USER`
+  - `MYSQL_PASSWORD`
+
+Estado real confirmado en AWS RDS:
+- Engine observado: MySQL compatible en AWS RDS
+- Host real provisto por el usuario: ENMASCARADO (`*.us-east-2.rds.amazonaws.com`)
+- Base observada: `veterinaria`
+- Tablas observadas: 139
+- Vistas observadas: 9
+- Stored procedures observados: 4
+- Procedimientos confirmados:
+  - `sp_clear_failed_logins`
+  - `sp_login_attempt`
+  - `sp_record_failed_login`
+  - `sp_revoke_user_sessions`
+
+Tablas/columnas confirmadas en runtime:
+- `sessions` existe y contiene `jti`, `session_token`, `is_revoked`, `expires_at`
+- `patients` existe y contiene tanto `organization_id` como variantes duplicadas de negocio (`birthdate`/`birth_date`, `chip_number`/`microchip_number`)
+- `appointments` contiene simultaneamente `vet_id` y `veterinarian_id`, ademas de `scheduled_date` y `appointment_date`
+- `medical_records` contiene simultaneamente `vet_id`, `attending_vet_id`, `temperature` y `temperature_celsius`
+- `notification_logs` real tiene un modelo corto (`branch_id`, `user_id`, `client_id`, `channel`, `title`, `body`, `status`, `error_message`, `external_id`)
+- `scheduled_reports` y `report_runs` existen con mezcla `org_id` + `branch_id`
+- `tele_sessions` y `user_fcm_tokens` existen
+
+Confirmacion importante:
+- La DB real NO es "una base local de docker". La auditoria ahora confirma contraste directo contra AWS RDS.
+- La presencia de tablas no implica que todas las consultas del codigo sean correctas; lo relevante es que hay drift estructural probado dentro de la misma DB viva.
+
+Problema grave de variables:
+- `docker-compose.prod.yml` usa `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`
+- `shared/db.js` NO las lee
+Impacto:
+- En produccion compose, los servicios pueden no conectar a MySQL si no existen ademas las variables `MYSQL_*`
+
+Migrations:
+- Core: `001_base_schema.sql`
+- Clinico/extensiones: `002` a `023`
+- Dump alternativo grande: `vetmanager_COMPLETO_FINAL.sql`
+
+Problema estructural:
+- Hay 3 fuentes de verdad del esquema:
+  1. `scripts/migrations/*`
+  2. `vetmanager_COMPLETO_FINAL.sql`
+  3. el codigo de servicios
+- No coinciden plenamente.
+
+Ejemplos de drift confirmados:
+- `sessions` existe en AWS, pero el dump alternativo tambien menciona `user_sessions`; no hay una unica fuente canonica
+- `patients` real contiene `chip_number` y `microchip_number` al mismo tiempo
+- `patients` real contiene `birthdate` y `birth_date` al mismo tiempo
+- `appointments` real contiene `vet_id` y `veterinarian_id` al mismo tiempo
+- `appointments` real contiene `scheduled_date` y `appointment_date` al mismo tiempo
+- `medical_records` real contiene `vet_id` y `attending_vet_id` al mismo tiempo
+- `medical_records` real contiene `temperature` y `temperature_celsius` al mismo tiempo
+- `notification_logs` real NO coincide con los campos enriquecidos usados por notifications service (`notification_type`, `message`, `severity`, `sent_at`, `read_at`, `action_url`, etc.)
+- Solo existen 4 stored procedures en AWS RDS; cualquier codigo que espere mas procedures debe considerarse NO CONFIRMADO o probablemente roto hasta verificarlo uno por uno
+
+Stored procedures y vistas:
+- La DB real expone solo 4 procedures y 9 vistas.
+- Si algun microservicio invoca procedures fuera de ese conjunto, hay alto riesgo de error 500 en runtime.
+- Vistas confirmadas: `v_active_hospitalizations`, `v_deworming_alerts`, `v_groomer_performance`, `v_grooming_today`, `v_invoice_aging`, `v_pending_imaging_reports`, `v_pending_lab_results`, `v_today_appointments`, `v_vaccination_alerts`.
+
+SQL injection:
+- En general bajo control:
+  - se usan named placeholders
+  - `callProc` valida identificadores
+  - updates dinamicos de pacientes usan allowlist
+- Riesgo residual:
+  - algunos queries complejos armados con listas de campos manuales
+  - revisar servicio AI y reports por drift, no por injection directa
+
+Filtros por tenant/org:
+- Parciales e inconsistentes
+- Algunos endpoints filtran por `branchId`
+- otros por `orgId`
+- otros por ownership
+- no hay una capa uniforme de ABAC/tenant enforcement en DB
+
+Si DB vacia rompe endpoints:
+- No deberia si el esquema esta completo
+- Si faltan migraciones, SI rompe
+- En este caso la DB no esta vacia; el problema confirmado es incompatibilidad semantica/canonica, no ausencia total de esquema.
+
+Estado DB:
+- Riesgo: ALTO
+
+================================================================
+11. REDIS
+================================================================
+
+Usos confirmados:
+- Revocacion JWT
+- Refresh reuse detection
+- Brute force auth
+- Rate limiting
+- Cache
+- OAuth nonce Google Calendar
+- Pub/Sub notificaciones -> gateway WS
+- Health checks
+
+Variables:
+- `REDIS_URL`
+- fallback `REDIS_HOST`, `REDIS_PORT`, `REDIS_USER`, `REDIS_PASSWORD`
+
+Fortalezas:
+- Fallbacks razonables
+- Conexiones opcionales en muchos flujos
+- Si Redis falla, varios componentes degradan sin tumbar el proceso
+
+Riesgos:
+1. Si Redis cae:
+   - auth revocation pierde efectividad
+   - refresh reuse detection puede degradar
+   - rate limiting puede caer a MemoryStore
+   - WS pub/sub pierde broadcasting distribuido
+
+2. `notifications` y `gateway websocket` dependen de Redis pub/sub; sin Redis quedan degradados.
+
+3. `.env.example` incluye host Railway publico de Redis en un archivo versionado, aunque no muestra password.
+   Impacto:
+   - No es secreto completo, pero expone endpoint de infraestructura.
+
+4. `docker-compose.yml` arranca Redis con `--requirepass ${REDIS_PASSWORD}`; si la variable queda vacia, el comportamiento real debe confirmarse. NO CONFIRMADO si queda instancia sin password util.
+
+Produccion:
+- Redis es adecuado para produccion si hay password/TLS/network isolation/monitoring.
+- Estado real de TLS y auth: NO CONFIRMADO.
+
+Estado Redis:
+- Riesgo: MEDIO-ALTO
+
+================================================================
+12. VARIABLES DE ENTORNO
+================================================================
+
+Hallazgos:
+1. Nombres duplicados/inconsistentes:
+- App lee `MYSQL_*`, compose prod exporta `DB_*`
+- gateway usa `ALLOWED_ORIGINS`, ejemplo prod usa `CORS_ORIGINS`
+- `JWT_ACCESS_EXPIRES/JWT_REFRESH_EXPIRES` vs ejemplo prod `JWT_EXPIRY/JWT_REFRESH_EXPIRY`
+- `INTERNAL_SIG_TTL_MS` en ejemplo prod pero codigo lee `INTERNAL_SIG_TTL_S`
+
+2. Placeholders inseguros/versionados:
+- `CHANGE_ME_*`
+- `INTERNAL_SECRET=CHANGE_AFTER_APPLY` en terraform secrets
+
+3. Variables sensibles en ejemplos:
+- JWT private/public keys
+- Stripe
+- SMTP
+- MP
+- Redis URL
+- MySQL passwords
+Observacion:
+- No se encontraron valores reales versionados en los archivos inspeccionados del repo.
+- El usuario compartio credenciales reales de AWS RDS durante la auditoria; este informe NO replica el secreto completo y lo considera dato sensible externo al repo.
+
+4. Falta de fuente unica de configuracion.
+
+5. `tests/setup/globalSetup.js` sigue usando `JWT_SECRET` y `DB_*`, lo que no refleja el runtime real actual.
+
+Estado variables:
+- Riesgo: ALTO por inconsistencia operativa
+
+================================================================
+13. SEGURIDAD GENERICA DEL SISTEMA
+================================================================
+
+A) Seguridad generica
+
+CORS:
+- Existe, pero incompleto para headers reales
+
+Headers:
+- Buen hardening con Helmet
+- Reenvio interno util, pero falta limpieza mas estricta
+
+Rate limiting:
+- Bien planteado
+- degrada a memoria si Redis no soporta SCRIPT o falla
+
+JWT:
+- RS256 correcto
+- soporte de rotacion
+- rechazo explicito de `alg:none` y HS*
+
+Cookies:
+- refresh httpOnly correcto
+- modelo hibrido con access token en localStorage aumenta superficie XSS
+
+Validacion:
+- OpenAPI + express-validator
+- desalineada entre gateway, servicios y frontend
+
+Logging:
+- existe logging y audit
+- algunos servicios exponen demasiado detalle a `console.error` interno
+
+Error handling:
+- razonable
+- algunos servicios custom filtran menos uniformemente que `buildApp`
+
+Secrets:
+- placeholders presentes
+- inconsistencia de nombres alta
+
+DB:
+- mayor riesgo por drift de esquema
+
+Redis:
+- degradacion aceptable, pero abre huecos de enforcement
+
+HTTPS:
+- NO CONFIRMADO en runtime real
+- HSTS configurado en app
+
+WebSocket:
+- valida origin y JWT
+- broadcast por usuario existe
+- no filtra por org/branch en broadcast global
+
+B) Seguridad especifica por dominio
+
+Pacientes:
+- filtros por org/branch parciales
+- insercion no alineada con esquema
+
+Turnos:
+- mayormente por `branchId`
+- revisar drift de columnas `scheduled_date`/`appointment_date`
+
+Historias clinicas:
+- datos muy sensibles
+- fuerte dependencia en filtros branch/org correctos
+
+Grooming:
+- aislado por branch
+- riesgo de drift de esquema y ownership indirecto
+
+Telemedicina:
+- datos medicos + mensajeria + FCM + calendarios
+- superficie alta
+
+Billing:
+- webhooks publicos de MP/Stripe
+- muchos flujos criticos y alta dependencia de esquema correcto
+
+Usuarios admin:
+- auth service contiene rutas admin RBAC
+- no se inspecciono a fondo cada handler. NO CONFIRMADO detalle completo de cada accion admin.
+
+Archivos:
+- upload de foto con magic bytes y extensiones permitidas
+- MinIO/S3 real NO CONFIRMADO
+
+Reportes:
+- alto riesgo de fuga transversal si `orgId`/`branchId` fallan
+
+Notificaciones:
+- service fuera del wrapper comun
+- depende de DB schema aparentemente no alineado
+
+================================================================
+14. TABLA POR MICROSERVICIO
+================================================================
+
+[GATEWAY] puerto 4050
+- Rutas principales: `/api/v1/*`, `/csrf-token`, `/health`, `/health/deep`, `/metrics`, `/ws`
+- Requiere auth: segun ruta
+- Requiere roles: no finos; delega a servicios
+- Requiere org/tenant: parcial via JWT/subdomain
+- Ownership: no
+- Redis: si
+- DB: no directo
+- Publico: login/refresh/webhooks/docs segun config
+- Admin: metrics/docs/health services
+- Riesgos: CORS incompleto, tenant resolver roto, falta `X-JTI`, CSRF no alineado
+- Mejora: alinear headers/env/OpenAPI/tenant HMAC
+
+[AUTH] puerto 4051
+- Rutas: login, refresh, logout, me, sessions, api-keys, 2FA, admin, schema, plugins
+- Auth: mixto
+- Roles: admin routes si
+- org/tenant: deriva de branch/org del usuario
+- Ownership: sesiones y API keys del usuario
+- Redis: si
+- DB: si
+- Publico: login, refresh, reset, google callback
+- Admin: si
+- Riesgos: refresh/frontend mismatch, 2FA mismatch, logout sin jti, mezcla cookie/body
+- Mejora: contrato unico frontend-backend y reenvio `X-JTI`
+
+[PATIENTS] puerto 4052
+- Rutas: clients, patients, species, breeds, branches
+- Auth: si via gateway/HMAC
+- Roles: si
+- org/tenant: parcial
+- Ownership: paciente por org; lista por branch/org dinamico
+- Redis: cache
+- DB: si
+- Publico: species/breeds solo via rutas autenticadas en gateway
+- Admin: no claro
+- Riesgos: drift fuerte de esquema; create/update/list inconsistentes; procedures criticos faltantes en AWS
+- Impacto runtime confirmado en AWS:
+  - `GET /patients/:id/timeline` depende de `sp_get_patient_timeline`, ausente en AWS RDS
+  - `POST /patients/:id/owners` depende de `sp_transfer_patient_ownership`, ausente en AWS RDS
+  - `POST /patients` crea paciente sin `organization_id`; en DB real existe esa columna y el resto del servicio luego filtra por `organization_id`
+- Mejora: fijar modelo canonico de columnas y tenant enforcement
+
+[MEDICAL] puerto 4053
+- Rutas: appointments, medical-records, triage, prescriptions, rules
+- Auth: si
+- Roles: si
+- org/tenant: branch/org mixto
+- Ownership: no directo; depende de paciente/branch
+- Redis: health/cache indirecto
+- DB: si
+- Publico: no
+- Admin: business rules
+- Riesgos: posible drift columnas `vet_id/veterinarian_id`; datos clinicos sensibles; procedure de firmado ausente en AWS
+- Impacto runtime confirmado en AWS:
+  - `POST /medical-records/:id/sign` depende de `sp_sign_medical_record`, ausente en AWS RDS
+- Mejora: unificar columnas y filtros por org/branch
+
+[LAB-IMAGING] puerto 4054
+- Rutas: lab, imaging, pathology, surgeries, hospitalizations, vaccinations, deworming
+- Auth: si
+- Roles: si
+- org/tenant: mayormente branch
+- Ownership: no directo
+- Redis: health/cache indirecto
+- DB: si
+- Publico: no
+- Admin: catalogos tecnicos
+- Riesgos: alto acoplamiento a vistas/tablas, posible drift de nombres; procedures de internacion ausentes en AWS
+- Impacto runtime confirmado en AWS:
+  - `POST /hospitalizations` depende de `sp_admit_hospitalization`, ausente en AWS RDS
+  - `PATCH /hospitalizations/:id/discharge` depende de `sp_discharge_patient`, ausente en AWS RDS
+- Mejora: contrato DB estable + pruebas de integracion
+
+[BILLING] puerto 4055
+- Rutas: invoices, payments, inventory, suppliers, purchase-orders, billing/consolidated, stripe/mp webhooks
+- Auth: si excepto webhooks publicos
+- Roles: si
+- org/tenant: branch y org consolidado
+- Ownership: no directo
+- Redis: health/cache indirecto
+- DB: si
+- Publico: `/payments/mp/webhook`, Stripe webhook
+- Admin: consolidado/reporting
+- Riesgos: superficie muy grande, drift esquema, webhooks, DB/procedures
+- Impacto runtime confirmado en AWS:
+  - `POST /invoices` depende de `sp_generate_invoice`, ausente en AWS RDS
+  - `POST /payments` y otros flujos de cobro dependen de `sp_record_payment`, ausente en AWS RDS
+- Mejora: aislar subdominios funcionales y validar esquema por modulo
+
+[TELEMEDICINE] puerto 4056
+- Rutas: `/tele/*`
+- Auth: si
+- Roles: si
+- org/tenant: branch
+- Ownership: no directo
+- Redis: usa FCM y probablemente WebRTC helpers
+- DB: si
+- Publico: no
+- Admin: stats/platforms
+- Riesgos: datos sensibles, FCM, calendarios, posibles secretos externos
+- Mejora: revisar permisos especificos y dependencia de proveedores
+
+[GROOMING] puerto 4057
+- Rutas: appointments, groomers, patient-profile, service-types
+- Auth: si
+- Roles: si
+- org/tenant: branch
+- Ownership: no
+- Redis: indirecto
+- DB: si
+- Publico: no
+- Admin: service-types/groomers
+- Riesgos: drift de esquema, uso de `req.user.userId` como `client_id` en ratings parece dudoso
+- Mejora: revisar ownership y claves foraneas reales
+
+[REPORTS] puerto 4058
+- Rutas: `/reports/*`, `/reports/scheduled/*`, exports
+- Auth: si
+- Roles: si
+- org/tenant: branch y org
+- Ownership: no
+- Redis: indirecto
+- DB: si
+- Publico: no
+- Admin: scheduled reports
+- Riesgos: fuga transversal si un filtro falla; muchas consultas complejas; referencias a tablas/vistas y procedures faltantes
+- Impacto runtime confirmado en AWS:
+  - `GET /reports/dashboard` depende de `sp_branch_stats`, ausente en AWS RDS
+  - `GET /reports/executive` depende de `sp_executive_dashboard`, ausente en AWS RDS
+  - `GET /reports/kpis` depende de `v_branch_daily_kpis`, ausente en AWS RDS
+  - `GET /reports/security` depende de `v_login_failures_last_24h` y `v_active_sessions`, ambas ausentes en AWS RDS
+  - `GET /reports/new-patients` consulta `patients_branch`, tabla ausente en AWS RDS; el handler hoy cae al `catch` antes de usar el fallback
+  - `GET /reports/telemedicine/stats` del servicio telemedicine depende de `v_tele_vet_stats`, ausente en AWS RDS
+- Mejora: tests de tenancy/reportes y validacion de datasets
+
+[NOTIFICATIONS] puerto 4059
+- Rutas: notifications, reminders, messages, fcm
+- Auth: NO usa `buildApp`
+- Roles: no vi enforcement fino por permiso
+- org/tenant: toma `req.user` de headers
+- Ownership: usuario actual en parte de las rutas
+- Redis: si pub/sub
+- DB: si
+- Publico: no deberia, pero depende solo de headers inyectados; no vi `requireInternalSig`
+- Admin: send/broadcast manuales
+- Riesgos: CRITICO por no aplicar el wrapper zero-trust comun ni HMAC interno confirmado
+- Impacto runtime confirmado en AWS:
+  - `GET /notifications` selecciona `notification_type`, `message`, `severity`, `sent_at`, `read_at`, `action_url`, `related_entity_type`, `related_entity_id`; esas columnas NO existen en `notification_logs` real
+  - `PATCH /notifications/:id/read` y `PATCH /notifications/read-all` dependen de `read_at`, columna ausente
+  - `POST /notifications/push` intenta insertar columnas inexistentes en `notification_logs`
+  - `POST /notifications/reminders/generate` depende de `sp_generate_reminders`, ausente en AWS RDS
+- Mejora: migrar a `buildApp` o exigir `requireInternalSig` + RBAC
+
+[PORTAL] puerto 4060
+- Rutas: `/portal/auth/*`, `/portal/*`
+- Auth: propia para owners
+- Roles: `owner`
+- org/tenant: por owner/org/patient ownership
+- Ownership: SI, bastante explicito
+- Redis: FCM indirecto; no vi sesiones owner en Redis
+- DB: si
+- Publico: register/login/refresh/forgot-password
+- Admin: no
+- Riesgos: usa `login_history` y `password_reset_tokens` de staff para owners; mezcla de dominios de auth
+- Impacto runtime confirmado en AWS:
+  - `GET /portal/notifications` y `PATCH /portal/notifications/:id/read` usan columnas inexistentes en `notification_logs` (`notification_type`, `message`, `severity`, `sent_at`, `read_at`, `action_url`)
+  - `GET /portal/telemedicine` consulta `telemedicine_sessions`, tabla ausente en AWS RDS
+- Mejora: separar tablas/claims owner vs staff
+
+[AI] puerto 4061
+- Rutas: diagnosis, images, chat, risk
+- Auth: NO usa `buildApp`
+- Roles: custom y debil
+- org/tenant: por header `x-org-id`
+- Ownership: riesgo bajo para chat general, mas alto para patient risk
+- Redis: no directo observado
+- DB: si
+- Publico: no
+- Admin: no
+- Riesgos: ALTO; no exige HMAC interno confirmado y el `requirePerm` propio permite por nombres de rol, no por permisos reales
+- Impacto runtime confirmado en AWS:
+  - faltan todas las tablas AI esperadas: `ai_chat_sessions`, `ai_chat_messages`, `ai_diagnosis_suggestions`, `ai_image_analyses`, `ai_risk_assessments`
+  - `POST /ai/diagnosis` consulta `patients.weight` y `medical_records.diagnosis`/`medical_records.treatment`, columnas ausentes en AWS RDS
+  - `POST /ai/chat`, `GET /ai/chat/:sessionId`, `POST /ai/chat/:sessionId/messages` no pueden persistir sesiones porque las tablas AI no existen
+  - `GET /ai/patients/:patientId/risk` consulta `patients.weight`, `patients.ideal_weight` y `medical_records.diagnosis`, columnas ausentes en AWS RDS
+- Mejora: migrar a `buildApp` + `requireInternalSig` + permisos canonicos
+
+================================================================
+15. ERRORES ACTUALES DETECTADOS
+================================================================
+
+Confirmados por lectura de codigo:
+- Frontend 2FA incompatible con backend
+- Frontend refresh incompatible con validador de backend
+- Gateway no reenvia `X-JTI`
+- CORS no permite `X-Org-Id`, `X-Tenant-Id`, `X-CSRF-Token`
+- Variables runtime inconsistentes `MYSQL_*` vs `DB_*`
+- Variables runtime inconsistentes `ALLOWED_ORIGINS` vs `CORS_ORIGINS`
+- `subdomainMiddleware` usa `X-Internal-Token` pero auth service exige `X-Internal-Sig`
+- Notifications service no esta claramente protegido por HMAC interno
+- AI service no usa el modelo comun de permisos/HMAC
+- Patients service y DB tienen drift de columnas/tablas
+- Dump SQL y migraciones no son una fuente de verdad unica
+
+Confirmados contra AWS RDS real:
+- `GET /patients/:id/timeline` hoy tiene alto riesgo de 500 por ausencia de `sp_get_patient_timeline`
+- `POST /patients/:id/owners` hoy tiene alto riesgo de 500 por ausencia de `sp_transfer_patient_ownership`
+- `POST /medical-records/:id/sign` hoy tiene alto riesgo de 500 por ausencia de `sp_sign_medical_record`
+- `POST /hospitalizations` hoy tiene alto riesgo de 500 por ausencia de `sp_admit_hospitalization`
+- `PATCH /hospitalizations/:id/discharge` hoy tiene alto riesgo de 500 por ausencia de `sp_discharge_patient`
+- `POST /invoices` hoy tiene alto riesgo de 500 por ausencia de `sp_generate_invoice`
+- `POST /payments` hoy tiene alto riesgo de 500 por ausencia de `sp_record_payment`
+- `GET /reports/dashboard` hoy tiene alto riesgo de 500 por ausencia de `sp_branch_stats`
+- `GET /reports/executive` hoy tiene alto riesgo de 500 por ausencia de `sp_executive_dashboard`
+- `GET /reports/kpis` hoy tiene alto riesgo de 500 por ausencia de `v_branch_daily_kpis`
+- `GET /reports/security` hoy tiene alto riesgo de 500 por ausencia de `v_login_failures_last_24h` y `v_active_sessions`
+- `GET /reports/new-patients` hoy tiene alto riesgo de 500 por referencia a `patients_branch`, tabla ausente
+- `GET /tele/sessions/stats` o equivalente hoy tiene alto riesgo de 500 por ausencia de `v_tele_vet_stats`
+- `GET /notifications`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all` y `POST /notifications/push` tienen alto riesgo de 500 por mismatch real de columnas en `notification_logs`
+- `GET /portal/notifications` y `PATCH /portal/notifications/:id/read` tienen alto riesgo de 500 por mismatch real de columnas en `notification_logs`
+- `GET /portal/telemedicine` hoy tiene alto riesgo de 500 por ausencia de `telemedicine_sessions`
+- `POST /ai/chat`, `GET /ai/chat/:sessionId`, `POST /ai/chat/:sessionId/messages` hoy tienen alto riesgo de 500 por ausencia total de tablas AI
+- `POST /ai/diagnosis` y `GET /ai/patients/:patientId/risk` tienen alto riesgo de 500 por columnas ausentes (`patients.weight`, `patients.ideal_weight`, `medical_records.diagnosis`, `medical_records.treatment`)
+
+================================================================
+16. RIESGOS CLASIFICADOS
+================================================================
+
+[CRITICO] Notifications service sin hardening comun
+- Archivo relacionado: `services/notifications/src/index.js`
+- Servicio afectado: notifications
+- Descripcion: no usa `buildApp`, no se ve `requireInternalSig`, toma `req.user` directo de headers
+- Impacto: si se expone directa o indirectamente, podria aceptar identidad forjada por headers
+- Recomendacion: exigir HMAC interno y RBAC canonico
+- Prioridad: inmediata
+- Cambio requerido: backend/gateway/infra
+
+[CRITICO] Tenant subdomain guard probablemente inoperante
+- Archivo: `gateway/src/middleware/subdomain.js`, `services/auth/src/routes/auth.routes.js`
+- Servicio: gateway/auth
+- Descripcion: el resolver de slug llama con `X-Internal-Token`, pero auth valida `X-Internal-Sig`
+- Impacto: validacion de tenant por subdominio puede no funcionar
+- Recomendacion: usar el mismo mecanismo HMAC interno en esa llamada
+- Prioridad: inmediata
+- Cambio requerido: gateway/backend
+
+[ALTO] 2FA roto por contrato frontend/backend
+- Archivo: `andromeda-front/src/stores/auth.js`, `services/auth/src/routes/auth.routes.js`, `services/auth/src/controllers/auth.controller.js`
+- Servicio: frontend/auth
+- Descripcion: frontend manda `code`; backend espera `token`; validator espera `userId` que controller no usa
+- Impacto: usuarios con 2FA pueden no autenticarse
+- Recomendacion: contrato unico y pruebas E2E
+- Prioridad: inmediata
+- Cambio requerido: frontend/backend
+
+[ALTO] Refresh token flow desalineado
+- Archivo: `andromeda-front/src/api/auth.js`, `services/auth/src/routes/auth.routes.js`
+- Servicio: frontend/auth
+- Descripcion: frontend usa cookie y body vacio; ruta valida `refreshToken` en body
+- Impacto: expiracion de access token puede dejar sesiones inutilizables
+- Recomendacion: aceptar cookie sin body o alinear cliente
+- Prioridad: inmediata
+- Cambio requerido: frontend/backend
+
+[ALTO] DB env vars incompatibles en produccion
+- Archivo: `shared/db.js`, `docker-compose.prod.yml`
+- Servicio: todos
+- Descripcion: codigo lee `MYSQL_*`; compose prod inyecta `DB_*`
+- Impacto: fallo de conexion o dependencia de variables duplicadas no documentadas
+- Recomendacion: unificar nombres
+- Prioridad: inmediata
+- Cambio requerido: backend/infra
+
+[ALTO] CORS incompleto para headers reales
+- Archivo: `gateway/src/middleware/cors.js`
+- Servicio: gateway/frontend
+- Descripcion: faltan `X-Org-Id`, `X-Tenant-Id`, `X-CSRF-Token`
+- Impacto: fallos de preflight y seguridad inconsistente
+- Recomendacion: definir allowlist real minima y alineada
+- Prioridad: alta
+- Cambio requerido: gateway/frontend
+
+[ALTO] AI service fuera del modelo comun de seguridad
+- Archivo: `services/ai/src/index.js`
+- Servicio: ai
+- Descripcion: no usa `buildApp`, no vi `requireInternalSig`, permisos por nombres de rol hardcodeados
+- Impacto: enforcement mas debil que el resto
+- Recomendacion: migrar al wrapper comun
+- Prioridad: alta
+- Cambio requerido: backend
+
+[ALTO] Drift de esquema Patients/Auth/Reports/Notifications
+- Archivo: `scripts/migrations/*`, `vetmanager_COMPLETO_FINAL.sql`, `services/*`
+- Servicio: multiple
+- Descripcion: columnas/tablas/procedures no alineadas; verificado ademas contra AWS RDS real
+- Impacto: 400/500, filtros rotos, datos incompletos
+- Recomendacion: definir esquema canonico y revalidar modulo por modulo
+- Prioridad: alta
+- Cambio requerido: backend/DB/Railway
+
+[ALTO] AWS RDS real confirma duplicacion semantica de columnas
+- Archivo: `services/patients/*`, `services/medical/*`, `services/billing/*`, `scripts/migrations/*`
+- Servicio: patients/medical/billing/DB
+- Descripcion: la DB viva contiene pares de columnas redundantes o conflictivas como `chip_number`/`microchip_number`, `birthdate`/`birth_date`, `vet_id`/`veterinarian_id`, `temperature`/`temperature_celsius`
+- Impacto: queries ambiguas, escritura parcial, lecturas inconsistentes, bugs silenciosos y reportes incorrectos
+- Recomendacion: definir contrato de columnas canonico, deprecacion controlada y pruebas de compatibilidad por servicio
+- Prioridad: alta
+- Cambio requerido: backend/DB
+
+[ALTO] Solo 4 stored procedures presentes en AWS RDS
+- Archivo: `scripts/migrations/*`, `services/*`
+- Servicio: auth/reports/billing/medical/notifications
+- Descripcion: la instancia real solo expone `sp_clear_failed_logins`, `sp_login_attempt`, `sp_record_failed_login`, `sp_revoke_user_sessions`
+- Impacto: cualquier invocacion a procedures fuera de ese conjunto puede fallar con 500
+- Recomendacion: inventario exhaustivo de `CALL`/`callProc` y contraste uno a uno contra AWS antes de despliegue productivo
+- Prioridad: alta
+- Cambio requerido: backend/DB/Railway
+
+[CRITICO] Notifications service incompatible con el esquema real de `notification_logs`
+- Archivo: `services/notifications/src/index.js`, `services/portal/src/index.js`
+- Servicio: notifications/portal
+- Descripcion: ambos servicios leen o escriben columnas que no existen en AWS RDS (`notification_type`, `message`, `severity`, `sent_at`, `read_at`, `action_url`, `related_entity_type`, `related_entity_id`)
+- Impacto: listado, marcado de lectura y push interno de notificaciones pueden fallar con 500 de forma sistematica
+- Recomendacion: decidir esquema canonico de notificaciones y adaptar codigo o migraciones antes de habilitar el modulo
+- Prioridad: inmediata
+- Cambio requerido: backend/DB
+
+[CRITICO] AI service no es desplegable contra la DB AWS actual
+- Archivo: `services/ai/src/index.js`, `scripts/migrations/014_ai.sql`
+- Servicio: ai
+- Descripcion: faltan en AWS RDS todas las tablas AI esperadas y ademas el codigo consulta columnas ausentes en `patients` y `medical_records`
+- Impacto: chat, diagnostico, analisis de imagen y riesgo clinico tienen alto riesgo de 500 o persistencia nula
+- Recomendacion: aplicar o rehacer el esquema AI real antes de exponer el servicio, y alinear columnas de pacientes/historia clinica
+- Prioridad: inmediata
+- Cambio requerido: backend/DB/Railway
+
+[ALTO] Reports service tiene multiples endpoints confirmadamente rotos en AWS
+- Archivo: `services/reports/src/index.js`, `services/telemedicine/src/index.js`
+- Servicio: reports/telemedicine
+- Descripcion: faltan `sp_branch_stats`, `sp_executive_dashboard`, `v_branch_daily_kpis`, `v_login_failures_last_24h`, `v_active_sessions`, `v_tele_vet_stats` y la tabla `patients_branch`
+- Impacto: dashboard, executive, security, KPIs y parte de telemedicina pueden devolver 500
+- Recomendacion: bajar a un set minimo de reports soportados por el esquema real o completar vistas/procedures faltantes
+- Prioridad: alta
+- Cambio requerido: backend/DB
+
+[MEDIO] Logout no revoca correctamente token actual
+- Archivo: `gateway/src/routes/proxy.js`, `services/auth/src/routes/auth.routes.js`
+- Servicio: gateway/auth
+- Descripcion: falta `X-JTI`
+- Impacto: revocacion parcial, sesion puede depender solo de expiracion natural
+- Recomendacion: reenviar `jti`
+- Prioridad: media
+- Cambio requerido: gateway/backend
+
+[MEDIO] WebSocket broadcast no filtra por org/branch al hacer broadcast global
+- Archivo: `gateway/src/websocket.js`
+- Servicio: gateway/ws
+- Descripcion: si no hay `targetUserIds`, envia a todos los sockets
+- Impacto: potencial fuga de eventos
+- Recomendacion: filtrar por org/branch/rol dentro del socket session context
+- Prioridad: media
+- Cambio requerido: gateway/backend
+
+[MEDIO] Access token en localStorage
+- Archivo: `andromeda-front/src/api/client.js`, `andromeda-front/src/stores/auth.js`
+- Servicio: frontend
+- Descripcion: modelo hibrido expone token a XSS
+- Impacto: robo de token si hay XSS
+- Recomendacion: evaluar migracion a cookie-only o reducir superficie XSS
+- Prioridad: media
+- Cambio requerido: frontend/backend
+
+[BAJO] Redis publico Railway visible en ejemplo
+- Archivo: `.env.example`, `.env.production.example`
+- Servicio: infra
+- Descripcion: endpoint visible sin password
+- Impacto: leakage de topologia
+- Recomendacion: remover endpoints reales de ejemplos
+- Prioridad: baja
+- Cambio requerido: repo/infra
+
+[INFO] Hardening HTTP superior al promedio
+- Archivo: `shared/security.js`, `gateway/src/index.js`
+- Servicio: gateway/shared
+- Descripcion: Helmet/HPP/DNS rebinding/idempotency/WAF/CSRF
+- Impacto: mejora la base de seguridad
+- Recomendacion: conservar y alinear con frontend
+- Prioridad: informativa
+- Cambio requerido: ninguno inmediato
+
+================================================================
+17. LISTA DE COSAS ORDENADAS
+================================================================
+
+- JWT RS256 y rotacion basica
+- Revocacion y reuse detection en Redis
+- HMAC interno diseñado
+- RBAC base por permisos
+- Rate limiting multiple
+- Hardening HTTP amplio
+- Estructura monorepo entendible
+- Separacion por dominios funcionales
+- Migrations versionadas
+
+================================================================
+18. LISTA DE COSAS DESORDENADAS
+================================================================
+
+- Variables de entorno
+- Contratos frontend/auth
+- CORS vs headers reales
+- OpenAPI gateway vs OpenAPI services
+- Codigo vs migrations vs dump SQL
+- Zero-trust uniforme entre todos los servicios
+- Modelo tenant/org/branch/ownership
+- Esquema de notifications
+- Roles/permisos en AI
+
+================================================================
+19. CAMBIOS RECOMENDADOS EN ORDEN
+================================================================
+
+1. Unificar contrato de auth:
+- refresh por cookie o por body, no ambos mal alineados
+- 2FA con payload unico
+- reenviar `X-JTI`
+
+2. Corregir zero-trust interno:
+- `subdomainMiddleware` con `X-Internal-Sig`
+- mover Notifications y AI al wrapper comun o endurecerlos igual
+
+3. Definir una sola fuente de verdad de esquema:
+- migraciones canonicas
+- eliminar drift con `vetmanager_COMPLETO_FINAL.sql` o regenerarlo
+
+4. Unificar variables de entorno:
+- `MYSQL_*` vs `DB_*`
+- `ALLOWED_ORIGINS` vs `CORS_ORIGINS`
+- expiraciones JWT
+- TTL de firma interna
+
+5. Alinear CORS y CSRF con el frontend real.
+
+6. Normalizar tenancy:
+- decidir donde manda `orgId`
+- decidir cuando manda `branchId`
+- ownership obligatorio para dominios sensibles
+
+7. Revalidar Patients end-to-end con DB limpia y con DB migrada.
+
+8. Revalidar Reportes/Notifications/Billing con esquema real.
+
+9. Filtrar broadcast WebSocket por org/branch.
+
+10. Reducir dependencia del access token en localStorage si el roadmap lo permite.
+
+================================================================
+20. CHECKLIST FINAL PARA PRODUCCION
+================================================================
+
+[ ] Corregir auth refresh/2FA/logout
+[ ] Corregir HMAC interno de subdominio
+[ ] Exigir HMAC y RBAC uniforme en Notifications y AI
+[ ] Unificar variables de entorno y secretos
+[ ] Ejecutar migraciones desde cero y validar contra codigo
+[ ] Alinear dump SQL con migraciones o retirarlo del flujo
+[ ] Alinear gateway OpenAPI, service OpenAPI y frontend
+[ ] Corregir CORS para headers reales y CSRF
+[ ] Verificar que `patients`, `auth`, `billing`, `reports`, `notifications` funcionen con DB vacia pero migrada
+[ ] Verificar Redis con password/TLS/network isolation real
+[ ] Confirmar HTTPS/reverse proxy/ALLOWED_HOSTS en runtime
+[ ] Revisar WebSocket multitenant
+[ ] Ejecutar pruebas E2E de login, refresh, patients, webhooks y reportes
+
+================================================================
+21. ESTADO FINAL
+================================================================
+
+Resumen corto:
+- Seguridad base bien pensada.
+- Implementacion actual inconsistente.
+- Prioridad inmediata en Auth, Gateway, Notifications, AI y esquema DB.
+- Todo lo no observado en runtime real queda como NO CONFIRMADO.
+- Lo relativo a MySQL AWS RDS ya no queda como NO CONFIRMADO cuando esta explicitamente marcado como "confirmado en runtime real".

@@ -74,10 +74,10 @@ components:
 
     RefreshRequest:
       type: object
-      required: [refreshToken]
       properties:
         refreshToken:
           type: string
+          description: Optional fallback. Preferred source is the httpOnly refreshToken cookie.
 
     PasswordResetRequest:
       type: object

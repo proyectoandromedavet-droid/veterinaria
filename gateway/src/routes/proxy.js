@@ -41,6 +41,21 @@ const SERVICES = {
   ai:            process.env.SERVICE_AI            || 'http://localhost:4061',
 };
 
+const DANGEROUS_BROWSER_HEADERS = [
+  'x-user-id',
+  'x-user-email',
+  'x-user-roles',
+  'x-jti',
+  'x-org-id',
+  'x-tenant-id',
+  'x-branch-id',
+  'x-internal-sig',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-forwarded-proto',
+  'x-forwarded-port',
+];
+
 /**
  * Create a proxy middleware with optional circuit breaker.
  * @param {string} target      — upstream URL
@@ -67,19 +82,25 @@ function makeProxy(target, pathRewrite = {}, name) {
         else breaker?.onSuccess();
       },
       proxyReq(proxyReq, req) {
+        for (const header of DANGEROUS_BROWSER_HEADERS) {
+          proxyReq.removeHeader(header);
+        }
         // Forward user info to downstream services as internal headers
         if (req.user) {
           proxyReq.setHeader('X-User-Id',    req.user.userId  || '');
-          proxyReq.setHeader('X-Org-Id',     req.user.orgId   || '');
-          proxyReq.setHeader('X-Branch-Id',  req.user.branchId || req.headers['x-branch-id'] || '');
+          proxyReq.setHeader('X-Org-Id',     req.user.orgId   || req.tenantOrgId || '');
+          proxyReq.setHeader('X-Branch-Id',  req.user.branchId || '');
           proxyReq.setHeader('X-User-Roles', (req.user.roles || []).join(','));
           proxyReq.setHeader('X-User-Email', req.user.email  || '');
+          proxyReq.setHeader('X-JTI',        req.user.jti || '');
+        } else if (req.tenantOrgId) {
+          proxyReq.setHeader('X-Org-Id', req.tenantOrgId);
         }
         proxyReq.setHeader('X-Request-Id',   req.headers['x-request-id'] || req.requestId || Date.now().toString());
         proxyReq.setHeader('X-Trace-Id',     req.traceId || '');
         proxyReq.setHeader('X-Forwarded-For', req.ip);
         // Internal service auth — HMAC signature for gateway→service trust
-        const sig = signRequest(req.method, req.path, req.user?.orgId || req.headers['x-org-id'] || '');
+        const sig = signRequest(req.method, req.path, req.user?.orgId || req.tenantOrgId || '');
         if (sig) proxyReq.setHeader(INTERNAL_SIG_HEADER, sig);
         // Re-buffer parsed body LAST — write() commits headers so all setHeader calls must precede it
         if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {

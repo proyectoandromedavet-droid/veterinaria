@@ -14,6 +14,7 @@ const { apiLimiter, tenantLimiter } = require('./middleware/rateLimiter');
 const { morganMiddleware, logger }  = require('./middleware/logger');
 const { correlationId }             = require('../../shared/correlationId');
 const { subdomainMiddleware }       = require('./middleware/subdomain');
+const { sanitizeIncomingHeaders }    = require('../middleware/sanitizeIncomingHeaders');
 const { versioningMiddleware }      = require('./middleware/versioning');
 const { dlpMiddleware }             = require('./middleware/dlp');
 const { registerProxies }          = require('./routes/proxy');
@@ -92,6 +93,7 @@ app.use(correlationId);
 app.use(requestId);
 app.use(ipGuard);
 app.use(dnsRebindingGuard);
+app.use(sanitizeIncomingHeaders);
 
 // ── Subdomain tenant resolver ─────────────────────────────────────────────────
 app.use(subdomainMiddleware);

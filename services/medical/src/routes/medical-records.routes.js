@@ -17,8 +17,8 @@ router.get('/', async (req, res, next) => {
   try {
     const { patientId, status, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
-    const conditions = ['a.branch_id = :bid'];
-    const params = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const conditions = ['a.branch_id = :bid', 'p.organization_id = :orgId'];
+    const params = { bid: req.user.branchId, orgId: req.user.orgId, limit: parseInt(limit), offset: parseInt(offset) };
 
     if (patientId) { conditions.push('mr.patient_id = :pid'); params.pid = patientId; }
     if (status)    { conditions.push('mr.status = :status');   params.status = status; }
@@ -48,7 +48,10 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const mr = await db.queryOne(
-      `SELECT mr.*, p.name AS patient_name, sp.common_name AS species,
+      `SELECT mr.*,
+              mr.chief_complaint AS reason_for_visit,
+              mr.opened_at AS visit_date,
+              p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
        FROM medical_records mr
        JOIN patients p ON mr.patient_id = p.id
@@ -97,25 +100,16 @@ router.post('/',
       }
 
       if (!appointmentId) {
-        // Buscar client_id del paciente
-        const owner = await db.queryOne(
-          `SELECT client_id FROM patient_owners
-           WHERE patient_id = :pid AND (end_date IS NULL OR end_date > NOW())
-           ORDER BY ownership_type = 'primary' DESC
-           LIMIT 1`,
-          { pid: patientId }
-        );
-
         // Crear cita walk-in
         const [apptResult] = await db.query(
           `INSERT INTO appointments
-             (branch_id, patient_id, client_id, vet_id, veterinarian_id,
-              scheduled_date, appointment_date, status, reason, duration_minutes)
-           VALUES (:bid, :pid, :cid, :uid, :uid, NOW(), NOW(), 'in_progress', :reason, 30)`,
+             (branch_id, patient_id, vet_id, scheduled_date, duration_minutes,
+              status, reason, notes, is_emergency)
+           VALUES (:bid, :pid, :uid, NOW(), 30,
+                   'in_progress', :reason, NULL, 0)`,
           {
             bid:    req.user.branchId,
             pid:    patientId,
-            cid:    owner?.client_id || null,
             uid:    req.user.userId,
             reason: chiefComplaint,
           }
@@ -124,32 +118,33 @@ router.post('/',
       } else {
         // Obtener patient_id desde la cita
         const appt = await db.queryOne(
-          `SELECT patient_id FROM appointments WHERE id = :id`,
-          { id: appointmentId }
+          `SELECT a.patient_id
+           FROM appointments a
+           JOIN patients p ON a.patient_id = p.id
+           WHERE a.id = :id AND a.branch_id = :bid AND p.organization_id = :orgId`,
+          { id: appointmentId, bid: req.user.branchId, orgId: req.user.orgId }
         );
         if (!appt) return R.notFound(res, 'Cita no encontrada');
         patientId = appt.patient_id;
       }
 
       // Insertar historia clínica directamente (sin SP)
-      const { reasonForVisit, visitDate, notes } = req.body;
+      const { notes } = req.body;
       const [r] = await db.query(
         `INSERT INTO medical_records
            (appointment_id, patient_id, vet_id, status,
-            chief_complaint, reason_for_visit, weight_kg, body_condition_score,
-            temperature_celsius, visit_date, notes, opened_at)
+            chief_complaint, weight_kg, body_condition_score,
+            temperature_celsius, notes, opened_at)
          VALUES (:apptId, :pid, :uid, 'open',
-                 :cc, :rfv, :wt, :bcs, :temp, :vdate, :notes, NOW())`,
+                 :cc, :wt, :bcs, :temp, :notes, NOW())`,
         {
           apptId: appointmentId,
           pid:    patientId,
           uid:    req.user.userId,
           cc:     chiefComplaint,
-          rfv:    reasonForVisit   || null,
           wt:     weightKg         || null,
           bcs:    bodyConditionScore || null,
           temp:   temperatureC     || null,
-          vdate:  visitDate        || null,
           notes:  notes            || null,
         }
       );
@@ -285,7 +280,25 @@ router.post('/:id/treatments', async (req, res, next) => {
 // POST /medical-records/:id/sign
 router.post('/:id/sign', async (req, res, next) => {
   try {
-    await db.callProc('sp_sign_medical_record', [req.params.id, req.user.userId]);
+    const [result] = await db.query(
+      `UPDATE medical_records mr
+       JOIN patients p ON mr.patient_id = p.id
+       SET mr.status = 'signed',
+           mr.signed_at = NOW(),
+           mr.signed_by = :uid,
+           mr.updated_at = NOW()
+       WHERE mr.id = :id
+         AND p.organization_id = :orgId`,
+      {
+        id: req.params.id,
+        uid: req.user.userId,
+        orgId: req.user.orgId,
+      }
+    );
+
+    if (!result.affectedRows) {
+      return R.notFound(res, 'Medical record not found');
+    }
     return R.ok(res, { message: 'Medical record signed successfully' });
   } catch (e) {
     if (e.message?.includes('SQLSTATE')) {

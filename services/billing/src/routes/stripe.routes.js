@@ -43,7 +43,7 @@ router.post('/subscriptions',
   validate,
   async (req, res, next) => {
     try {
-      const orgId   = req.headers['x-org-id'];
+      const orgId   = req.user?.orgId;
       const { plan, email, orgName } = req.body;
 
       const subscription = await stripe.createSubscription(orgId, plan, email, orgName);
@@ -66,7 +66,7 @@ router.post('/subscriptions',
 // GET /billing/subscriptions/current
 router.get('/subscriptions/current', async (req, res, next) => {
   try {
-    const orgId  = req.headers['x-org-id'];
+    const orgId  = req.user?.orgId;
     const tenant = await db.queryOne(
       'SELECT plan, stripe_subscription_id, next_billing_date, billing_email FROM tenants WHERE org_id = :orgId',
       { orgId },
@@ -81,7 +81,7 @@ router.get('/subscriptions/current', async (req, res, next) => {
 // DELETE /billing/subscriptions
 router.delete('/subscriptions', async (req, res, next) => {
   try {
-    const orgId = req.headers['x-org-id'];
+    const orgId = req.user?.orgId;
     await stripe.cancelSubscription(orgId);
     res.json({ success: true, message: 'Subscription cancelled. Plan downgraded to free.' });
   } catch (err) {
@@ -93,7 +93,7 @@ router.delete('/subscriptions', async (req, res, next) => {
 // GET /billing/subscriptions/portal
 router.get('/subscriptions/portal', async (req, res, next) => {
   try {
-    const orgId     = req.headers['x-org-id'];
+    const orgId     = req.user?.orgId;
     const returnUrl = req.query.return_url;
     const url = await stripe.getBillingPortalUrl(orgId, returnUrl);
     res.json({ success: true, data: { portalUrl: url } });

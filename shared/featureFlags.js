@@ -91,7 +91,7 @@ async function setFlag(orgId, flag, value) {
 function requireFeature(flag) {
   return async (req, res, next) => {
     try {
-      const orgId = req.user?.orgId || req.headers['x-org-id'];
+      const orgId = req.user?.orgId;
       if (await isEnabled(flag, orgId)) return next();
 
       res.status(403).json({

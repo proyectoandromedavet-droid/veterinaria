@@ -9,12 +9,26 @@ const R         = require('../../../shared/response');
 const messaging = require('../../../shared/messaging');
 const fcm       = require('../../../shared/fcm');
 const { createRedisClient, connectRedis } = require('../../../shared/redis');
+const { requireInternalSig } = require('../../../shared/internalAuth');
+const {
+  getNotificationSchema,
+  notificationExpr,
+  notificationReadAtExpr,
+  notificationUnreadPredicate,
+  notificationMarkReadSet,
+  notificationOrderExpr,
+  buildNotificationInsert,
+} = require('../../../shared/notificationLogSchema');
 
 const app    = express();
 const server = http.createServer(app);
 const PORT   = parseInt(process.env.PORT || '3009');
 
 app.use(express.json());
+app.use((req, res, next) => {
+  if (req.path === '/health') return next();
+  return requireInternalSig(req, res, next);
+});
 
 // ── User context from gateway headers ────────────────────────────────────────
 app.use((req, _res, next) => {
@@ -47,30 +61,77 @@ async function getRedis() {
   return { pub: redisPub, sub: redisSub };
 }
 
-// ── In-memory notification store (real impl would use DB table) ──────────────
-// Uses notification_logs table from DB
+function requireUserContext(req, res) {
+  if (!req.user?.userId) {
+    R.unauthorized(res, 'User context required');
+    return false;
+  }
+  return true;
+}
+
+function parsePageLimit(query, defaultLimit = 30) {
+  const page = Math.max(parseInt(`${query.page || '1'}`, 10) || 1, 1);
+  const limit = Math.min(parseInt(`${query.limit || `${defaultLimit}`}`, 10) || defaultLimit, 100);
+  return { page, limit, offset: (page - 1) * limit };
+}
+
+function reminderDueExpr(alias = 'r') {
+  return `COALESCE(${alias}.scheduled_send_at, ${alias}.created_at)`;
+}
+
+function buildReminderMessage(kind, data) {
+  const dateText = new Date(data.dueAt).toLocaleDateString('es-AR');
+  const timeText = new Date(data.dueAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+  if (kind === 'appointment') {
+    return `Recordatorio de turno para ${data.patientName || 'su mascota'} el ${dateText} a las ${timeText}.`;
+  }
+
+  if (kind === 'vaccination') {
+    return `Recordatorio de vacunación para ${data.patientName || 'su mascota'} el ${dateText}.`;
+  }
+
+  if (kind === 'deworming') {
+    return `Recordatorio de desparasitación para ${data.patientName || 'su mascota'} el ${dateText}.`;
+  }
+
+  return `Recordatorio programado para ${dateText} a las ${timeText}.`;
+}
 
 // ── REST: GET /notifications ──────────────────────────────────────────────────
 app.get('/notifications', async (req, res, next) => {
   try {
-    const { unreadOnly = 'false', page = 1, limit = 30 } = req.query;
-    const offset = (page - 1) * limit;
-    const where  = unreadOnly === 'true' ? 'AND nl.read_at IS NULL' : '';
+    if (!requireUserContext(req, res)) return;
+    const { unreadOnly = 'false' } = req.query;
+    const { limit, offset } = parsePageLimit(req.query);
+    const schema = await getNotificationSchema();
+    const cols = schema.notification_logs || new Set();
+    const where = unreadOnly === 'true' ? `AND ${notificationUnreadPredicate(cols)}` : '';
 
     const rows = await db.query(
-      `SELECT nl.id, nl.notification_type, nl.title, nl.message, nl.severity,
-              nl.sent_at, nl.read_at, nl.action_url,
-              nl.related_entity_type, nl.related_entity_id
+      `SELECT nl.id,
+              ${notificationExpr(cols, 'nl', 'type', `'info'`)} AS notification_type,
+              ${notificationExpr(cols, 'nl', 'title', `''`)} AS title,
+              ${notificationExpr(cols, 'nl', 'message', `''`)} AS message,
+              ${notificationExpr(cols, 'nl', 'severity', `'info'`)} AS severity,
+              ${notificationExpr(cols, 'nl', 'sentAt', 'NOW()')} AS sent_at,
+              ${notificationReadAtExpr(cols, 'nl')} AS read_at,
+              ${notificationExpr(cols, 'nl', 'actionUrl', 'NULL')} AS action_url,
+              ${notificationExpr(cols, 'nl', 'relatedEntityType', 'NULL')} AS related_entity_type,
+              ${notificationExpr(cols, 'nl', 'relatedEntityId', 'NULL')} AS related_entity_id
        FROM notification_logs nl
        WHERE nl.user_id = :uid ${where}
-       ORDER BY nl.sent_at DESC
+       ORDER BY ${notificationOrderExpr(cols, 'nl')} DESC
        LIMIT :limit OFFSET :offset`,
-      { uid: req.user.userId, limit: parseInt(limit), offset: parseInt(offset) }
+      { uid: req.user.userId, limit, offset }
     );
-    const [{ unread }] = await db.query(
-      `SELECT COUNT(*) AS unread FROM notification_logs WHERE user_id=:uid AND read_at IS NULL`,
+    const unreadRows = await db.query(
+      `SELECT COUNT(*) AS unread
+       FROM notification_logs nl
+       WHERE nl.user_id = :uid AND ${notificationUnreadPredicate(cols)}`,
       { uid: req.user.userId }
     );
+    const unread = unreadRows[0]?.unread || 0;
     return R.ok(res, rows, { unreadCount: unread });
   } catch (e) { next(e); }
 });
@@ -78,8 +139,14 @@ app.get('/notifications', async (req, res, next) => {
 // ── REST: PATCH /notifications/:id/read ──────────────────────────────────────
 app.patch('/notifications/:id/read', async (req, res, next) => {
   try {
+    if (!requireUserContext(req, res)) return;
+    const schema = await getNotificationSchema();
+    const cols = schema.notification_logs || new Set();
+    const setClause = notificationMarkReadSet(cols);
+    if (!setClause) return R.noContent(res);
+
     await db.query(
-      `UPDATE notification_logs SET read_at = NOW() WHERE id = :id AND user_id = :uid`,
+      `UPDATE notification_logs SET ${setClause} WHERE id = :id AND user_id = :uid`,
       { id: req.params.id, uid: req.user.userId }
     );
     return R.noContent(res);
@@ -89,8 +156,15 @@ app.patch('/notifications/:id/read', async (req, res, next) => {
 // ── REST: PATCH /notifications/read-all ──────────────────────────────────────
 app.patch('/notifications/read-all', async (req, res, next) => {
   try {
+    if (!requireUserContext(req, res)) return;
+    const schema = await getNotificationSchema();
+    const cols = schema.notification_logs || new Set();
+    const setClause = notificationMarkReadSet(cols);
+    if (!setClause) return R.noContent(res);
+
     await db.query(
-      `UPDATE notification_logs SET read_at = NOW() WHERE user_id = :uid AND read_at IS NULL`,
+      `UPDATE notification_logs SET ${setClause}
+       WHERE user_id = :uid AND ${notificationUnreadPredicate(cols)}`,
       { uid: req.user.userId }
     );
     return R.noContent(res);
@@ -105,30 +179,41 @@ app.post('/notifications/push', async (req, res, next) => {
       type, title, message, severity = 'info',
       relatedEntityType, relatedEntityId, actionUrl,
     } = req.body;
+    const schema = await getNotificationSchema();
+    const cols = schema.notification_logs || new Set();
 
-    // Save to DB for each target user
     if (targetUserIds?.length) {
       for (const uid of targetUserIds) {
-        await db.query(
-          `INSERT INTO notification_logs
-             (user_id, branch_id, notification_type, title, message, severity,
-              related_entity_type, related_entity_id, action_url)
-           VALUES (:uid,:bid,:type,:title,:msg,:sev,:entType,:entId,:url)`,
-          {
-            uid, bid: branchId || req.user.branchId,
-            type, title, msg: message, sev: severity,
-            entType: relatedEntityType || null, entId: relatedEntityId || null,
-            url: actionUrl || null,
-          }
-        );
+        const insert = buildNotificationInsert(cols, {
+          userId: uid,
+          branchId: branchId || req.user.branchId || null,
+          orgId: orgId || req.user.orgId || null,
+          type,
+          title,
+          message,
+          severity,
+          relatedEntityType: relatedEntityType || null,
+          relatedEntityId: relatedEntityId || null,
+          actionUrl: actionUrl || null,
+        });
+        if (insert.columns.length) {
+          await db.query(
+            `INSERT INTO notification_logs (${insert.columns.join(', ')})
+             VALUES (${insert.values.join(', ')})`,
+            insert.params
+          );
+        }
       }
     }
 
-    // Publish to Redis → gateway WebSocket
-    const { pub } = await getRedis();
-    await pub.publish('notifications', JSON.stringify({
-      type, targetUserIds, targetRoles, orgId, branchId, data: { title, message, severity, actionUrl },
-    }));
+    try {
+      const { pub } = await getRedis();
+      await pub.publish('notifications', JSON.stringify({
+        type, targetUserIds, targetRoles, orgId, branchId, data: { title, message, severity, actionUrl },
+      }));
+    } catch (err) {
+      console.warn('[notifications] publish degraded:', err.message);
+    }
 
     return R.created(res, { delivered: targetUserIds?.length || 0 });
   } catch (e) { next(e); }
@@ -137,8 +222,115 @@ app.post('/notifications/push', async (req, res, next) => {
 // ── REST: POST /notifications/reminders/generate ─────────────────────────────
 app.post('/notifications/reminders/generate', async (req, res, next) => {
   try {
-    const results = await db.callProc('sp_generate_reminders', [req.user.branchId, 7]);
-    return R.ok(res, { generated: results[0]?.[0]?.generated || 0 });
+    if (!req.user.branchId) return R.badRequest(res, 'Branch context required');
+
+    const generated = await db.transaction(async (conn) => {
+      let total = 0;
+      const daysAhead = 7;
+
+      const [appointmentRows] = await conn.query(
+        `INSERT INTO reminders
+           (branch_id, patient_id, client_id, reminder_type, related_entity_id,
+            scheduled_send_at, status, channel, message, created_at)
+         SELECT a.branch_id,
+                a.patient_id,
+                COALESCE(a.client_id, po.client_id),
+                'appointment',
+                a.id,
+                a.appointment_date,
+                'pending',
+                'whatsapp',
+                CONCAT('Recordatorio de turno para ', p.name, ' el ',
+                       DATE_FORMAT(a.appointment_date, '%d/%m/%Y %H:%i')),
+                NOW()
+         FROM appointments a
+         JOIN patients p ON p.id = a.patient_id
+         LEFT JOIN patient_owners po
+           ON po.patient_id = p.id AND po.ownership_type = 'primary'
+         WHERE a.branch_id = :bid
+           AND a.appointment_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL :days DAY)
+           AND a.status IN ('scheduled', 'confirmed')
+           AND NOT EXISTS (
+             SELECT 1
+             FROM reminders r
+             WHERE r.branch_id = a.branch_id
+               AND r.reminder_type = 'appointment'
+               AND r.related_entity_id = a.id
+           )`,
+        { bid: req.user.branchId, days: daysAhead }
+      );
+      total += appointmentRows.affectedRows || 0;
+
+      const [vaccinationRows] = await conn.query(
+        `INSERT INTO reminders
+           (branch_id, patient_id, client_id, reminder_type, related_entity_id,
+            scheduled_send_at, status, channel, message, created_at)
+         SELECT v.branch_id,
+                v.patient_id,
+                po.client_id,
+                'vaccination',
+                v.id,
+                v.next_due_date,
+                'pending',
+                'whatsapp',
+                CONCAT('Recordatorio de vacunación para ', p.name, ' el ',
+                       DATE_FORMAT(v.next_due_date, '%d/%m/%Y')),
+                NOW()
+         FROM vaccinations v
+         JOIN patients p ON p.id = v.patient_id
+         JOIN vaccines vac ON vac.id = v.vaccine_id
+         LEFT JOIN patient_owners po
+           ON po.patient_id = p.id AND po.ownership_type = 'primary'
+         WHERE v.branch_id = :bid
+           AND v.next_due_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL :days DAY)
+           AND NOT EXISTS (
+             SELECT 1
+             FROM reminders r
+             WHERE r.branch_id = v.branch_id
+               AND r.reminder_type = 'vaccination'
+               AND r.related_entity_id = v.id
+           )`,
+        { bid: req.user.branchId, days: daysAhead }
+      );
+      total += vaccinationRows.affectedRows || 0;
+
+      const [dewormingRows] = await conn.query(
+        `INSERT INTO reminders
+           (branch_id, patient_id, client_id, reminder_type, related_entity_id,
+            scheduled_send_at, status, channel, message, created_at)
+         SELECT dr.branch_id,
+                dr.patient_id,
+                po.client_id,
+                'deworming',
+                dr.id,
+                dr.next_due_date,
+                'pending',
+                'whatsapp',
+                CONCAT('Recordatorio de desparasitación para ', p.name, ' el ',
+                       DATE_FORMAT(dr.next_due_date, '%d/%m/%Y')),
+                NOW()
+         FROM deworming_records dr
+         JOIN patients p ON p.id = dr.patient_id
+         JOIN antiparasitic_products ap ON ap.id = dr.product_id
+         LEFT JOIN patient_owners po
+           ON po.patient_id = p.id AND po.ownership_type = 'primary'
+         WHERE dr.branch_id = :bid
+           AND dr.next_due_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL :days DAY)
+           AND NOT EXISTS (
+             SELECT 1
+             FROM reminders r
+             WHERE r.branch_id = dr.branch_id
+               AND r.reminder_type = 'deworming'
+               AND r.related_entity_id = dr.id
+           )`,
+        { bid: req.user.branchId, days: daysAhead }
+      );
+      total += dewormingRows.affectedRows || 0;
+
+      return total;
+    });
+
+    return R.ok(res, { generated });
   } catch (e) { next(e); }
 });
 
@@ -153,7 +345,7 @@ app.get('/notifications/reminders', async (req, res, next) => {
     if (type)   { conds.push('r.reminder_type = :type'); p.type = type; }
 
     const rows = await db.query(
-      `SELECT r.id, r.reminder_type, r.due_date, r.status, r.message,
+      `SELECT r.id, r.reminder_type, ${reminderDueExpr('r')} AS due_date, r.status, r.message,
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(cl.first_name,' ',cl.last_name) AS owner_name, cl.phone, cl.email
        FROM reminders r
@@ -162,7 +354,7 @@ app.get('/notifications/reminders', async (req, res, next) => {
        JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type='primary'
        JOIN clients  cl    ON po.client_id  = cl.id
        WHERE ${conds.join(' AND ')}
-       ORDER BY r.due_date ASC
+       ORDER BY ${reminderDueExpr('r')} ASC
        LIMIT :limit OFFSET :offset`,
       p
     );
@@ -223,7 +415,7 @@ app.post('/notifications/messages/reminder/:reminderId', async (req, res, next) 
   try {
     const { channel = 'both' } = req.body;
     const reminder = await db.queryOne(
-      `SELECT r.id, r.reminder_type, r.message, r.due_date,
+      `SELECT r.id, r.reminder_type, r.message, ${reminderDueExpr('r')} AS due_date,
               p.name AS pet_name,
               CONCAT(cl.first_name,' ',cl.last_name) AS owner_name,
               cl.phone, cl.email,
@@ -268,7 +460,7 @@ app.post('/notifications/messages/bulk-reminders', async (req, res, next) => {
     const { channel = 'both', daysAhead = 1 } = req.body;
 
     const reminders = await db.query(
-      `SELECT r.id, r.reminder_type, r.due_date,
+      `SELECT r.id, r.reminder_type, ${reminderDueExpr('r')} AS due_date,
               p.name AS pet_name,
               CONCAT(cl.first_name,' ',cl.last_name) AS owner_name,
               cl.phone,
@@ -280,7 +472,7 @@ app.post('/notifications/messages/bulk-reminders', async (req, res, next) => {
        JOIN branches b         ON r.branch_id = b.id
        WHERE r.branch_id = :bid
          AND r.status = 'pending'
-         AND r.due_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL :days DAY)
+         AND r.scheduled_send_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL :days DAY)
          AND cl.phone IS NOT NULL`,
       { bid: req.user.branchId, days: daysAhead }
     );
@@ -527,7 +719,11 @@ app.use((err, _req, res, _next) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-server.listen(PORT, async () => {
-  await getRedis().catch(e => console.warn('[notifications] Redis not available:', e.message));
-  console.log(`[notifications] running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, async () => {
+    await getRedis().catch(e => console.warn('[notifications] Redis not available:', e.message));
+    console.log(`[notifications] running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

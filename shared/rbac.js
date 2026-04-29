@@ -13,6 +13,7 @@ const ROLE_PERMISSIONS = {
   org_admin: [
     'org:read', 'org:update',
     'branches:*', 'users:*',
+    'ai:*',
     'patients:*', 'clients:*',
     'appointments:*', 'medical_records:*',
     'lab:*', 'imaging:*', 'surgery:*', 'hospitalization:*',
@@ -25,6 +26,7 @@ const ROLE_PERMISSIONS = {
   branch_manager: [
     'branches:read', 'branches:update',
     'users:read', 'users:create', 'users:update',
+    'ai:*',
     'patients:*', 'clients:*',
     'appointments:*', 'medical_records:*',
     'lab:*', 'imaging:*', 'surgery:*', 'hospitalization:*',
@@ -37,6 +39,7 @@ const ROLE_PERMISSIONS = {
   veterinarian: [
     'patients:read', 'patients:update',
     'clients:read',
+    'ai:*',
     'appointments:*',
     'medical_records:*',
     'lab:*', 'imaging:*', 'surgery:*', 'hospitalization:*',
@@ -78,6 +81,7 @@ const ROLE_PERMISSIONS = {
 
   tele_vet: [
     'patients:read', 'clients:read',
+    'ai:*',
     'telemedicine:*',
     'medical_records:read', 'medical_records:create',
   ],

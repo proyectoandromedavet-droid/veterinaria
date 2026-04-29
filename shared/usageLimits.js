@@ -285,7 +285,7 @@ function emitUsageAlert(orgId, feature, current, limit) {
 function requireUsageLimit(feature, autoRecord = true) {
   return async (req, res, next) => {
     try {
-      const orgId = req.user?.orgId || req.headers['x-org-id'];
+      const orgId = req.user?.orgId;
       if (!orgId) return next(); // unauthenticated requests are not quota-tracked
 
       const { allowed, current, limit } = await checkLimit(orgId, feature);

@@ -120,7 +120,7 @@ router.get('/search/patients', async (req, res, next) => {
 
     const rows = await db.query(
       `SELECT p.id, p.name AS patient_name, p.chip_number,
-              sp.common_name AS species, b.name AS species,
+              sp.common_name AS species,
               CONCAT(cl.first_name,' ',cl.last_name) AS owner_name,
               cl.phone AS owner_phone, cl.email AS owner_email,
               b.id AS branch_id, b.name AS branch_name

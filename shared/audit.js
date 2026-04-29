@@ -78,9 +78,9 @@ function auditMiddleware(options = {}) {
       const action     = methodToAction(req.method);
 
       const user    = req.user || {};
-      const userId  = user.userId  || req.headers['x-user-id']  || null;
-      const orgId   = user.orgId   || req.headers['x-org-id']   || null;
-      const branchId = user.branchId || req.headers['x-branch-id'] || null;
+      const userId  = user.userId  || null;
+      const orgId   = user.orgId   || null;
+      const branchId = user.branchId || null;
 
       const bodySnap = req.body && typeof req.body === 'object'
         ? JSON.stringify(redactSensitive(req.body)).slice(0, 4096)

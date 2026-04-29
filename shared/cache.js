@@ -125,8 +125,8 @@ function cacheMiddleware(ttl = 60, keyFn) {
 }
 
 function defaultKey(req) {
-  const userId = req.user?.userId || req.headers['x-user-id'] || 'anon';
-  const orgId  = req.user?.orgId  || req.headers['x-org-id']  || 'none';
+  const userId = req.user?.userId || 'anon';
+  const orgId  = req.user?.orgId  || 'none';
   return `cache:${orgId}:${userId}:${req.method}:${req.originalUrl}`;
 }
 

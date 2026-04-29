@@ -53,6 +53,20 @@ const USER_HEADERS = {
   'x-user-email': 'admin@clinic.com',
 };
 
+const LIST_SCHEMA_ROWS = [
+  { TABLE_NAME: 'patients', COLUMN_NAME: 'organization_id' },
+  { TABLE_NAME: 'patients', COLUMN_NAME: 'is_active' },
+  { TABLE_NAME: 'patients', COLUMN_NAME: 'chip_number' },
+  { TABLE_NAME: 'patients', COLUMN_NAME: 'tattoo_number' },
+  { TABLE_NAME: 'patients', COLUMN_NAME: 'sex' },
+  { TABLE_NAME: 'patients', COLUMN_NAME: 'birthdate' },
+  { TABLE_NAME: 'patients', COLUMN_NAME: 'coat_color_id' },
+  { TABLE_NAME: 'patients', COLUMN_NAME: 'body_condition_score' },
+  { TABLE_NAME: 'clients', COLUMN_NAME: 'branch_id' },
+  { TABLE_NAME: 'clients', COLUMN_NAME: 'phone' },
+  { TABLE_NAME: 'patient_owners', COLUMN_NAME: 'ownership_type' },
+];
+
 // ── Contract: GET /patients (list) ────────────────────────────────────────────
 
 describe('Contract — GET /patients', () => {
@@ -72,20 +86,6 @@ describe('Contract — GET /patients', () => {
       limit:   null,
     },
   };
-
-  const LIST_SCHEMA_ROWS = [
-    { TABLE_NAME: 'patients', COLUMN_NAME: 'organization_id' },
-    { TABLE_NAME: 'patients', COLUMN_NAME: 'is_active' },
-    { TABLE_NAME: 'patients', COLUMN_NAME: 'chip_number' },
-    { TABLE_NAME: 'patients', COLUMN_NAME: 'tattoo_number' },
-    { TABLE_NAME: 'patients', COLUMN_NAME: 'sex' },
-    { TABLE_NAME: 'patients', COLUMN_NAME: 'birthdate' },
-    { TABLE_NAME: 'patients', COLUMN_NAME: 'coat_color_id' },
-    { TABLE_NAME: 'patients', COLUMN_NAME: 'body_condition_score' },
-    { TABLE_NAME: 'clients', COLUMN_NAME: 'branch_id' },
-    { TABLE_NAME: 'clients', COLUMN_NAME: 'phone' },
-    { TABLE_NAME: 'patient_owners', COLUMN_NAME: 'ownership_type' },
-  ];
 
   it('paginated response has required shape', async () => {
     db.query.mockImplementation((sql) => {
@@ -155,11 +155,17 @@ describe('Contract — GET /patients/:id', () => {
       organization_id: 10, is_active: 1, sex: 'male',
     };
 
-    db.queryOne.mockResolvedValueOnce(fakePatient);
-    db.query
-      .mockResolvedValueOnce([{ id: 5, first_name: 'John', last_name: 'Doe', ownership_type: 'primary' }])
-      .mockResolvedValueOnce([])  // allergies
-      .mockResolvedValueOnce([]); // conditions
+    let detailQueryCall = 0;
+    db.query.mockImplementation((sql) => {
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) return Promise.resolve(LIST_SCHEMA_ROWS);
+      detailQueryCall += 1;
+      if (detailQueryCall === 1) return Promise.resolve([{ id: 5, first_name: 'John', last_name: 'Doe', ownership_type: 'primary' }]);
+      if (detailQueryCall === 2) return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+    db.queryOne
+      .mockResolvedValueOnce({ id: 1 })
+      .mockResolvedValueOnce(fakePatient);
 
     const res = await request(app)
       .get('/patients/1')
@@ -177,6 +183,10 @@ describe('Contract — GET /patients/:id', () => {
   });
 
   it('404 response has standard shape', async () => {
+    db.query.mockImplementation((sql) => {
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) return Promise.resolve(LIST_SCHEMA_ROWS);
+      return Promise.resolve([]);
+    });
     db.queryOne.mockResolvedValueOnce(null);
 
     const res = await request(app)

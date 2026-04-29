@@ -27,12 +27,14 @@ jest.mock('../../shared/twoFactor', () => ({
 jest.mock('../../shared/email', () => ({
   send2faEnabled:    jest.fn(),
   sendPasswordReset: jest.fn(),
+  sendNewDeviceLogin: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('redis', () => {
   const store = new Map();
   const ttlStore = new Map();
 
   const client = {
+    isReady:    true,
     connect:    jest.fn().mockResolvedValue(undefined),
     on:         jest.fn(),
     get:        jest.fn(async (k)       => store.get(k) ?? null),
@@ -56,10 +58,13 @@ jest.mock('redis', () => {
   return { createClient: jest.fn(() => client) };
 });
 
+process.env.INTERNAL_SECRET = 'test-secret';
+
 // These are populated in beforeAll after jest.resetModules()
 // so that the test and the controller share the SAME module instances
 // (same RSA key pair, same db mock, same redis mock client).
 let request, bcrypt, db, jwt, redisClient, app;
+let signRequest;
 
 beforeAll(() => {
   process.env.NODE_ENV = 'test';
@@ -67,6 +72,7 @@ beforeAll(() => {
   bcrypt      = require('bcryptjs');
   db          = require('../../shared/db');
   jwt         = require('../../shared/jwt');
+  ({ signRequest } = require('../../shared/internalAuth'));
   const { createClient } = require('redis');
   redisClient = createClient();  // same client instance the controller will use
   app         = require('../../services/auth/src/index');
@@ -75,6 +81,7 @@ beforeAll(() => {
 afterEach(() => {
   redisClient._reset();
   jest.clearAllMocks();
+  db.callProc.mockResolvedValue([[]]);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -113,7 +120,9 @@ describe('POST /login', () => {
   });
 
   test('200 — successful login returns access + refresh tokens', async () => {
-    db.callProc.mockResolvedValueOnce(makeProcResult(false));
+    db.callProc
+      .mockResolvedValueOnce(makeProcResult(false))
+      .mockResolvedValueOnce([[]]);
     db.queryOne.mockResolvedValueOnce(user);                       // user lookup
     db.query
       .mockResolvedValueOnce([{ name: 'veterinarian' }])           // roles
@@ -125,8 +134,8 @@ describe('POST /login', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({
       accessToken:  expect.any(String),
-      refreshToken: expect.any(String),
     });
+    expect(res.headers['set-cookie']).toEqual(expect.arrayContaining([expect.stringContaining('refreshToken=')]));
     expect(res.body.data.user.orgId).toBe(5);
   });
 
@@ -190,11 +199,10 @@ describe('POST /refresh', () => {
       .mockResolvedValueOnce([{ name: 'veterinarian' }])      // roles
       .mockResolvedValueOnce([{ affectedRows: 1 }]);          // UPDATE session
 
-    const res = await request(app).post('/refresh').send({ refreshToken });
+    const res = await request(app).post('/refresh').set('Cookie', [`refreshToken=${refreshToken}`]).send({});
 
     expect(res.status).toBe(200);
     expect(res.body.data.accessToken).toBeTruthy();
-    expect(res.body.data.refreshToken).toBeTruthy();
     // Old hash should be stored in Redis as "used"
     expect(redisClient._store.get(`rt:used:${tokenHash}`)).toBe('10');
   });
@@ -214,7 +222,7 @@ describe('POST /refresh', () => {
       .mockResolvedValueOnce([{ name: 'veterinarian' }])
       .mockResolvedValueOnce([{ affectedRows: 1 }]);
 
-    const res = await request(app).post('/refresh').send({ refreshToken });
+    const res = await request(app).post('/refresh').set('Cookie', [`refreshToken=${refreshToken}`]).send({});
 
     expect(res.status).toBe(200);
     expect(res.body.data.accessToken).toBeTruthy();
@@ -223,7 +231,7 @@ describe('POST /refresh', () => {
   test('401 — token not found in DB', async () => {
     db.queryOne.mockResolvedValueOnce(null); // session not found
 
-    const res = await request(app).post('/refresh').send({ refreshToken });
+    const res = await request(app).post('/refresh').set('Cookie', [`refreshToken=${refreshToken}`]).send({});
     expect(res.status).toBe(401);
     expect(res.body.error.message).toMatch(/not found/i);
   });
@@ -236,7 +244,7 @@ describe('POST /refresh', () => {
     db.queryOne.mockResolvedValueOnce({ id: 10, jti: 'new-jti' });
     db.query.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE revoke session
 
-    const res = await request(app).post('/refresh').send({ refreshToken });
+    const res = await request(app).post('/refresh').set('Cookie', [`refreshToken=${refreshToken}`]).send({});
 
     expect(res.status).toBe(401);
     expect(res.body.error.message).toMatch(/already used|theft/i);
@@ -248,13 +256,13 @@ describe('POST /refresh', () => {
   });
 
   test('401 — invalid JWT signature', async () => {
-    const res = await request(app).post('/refresh').send({ refreshToken: 'bad.token.here' });
+    const res = await request(app).post('/refresh').set('Cookie', ['refreshToken=bad.token.here']).send({});
     expect(res.status).toBe(401);
   });
 
-  test('400 — missing refreshToken field', async () => {
+  test('401 — missing refresh cookie', async () => {
     const res = await request(app).post('/refresh').send({});
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
   });
 });
 
@@ -269,7 +277,8 @@ describe('POST /logout', () => {
       .set('X-User-Id',    '1')
       .set('X-Org-Id',     '5')
       .set('X-User-Roles', 'veterinarian')
-      .set('X-Jti',        'some-jti');
+      .set('X-Jti',        'some-jti')
+      .set('X-Internal-Sig', signRequest('POST', '/logout', '5'));
 
     expect(res.status).toBe(204);
     expect(redisClient._store.get('revoked:some-jti')).toBe('1');
@@ -284,7 +293,8 @@ describe('POST /logout', () => {
       .set('X-User-Id', '1')
       .set('X-Org-Id', '5')
       .set('X-User-Roles', 'veterinarian')
-      .set('X-Jti', 'some-jti');
+      .set('X-Jti', 'some-jti')
+      .set('X-Internal-Sig', signRequest('POST', '/logout', '5'));
 
     expect(res.status).toBe(204);
   });
@@ -298,5 +308,37 @@ describe('GET /health', () => {
     expect([200, 503]).toContain(res.status);
     expect(typeof res.body.status).toBe('string');
     expect(res.body.service).toBe('auth');
+  });
+});
+
+describe('Admin mounts', () => {
+  test('401 — admin plugins requires internal signature', async () => {
+    const res = await request(app)
+      .get('/admin/plugins')
+      .set('X-User-Id', '1')
+      .set('X-Org-Id', '5')
+      .set('X-User-Roles', 'org_admin');
+
+    expect(res.status).toBe(401);
+  });
+
+  test('401 — ui schema requires internal signature', async () => {
+    const res = await request(app)
+      .get('/me/ui-schema')
+      .set('X-User-Id', '1')
+      .set('X-Org-Id', '5')
+      .set('X-User-Roles', 'org_admin');
+
+    expect(res.status).toBe(401);
+  });
+
+  test('401 — audit export requires internal signature', async () => {
+    const res = await request(app)
+      .get('/audit/export')
+      .set('X-User-Id', '1')
+      .set('X-Org-Id', '5')
+      .set('X-User-Roles', 'org_admin');
+
+    expect(res.status).toBe(401);
   });
 });

@@ -50,7 +50,9 @@ function getTokenFromRequest(req) {
   const header = req.headers['authorization'];
   if (header?.startsWith('Bearer ')) return header.slice(7);
 
-  // 2. Query param ?token= (fallback para clientes que no pueden enviar headers)
+  // 2. Query param ?token= solo en desarrollo.
+  // En producción el token en URL se filtra por logs, proxies y history.
+  if (process.env.NODE_ENV === 'production') return null;
   try {
     const url = new URL(req.url, 'http://localhost');
     const t   = url.searchParams.get('token');
@@ -196,4 +198,4 @@ async function publishNotification(payload) {
   await pub.publish('notifications', JSON.stringify(payload));
 }
 
-module.exports = { attachWebSocket, publishNotification, broadcast };
+module.exports = { attachWebSocket, publishNotification, broadcast, getTokenFromRequest, isAllowedOrigin };

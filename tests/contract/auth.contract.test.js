@@ -72,8 +72,20 @@ jest.mock('redis', () => {
   return { createClient: jest.fn(() => client) };
 });
 
+process.env.INTERNAL_SECRET = 'test-secret';
+
 const db = require('../../shared/db');
+const { signRequest } = require('../../shared/internalAuth');
 const app = require('../../services/auth/src/index');
+
+function adminHeaders() {
+  return {
+    'X-User-Id': '1',
+    'X-Org-Id': '1',
+    'X-User-Roles': 'org_admin',
+    'X-Internal-Sig': signRequest('GET', '/roles', '1'),
+  };
+}
 
 // ── Contract: POST /login ──────────────────────────────────────────────────────
 
@@ -170,19 +182,20 @@ describe('Contract — POST /refresh', () => {
 
     const res = await request(app)
       .post('/refresh')
-      .send({ refreshToken: 'fake.token.value' });
+      .set('Cookie', ['refreshToken=fake.token.value'])
+      .send({});
 
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
     expect(typeof res.body.error.message).toBe('string');
   });
 
-  it('400 missing refreshToken has standard shape', async () => {
+  it('401 missing refresh cookie has standard shape', async () => {
     const res = await request(app)
       .post('/refresh')
       .send({});
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBeDefined();
   });
@@ -214,7 +227,7 @@ describe('Contract — GET /health', () => {
 
 describe('Contract — GET /admin/rbac/roles', () => {
   it('returns array of role objects with name and permissions', async () => {
-    const res = await request(app).get('/admin/rbac/roles');
+    const res = await request(app).get('/admin/rbac/roles').set(adminHeaders());
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -227,7 +240,7 @@ describe('Contract — GET /admin/rbac/roles', () => {
   });
 
   it('includes superadmin role', async () => {
-    const res = await request(app).get('/admin/rbac/roles');
+    const res = await request(app).get('/admin/rbac/roles').set(adminHeaders());
     const superadmin = res.body.data.find(r => r.name === 'superadmin');
     expect(superadmin).toBeDefined();
     expect(superadmin.permissions).toContain('*');

@@ -122,7 +122,7 @@ class PluginRegistry extends EventEmitter {
    */
   beforeMiddleware() {
     return async (req, res, next) => {
-      const orgId = req.user?.orgId || req.headers['x-org-id'];
+      const orgId = req.user?.orgId;
 
       for (const { pluginId, handler } of this._before) {
         try {
@@ -155,7 +155,7 @@ class PluginRegistry extends EventEmitter {
    */
   afterMiddleware() {
     return (req, res, next) => {
-      const orgId = req.user?.orgId || req.headers['x-org-id'];
+      const orgId = req.user?.orgId;
 
       res.on('finish', () => {
         for (const { pluginId, handler } of this._after) {

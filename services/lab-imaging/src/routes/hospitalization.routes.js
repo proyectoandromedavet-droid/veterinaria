@@ -20,7 +20,7 @@ router.get('/', async (req, res, next) => {
     const conds = ['h.branch_id = :bid'];
     const p     = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
 
-    if (status === 'active')    conds.push('h.discharge_date IS NULL');
+    if (status === 'active') conds.push('h.discharge_date IS NULL');
     else if (status === 'discharged') conds.push('h.discharge_date IS NOT NULL');
 
     const rows = await db.query(
@@ -35,11 +35,11 @@ router.get('/', async (req, res, next) => {
               (SELECT hm.heart_rate FROM hospitalization_monitoring hm
                WHERE hm.hospitalization_id = h.id ORDER BY hm.recorded_at DESC LIMIT 1) AS last_hr
        FROM hospitalizations h
-       JOIN patients p ON h.patient_id       = p.id
-       JOIN species  sp ON p.species_id       = sp.id
+       JOIN patients p ON h.patient_id = p.id
+       JOIN species  sp ON p.species_id = sp.id
        JOIN users    u  ON h.responsible_vet_id = u.id
-       LEFT JOIN kennels k ON h.kennel_id     = k.id
-       LEFT JOIN wards   w ON k.ward_id       = w.id
+       LEFT JOIN kennels k ON h.kennel_id = k.id
+       LEFT JOIN wards   w ON k.ward_id = w.id
        WHERE ${conds.join(' AND ')}
        ORDER BY h.admission_date DESC
        LIMIT :limit OFFSET :offset`,
@@ -110,20 +110,45 @@ router.post('/',
   validate,
   async (req, res, next) => {
     try {
-      const results = await db.callProc('sp_admit_hospitalization', [
-        req.user.branchId,
-        req.body.patientId,
-        req.body.medicalRecordId || null,
-        req.body.responsibleVetId,
-        req.body.kennelId || null,
-        req.body.hospitalizationReason,
-        req.body.admissionDiagnosis || null,
-        req.body.admissionWeight || null,
-        req.body.estimatedDischargeDate || null,
-        req.body.specialInstructions || null,
-        req.user.userId,
-      ]);
-      const admission = results[0]?.[0];
+      const admission = await db.transaction(async (conn) => {
+        const [r] = await conn.query(
+          `INSERT INTO hospitalizations
+             (branch_id, patient_id, medical_record_id, responsible_vet_id, kennel_id,
+              hospitalization_reason, admission_diagnosis, hospitalization_status,
+              admission_weight, estimated_discharge_date, special_instructions, created_by)
+           VALUES (:bid,:pid,:mrid,:vetid,:kennelid,
+                   :reason,:diagnosis,'admitted',
+                   :weight,:estimated,:instructions,:uid)`,
+          {
+            bid: req.user.branchId,
+            pid: req.body.patientId,
+            mrid: req.body.medicalRecordId || null,
+            vetid: req.body.responsibleVetId,
+            kennelid: req.body.kennelId || null,
+            reason: req.body.hospitalizationReason,
+            diagnosis: req.body.admissionDiagnosis || null,
+            weight: req.body.admissionWeight || null,
+            estimated: req.body.estimatedDischargeDate || null,
+            instructions: req.body.specialInstructions || null,
+            uid: req.user.userId,
+          }
+        );
+        return {
+          id: r.insertId,
+          branch_id: req.user.branchId,
+          patient_id: req.body.patientId,
+          medical_record_id: req.body.medicalRecordId || null,
+          responsible_vet_id: req.body.responsibleVetId,
+          kennel_id: req.body.kennelId || null,
+          hospitalization_reason: req.body.hospitalizationReason,
+          admission_diagnosis: req.body.admissionDiagnosis || null,
+          hospitalization_status: 'admitted',
+          admission_weight: req.body.admissionWeight || null,
+          estimated_discharge_date: req.body.estimatedDischargeDate || null,
+          special_instructions: req.body.specialInstructions || null,
+          created_by: req.user.userId,
+        };
+      });
       return R.created(res, admission);
     } catch (e) {
       if (e.message?.includes('SQLSTATE')) {
@@ -157,7 +182,7 @@ router.post('/:id/monitoring',
             appetite, urination, defecation,
             wound_status, iv_site_status, notes, recorded_by)
          VALUES (:hid,:at,:temp,:hr,:rr,:sbp,:dbp,:spo2,:wt,
-                 :cons,:pain,:hyd,:app,:uri,:def,:wound,:iv,:notes,:uid)`,
+                 :cons,:pain,:hyd,:app,:uri,:def,:wound,:iv,:notes,:uid)` ,
         {
           hid: req.params.id, at: recordedAt,
           temp: temperature || null, hr: heartRate || null, rr: respiratoryRate || null,
@@ -205,16 +230,31 @@ router.patch('/:id/discharge',
   validate,
   async (req, res, next) => {
     try {
-      await db.callProc('sp_discharge_patient', [
-        req.params.id,
-        req.body.dischargeDate,
-        req.body.dischargeDiagnosis || null,
-        req.body.dischargeInstructions || null,
-        req.body.followUpDate || null,
-        req.user.userId,
-      ]);
+      await db.query(
+        `UPDATE hospitalizations
+         SET discharge_date = :dischargeDate,
+             discharge_diagnosis = :diagnosis,
+             discharge_instructions = :instructions,
+             follow_up_date = :followUpDate,
+             hospitalization_status = 'ready_for_discharge',
+             updated_at = NOW()
+         WHERE id = :id AND branch_id = :bid`,
+        {
+          id: req.params.id,
+          bid: req.user.branchId,
+          dischargeDate: req.body.dischargeDate,
+          diagnosis: req.body.dischargeDiagnosis || null,
+          instructions: req.body.dischargeInstructions || null,
+          followUpDate: req.body.followUpDate || null,
+        }
+      );
       return R.ok(res, { message: 'Patient discharged successfully' });
-    } catch (e) { next(e); }
+    } catch (e) {
+      if (e.message?.includes('SQLSTATE')) {
+        return R.conflict(res, e.message.replace(/.*SQLSTATE\[45000\]:.*: \d+ /, ''));
+      }
+      next(e);
+    }
   }
 );
 

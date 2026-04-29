@@ -22,6 +22,7 @@
  */
 
 const { get: cacheGet, set: cacheSet } = require('../../../shared/cache');
+const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
 
 
 const INTERNAL_AUTH_URL = process.env.SERVICE_AUTH || 'http://localhost:4051';
@@ -52,10 +53,11 @@ async function resolveSlug(slug) {
   if (cached) return cached.orgId;
 
   try {
+    const path = `/internal/orgs/by-slug/${encodeURIComponent(slug)}`;
     const res = await fetch(
-      `${INTERNAL_AUTH_URL}/internal/orgs/by-slug/${encodeURIComponent(slug)}`,
+      `${INTERNAL_AUTH_URL}${path}`,
       {
-        headers: { 'X-Internal-Token': process.env.INTERNAL_SECRET || '' },
+        headers: { [INTERNAL_SIG_HEADER]: signRequest('GET', path, '') },
         signal:  AbortSignal.timeout(2000),
       }
     );

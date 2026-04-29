@@ -21,6 +21,11 @@ const validate = (req, res, next) => {
   next();
 };
 
+function buildInvoiceNumber(branchId, seq) {
+  const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return `INV-${branchId}-${ymd}-${String(seq).padStart(5, '0')}`;
+}
+
 // ── Invoices ──────────────────────────────────────────────────────────────────
 const invoicesRouter = Router();
 
@@ -108,26 +113,82 @@ invoicesRouter.post('/',
   async (req, res, next) => {
     try {
       const { clientId, patientId, appointmentId, currencyId, dueDate, notes, items = [] } = req.body;
-      const results = await db.callProc('sp_generate_invoice', [
-        req.user.branchId, clientId, patientId || null,
-        appointmentId || null, currencyId || 1,
-        dueDate || null, notes || null, req.user.userId,
-      ]);
-      const invoice = results[0]?.[0];
+      const invoice = await db.transaction(async (conn) => {
+        const [{ seq }] = await conn.query(
+          `SELECT COALESCE(MAX(id), 0) + 1 AS seq FROM invoices WHERE branch_id = :bid FOR UPDATE`,
+          { bid: req.user.branchId }
+        );
+        const invoiceNumber = buildInvoiceNumber(req.user.branchId, seq);
+        const subtotal = items.reduce((sum, item) => sum + (Number(item.quantity || 1) * Number(item.unitPrice || 0)), 0);
+        const taxAmount = items.reduce((sum, item) => sum + ((Number(item.quantity || 1) * Number(item.unitPrice || 0) * Number(item.taxPct || 0)) / 100), 0);
+        const discountAmount = items.reduce((sum, item) => sum + ((Number(item.quantity || 1) * Number(item.unitPrice || 0) * Number(item.discountPct || 0)) / 100), 0);
+        const totalAmount = Math.max(0, subtotal + taxAmount - discountAmount);
 
-      // Insert items if provided
-      for (const item of items) {
-        await db.query(
-          `INSERT INTO invoice_items
-             (invoice_id, service_id, description, quantity, unit_price, discount_pct, tax_pct)
-           VALUES (:iid, :sid, :desc, :qty, :price, :disc, :tax)`,
+        const [result] = await conn.query(
+          `INSERT INTO invoices
+             (branch_id, client_id, patient_id, appointment_id, currency_id,
+              invoice_number, status, issued_date, due_date,
+              subtotal, tax_amount, discount_amount, total_amount, paid_amount,
+              notes, created_by)
+           VALUES (:bid, :cid, :pid, :aid, :curr,
+                   :number, 'draft', CURDATE(), :due,
+                   :subtotal, :tax, :discount, :total, 0,
+                   :notes, :uid)`,
           {
-            iid: invoice.id, sid: item.serviceId || null, desc: item.description,
-            qty: item.quantity || 1, price: item.unitPrice,
-            disc: item.discountPct || 0, tax: item.taxPct || 0,
+            bid: req.user.branchId,
+            cid: clientId,
+            pid: patientId || null,
+            aid: appointmentId || null,
+            curr: currencyId || 1,
+            number: invoiceNumber,
+            due: dueDate || null,
+            subtotal,
+            tax: taxAmount,
+            discount: discountAmount,
+            total: totalAmount,
+            notes: notes || null,
+            uid: req.user.userId,
           }
         );
-      }
+
+        for (const item of items) {
+          await conn.query(
+            `INSERT INTO invoice_items
+               (invoice_id, service_id, description, quantity, unit_price, discount_pct, tax_pct, subtotal)
+             VALUES (:iid, :sid, :desc, :qty, :price, :disc, :tax, :subtotal)`,
+            {
+              iid: result.insertId,
+              sid: item.serviceId || null,
+              desc: item.description,
+              qty: item.quantity || 1,
+              price: item.unitPrice,
+              disc: item.discountPct || 0,
+              tax: item.taxPct || 0,
+              subtotal: ((Number(item.quantity || 1) * Number(item.unitPrice || 0)) * (1 - Number(item.discountPct || 0) / 100)) + (((Number(item.quantity || 1) * Number(item.unitPrice || 0)) * Number(item.taxPct || 0)) / 100),
+            }
+          );
+        }
+
+        return {
+          id: result.insertId,
+          invoice_number: invoiceNumber,
+          branch_id: req.user.branchId,
+          client_id: clientId,
+          patient_id: patientId || null,
+          appointment_id: appointmentId || null,
+          currency_id: currencyId || 1,
+          status: 'draft',
+          issued_date: new Date().toISOString().slice(0, 10),
+          due_date: dueDate || null,
+          subtotal,
+          tax_amount: taxAmount,
+          discount_amount: discountAmount,
+          total_amount: totalAmount,
+          paid_amount: 0,
+          notes: notes || null,
+          created_by: req.user.userId,
+        };
+      });
       return R.created(res, invoice);
     } catch (e) { next(e); }
   }
@@ -155,9 +216,42 @@ paymentsRouter.post('/',
   async (req, res, next) => {
     try {
       const { invoiceId, amount, paymentMethod, reference, notes } = req.body;
-      await db.callProc('sp_record_payment', [
-        invoiceId, amount, paymentMethod, reference || null, notes || null, req.user.userId,
-      ]);
+      await db.transaction(async (conn) => {
+        const invoice = await conn.queryOne(
+          `SELECT id, total_amount, paid_amount, status
+           FROM invoices
+           WHERE id = :id AND branch_id = :bid
+           FOR UPDATE`,
+          { id: invoiceId, bid: req.user.branchId }
+        );
+        if (!invoice) throw Object.assign(new Error('Factura no encontrada'), { http: 404 });
+
+        const nextPaid = Number(invoice.paid_amount || 0) + Number(amount);
+        const nextStatus = nextPaid >= Number(invoice.total_amount || 0) ? 'paid' : 'partial';
+
+        await conn.query(
+          `INSERT INTO payments
+             (invoice_id, amount, payment_method, reference, payment_status, notes, paid_at, created_by)
+           VALUES (:iid, :amount, :method, :reference, 'completed', :notes, NOW(), :uid)`,
+          {
+            iid: invoiceId,
+            amount,
+            method: paymentMethod,
+            reference: reference || null,
+            notes: notes || null,
+            uid: req.user.userId,
+          }
+        );
+
+        await conn.query(
+          `UPDATE invoices
+           SET paid_amount = paid_amount + :amount,
+               status = :status,
+               updated_at = NOW()
+           WHERE id = :id`,
+          { amount, status: nextStatus, id: invoiceId }
+        );
+      });
       return R.created(res, { message: 'Payment recorded' });
     } catch (e) { next(e); }
   }
@@ -393,24 +487,36 @@ mpRouter.post('/webhook', async (req, res, next) => {
 
     const invoiceId = parseInt(invMatch[1]);
 
-    if (status === 'completed') {
-      // Registrar pago y marcar factura como pagada
-      await db.callProc('sp_record_payment', [
-        invoiceId,
-        paymentData.transaction_amount,
-        'mercadopago',
-        String(mpPaymentId),
-        `MercadoPago - ${paymentData.payment_type_id}`,
-        null, // userId = sistema
-      ]);
+      if (status === 'completed') {
+      await db.transaction(async (conn) => {
+        const invoice = await conn.queryOne(
+          `SELECT id, total_amount, paid_amount FROM invoices WHERE id = :id FOR UPDATE`,
+          { id: invoiceId }
+        );
+        if (!invoice) return;
 
-      // Guardar mp_payment_id en payments para trazabilidad
-      await db.query(
-        `UPDATE payments SET mp_payment_id = :mpid
-         WHERE invoice_id = :iid AND reference = :ref
-         ORDER BY id DESC LIMIT 1`,
-        { mpid: String(mpPaymentId), iid: invoiceId, ref: String(mpPaymentId) }
-      );
+        await conn.query(
+          `INSERT INTO payments
+             (invoice_id, amount, payment_method, reference, mp_payment_id, payment_status, notes, paid_at, created_by)
+           VALUES (:iid, :amount, 'mercadopago', :reference, :mpid, 'completed', :notes, NOW(), NULL)`,
+          {
+            iid: invoiceId,
+            amount: paymentData.transaction_amount,
+            reference: String(mpPaymentId),
+            mpid: String(mpPaymentId),
+            notes: `MercadoPago - ${paymentData.payment_type_id}`,
+          }
+        );
+
+        await conn.query(
+          `UPDATE invoices
+           SET paid_amount = paid_amount + :amount,
+               status = CASE WHEN paid_amount + :amount >= total_amount THEN 'paid' ELSE 'partial' END,
+               updated_at = NOW()
+           WHERE id = :id`,
+          { amount: paymentData.transaction_amount, id: invoiceId }
+        );
+      });
 
       // Disparar webhook interno
       enqueue({ event: 'payment.approved', payload: { invoiceId, mpPaymentId, amount: paymentData.transaction_amount } }).catch(() => {});
@@ -1125,4 +1231,8 @@ const app = buildApp('billing', (app, requirePerm) => {
 });
 
 const PORT = parseInt(process.env.PORT || '4055');
-startService(app, 'billing', PORT);
+if (process.env.NODE_ENV !== 'test') {
+  startService(app, 'billing', PORT);
+}
+
+module.exports = app;

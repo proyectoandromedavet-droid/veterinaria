@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '../api/auth'
+import { clearCsrfToken, ensureCsrfToken } from '../api/client'
 
 const ACCESS_TOKEN_KEY = 'accessToken'
 const LEGACY_ACCESS_TOKEN_KEY = 'andro_at'
@@ -15,12 +16,11 @@ function parseJwt(token) {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const accessToken = ref(
-    localStorage.getItem(ACCESS_TOKEN_KEY) ||
-    localStorage.getItem(LEGACY_ACCESS_TOKEN_KEY) ||
-    null
-  )
-  const user        = ref(JSON.parse(localStorage.getItem(USER_KEY) || 'null'))
+  const accessToken = ref(null)
+  const user        = ref(null)
+  const hydrated    = ref(false)
+  const hydrating    = ref(false)
+  let hydratePromise = null
 
   const isAuthenticated = computed(() => !!accessToken.value)
   const roles           = computed(() => user.value?.roles || [])
@@ -39,13 +39,33 @@ export const useAuthStore = defineStore('auth', () => {
 
   function setTokens(at) {
     accessToken.value = at
-    localStorage.setItem(ACCESS_TOKEN_KEY, at)
-    localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
     const payload = parseJwt(at)
     if (payload) {
       user.value = payload
-      localStorage.setItem(USER_KEY, JSON.stringify(payload))
     }
+  }
+
+  async function bootstrap() {
+    if (hydratePromise) return hydratePromise
+    hydrating.value = true
+    hydratePromise = (async () => {
+      if (!accessToken.value) {
+        try {
+          await refresh()
+        } catch {
+          // no session cookie or refresh denied
+        }
+      }
+
+      localStorage.removeItem(ACCESS_TOKEN_KEY)
+      localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+      localStorage.removeItem(USER_KEY)
+
+      hydrated.value = true
+      hydrating.value = false
+    })()
+
+    return hydratePromise
   }
 
   async function login(credentials) {
@@ -56,10 +76,10 @@ export const useAuthStore = defineStore('auth', () => {
       return { requiresTwoFactor: true, pendingToken: payload.pendingToken }
     }
     setTokens(payload.accessToken)
+    await ensureCsrfToken().catch(() => {})
     // Merge user info from response
     if (payload.user) {
       user.value = { ...user.value, ...payload.user, roles: payload.user.roles }
-      localStorage.setItem(USER_KEY, JSON.stringify(user.value))
     }
     return { requiresTwoFactor: false }
   }
@@ -74,22 +94,24 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await authApi.refresh()
     const payload = res.data?.data || res.data
     setTokens(payload.accessToken)
+    await ensureCsrfToken().catch(() => {})
   }
 
   async function fetchMe() {
     const res = await authApi.me()
     const payload = res.data?.data || res.data
     user.value = { ...user.value, ...payload }
-    localStorage.setItem(USER_KEY, JSON.stringify(user.value))
   }
 
   function logout() {
     authApi.logout().catch(() => {})
     accessToken.value = null
     user.value = null
+    hydrated.value = false
     localStorage.removeItem(ACCESS_TOKEN_KEY)
     localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
+    clearCsrfToken()
   }
 
   // Menú permitido según rol
@@ -152,9 +174,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     accessToken, user,
+    hydrated, hydrating,
     isAuthenticated, roles, orgId,
     hasRole, can,
-    login, twoFaChallenge, refresh, fetchMe, logout,
+    login, twoFaChallenge, refresh, fetchMe, bootstrap, logout,
     allowedMenu,
   }
 })

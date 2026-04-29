@@ -13,6 +13,7 @@
 
 const { verifyAccess } = require('../../../shared/jwt');
 const { getRedisSingleton } = require('../../../shared/redis');
+const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
 const { logger }       = require('./logger');
 
 async function getRedis() {
@@ -71,11 +72,13 @@ async function authenticateApiKey(req, res, next) {
   if (!apiKey) return next();
 
   try {
-    const response = await fetch(`${process.env.SERVICE_AUTH}/internal/validate-api-key`, {
+    const path = '/internal/validate-api-key';
+    const response = await fetch(`${process.env.SERVICE_AUTH}${path}`, {
       method:  'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Trace-Id':   req.traceId || '',
+        [INTERNAL_SIG_HEADER]: signRequest('POST', path, ''),
       },
       body: JSON.stringify({ apiKey }),
       signal: AbortSignal.timeout(3000),   // timeout de 3s

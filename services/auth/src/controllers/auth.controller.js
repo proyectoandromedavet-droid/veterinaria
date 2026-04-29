@@ -301,9 +301,8 @@ async function login(req, res) {
  *   5. Revoke old access token JTI via `revoked:{jti}`.
  */
 async function refresh(req, res) {
-  // Accept token from httpOnly cookie (preferred) or body (backward compat)
-  const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-  if (!refreshToken) return R.badRequest(res, 'refreshToken required');
+  const refreshToken = req.cookies?.refreshToken;
+  if (!refreshToken) return R.unauthorized(res, 'Missing refresh token cookie');
 
   let decoded;
   try {

@@ -1,0 +1,928 @@
+PLAN_CORRECCION_REPARACION_TOTAL
+Fecha: 2026-04-28
+Proyecto: C:\apps\VETERINARIAPROD
+Base real confirmada: MySQL en AWS RDS
+Alcance: plan de reparacion total para alinear codigo, migraciones y runtime real sin deshabilitar funcionalidad, salvo 2FA.
+
+Reglas de ejecucion:
+- No hacer un mega commit.
+- No mezclar Auth, Patients, Notifications, Reports y AI en el mismo cambio.
+- No borrar columnas legacy.
+- No usar triggers salvo ultima opcion.
+- No crear stored procedures complejos si se puede resolver con query directa segura o transaccion en Node.
+- 2FA queda desactivado por defecto y fuera de esta fase.
+
+================================================================
+1. OBJETIVO FINAL
+================================================================
+
+Reparar el sistema para que los endpoints rotos funcionen contra la base real MySQL AWS RDS.
+
+Reglas de esta fase:
+- No deshabilitar funcionalidades por drift, salvo 2FA.
+- 2FA queda fuera de esta fase y desactivado por defecto.
+- AI no debe apagarse si puede corregirse con migraciones reales.
+- Reports debe repararse con vistas, procedures o queries directas seguras.
+- Notifications y Portal notifications deben conservar read/unread.
+- Patients es prioridad alta y no puede tratarse como módulo secundario.
+
+Resultado objetivo:
+- Auth, gateway, patients, notifications, reports, AI y procedures críticos funcionando sobre AWS RDS.
+- Compatibilidad temporal con columnas legacy sin borrarlas.
+- Cero dependencia de headers sensibles provenientes del browser.
+
+================================================================
+2. RESUMEN DE PRIORIDADES
+================================================================
+
+Prioridad 1:
+- Auth
+- refresh por cookie httpOnly
+- no exigir `refreshToken` en body
+- reenviar `X-JTI`
+- logout/logoutAll reales
+
+Prioridad 2:
+- Gateway
+- CORS
+- limpieza de headers peligrosos
+- `subdomainMiddleware` con `X-Internal-Sig`
+- no confiar `X-Org-Id`/`X-Tenant-Id` desde browser
+
+Prioridad alta transversal:
+- Patients
+- reparar endpoints core de pacientes y clientes
+- alinear validaciones OpenAPI
+- corregir ownership, org scope y timeline
+
+Prioridad 3:
+- Notifications
+- migracion o adaptacion compatible de `notification_logs`
+- read/unread funcionando
+- portal notifications funcionando
+- hardening interno con `buildApp` o `requireInternalSig`
+
+Prioridad 4:
+- Reports
+- inventario de endpoints
+- crear vistas/procedures faltantes o reemplazar por queries seguras
+- reparar `patients_branch`
+
+Prioridad 5:
+- AI
+- aplicar migraciones reales de tablas faltantes
+- alinear queries con columnas reales
+- endurecer auth/permisos al modelo canonico
+
+Prioridad 6:
+- Stored procedures faltantes en dominios core
+
+Prioridad 7:
+- Normalizacion DB sin romper compatibilidad
+
+================================================================
+3. MIGRACIONES SQL NECESARIAS
+================================================================
+
+Estado actual confirmado:
+- `scripts/migrations/014_ai.sql` ya existe en repo, pero no esta reflejada por completo en AWS RDS
+- `scripts/migrations/010_reports.sql` solo cubre reportes programados, no las vistas/procedures que el servicio consume
+- `notification_logs` real en AWS RDS tiene esquema corto y no cubre read/unread ni metadata rica
+
+Propuesta de migraciones nuevas:
+
+`024_auth_gateway_alignment.sql`
+- Sin cambios masivos de schema.
+- Solo si se necesitara indice adicional sobre `sessions(jti, user_id, is_revoked)`.
+- En principio auth se resuelve mayormente por codigo, no por DDL.
+
+`025_notification_logs_compat.sql`
+- Alterar `notification_logs` para agregar:
+  - `notification_type` VARCHAR(...)
+  - `message` TEXT
+  - `severity` ENUM o VARCHAR
+  - `sent_at` TIMESTAMP NULL
+  - `read_at` TIMESTAMP NULL
+  - `action_url` VARCHAR(...)
+  - `related_entity_type` VARCHAR(...)
+  - `related_entity_id` BIGINT/INT NULL
+  - opcionalmente `organization_id` si no existe y se requiere segmentacion por org
+- Backfill:
+  - `message = body` donde `message` sea NULL y `body` exista
+  - `sent_at = created_at` donde `sent_at` sea NULL
+  - `notification_type = COALESCE(notification_type, channel, 'generic')`
+  - `severity = COALESCE(severity, 'info')`
+- Indices recomendados:
+  - `(user_id, read_at, sent_at)`
+  - `(client_id, read_at, sent_at)`
+  - `(branch_id, sent_at)`
+
+`026_reports_runtime_compat.sql`
+- Crear o recrear:
+  - vista `v_branch_daily_kpis`
+  - vista `v_login_failures_last_24h`
+  - vista `v_active_sessions`
+  - vista o query-compat `patients_branch`
+  - procedure `sp_branch_stats`
+  - procedure `sp_executive_dashboard`
+- Donde una vista no convenga, reemplazar en código por query directa y dejar la migración solo para los objetos realmente compartidos.
+
+`027_patients_runtime_compat.sql`
+- Objetivo: compatibilidad canonica sin borrar columnas legacy.
+- Agregar si faltan:
+  - `patients.birthdate`
+  - `patients.chip_number`
+  - `patients.is_active`
+  - `clients.is_active`
+  - `patient_owners.active`
+- Backfill desde legacy:
+  - `birthdate <- birth_date` cuando falte
+  - `chip_number <- microchip_number` cuando falte
+  - `is_active <- active` cuando falte
+- Opcional:
+  - triggers de sincronizacion temporal entre canonica y legacy
+  - o escritura dual desde backend hasta completar migracion
+
+`028_core_missing_procedures.sql`
+- Crear o reemplazar:
+  - `sp_get_patient_timeline`
+  - `sp_transfer_patient_ownership`
+  - `sp_sign_medical_record`
+  - `sp_admit_hospitalization`
+  - `sp_discharge_patient`
+  - `sp_generate_invoice`
+  - `sp_record_payment`
+  - `sp_generate_reminders`
+- Si alguna logica queda mejor en SQL directo desde el servicio:
+  - reemplazar `callProc` por transaction segura en código
+  - documentarlo en este mismo paquete de reparación
+
+`029_ai_runtime_compat.sql`
+- Reconciliar AWS RDS con las tablas definidas en `014_ai.sql`:
+  - `ai_chat_sessions`
+  - `ai_chat_messages`
+  - `ai_diagnosis_suggestions`
+  - `ai_image_analyses`
+  - `ai_risk_assessments`
+- Si `014_ai.sql` no es idempotente para la DB real, crear versión reconciliadora que:
+  - cree las tablas faltantes
+  - agregue columnas ausentes
+  - cree índices
+  - no destruya datos existentes
+
+`030_reports_patients_bridge.sql`
+- Solo si hace falta materializar compatibilidad para reportes y búsquedas:
+  - crear vista `patients_branch`
+  - exponer `patient_id`, `branch_id`, `client_id`, `organization_id`
+  - basarla en `patient_owners + clients + patients`
+
+`031_canonical_column_sync.sql`
+- Etapa final de compatibilidad temporal
+- triggers o estrategia de sync para:
+  - `chip_number` <-> `microchip_number`
+  - `birthdate` <-> `birth_date`
+  - `is_active` <-> `active`
+  - `vet_id` <-> `veterinarian_id`
+  - `scheduled_date` <-> `appointment_date`
+  - `temperature` <-> `temperature_celsius`
+
+================================================================
+4. ARCHIVOS BACKEND A TOCAR
+================================================================
+
+Auth / gateway:
+- `services/auth/src/routes/auth.routes.js`
+- `services/auth/src/controllers/auth.controller.js`
+- `services/auth/src/openapi.yaml`
+- `gateway/src/routes/proxy.js`
+- `gateway/src/middleware/cors.js`
+- `gateway/src/middleware/subdomain.js`
+- `gateway/docs/openapi.yaml`
+- `shared/internalAuth.js`
+- `shared/serviceBase.js` si se ajusta validación OpenAPI o wrapper común
+
+Patients / clients / branches:
+- `services/patients/src/index.js`
+- `services/patients/src/routes/patients.routes.js`
+- `services/patients/src/routes/clients.routes.js`
+- `services/patients/src/routes/branches.routes.js`
+- `services/patients/src/openapi.yaml`
+- `gateway/docs/openapi.yaml`
+
+Notifications / portal:
+- `services/notifications/src/index.js`
+- `services/portal/src/index.js`
+- `shared/serviceBase.js` si notifications migra a `buildApp`
+
+Reports:
+- `services/reports/src/index.js`
+- `gateway/docs/openapi.yaml`
+
+AI:
+- `services/ai/src/index.js`
+- `shared/serviceBase.js` o `shared/internalAuth.js`
+- `gateway/src/routes/proxy.js`
+- `gateway/docs/openapi.yaml`
+
+Billing / medical / lab-imaging:
+- `services/billing/src/index.js`
+- `services/medical/src/routes/medical-records.routes.js`
+- `services/lab-imaging/src/routes/hospitalization.routes.js`
+- `services/notifications/src/index.js` por `sp_generate_reminders`
+
+DB support:
+- `shared/db.js`
+- `scripts/migrations/*`
+
+================================================================
+5. ARCHIVOS FRONTEND A TOCAR
+================================================================
+
+Auth:
+- `andromeda-front/src/api/auth.js`
+- `andromeda-front/src/api/client.js`
+- `andromeda-front/src/stores/auth.js`
+
+Patients:
+- `andromeda-front/src/views/PacientesView.vue`
+- `andromeda-front/src/api/index.js`
+
+Reports:
+- `andromeda-front/src/views/ReportesView.vue`
+- `andromeda-front/src/api/index.js`
+
+Opcional si se exponen notificaciones enriquecidas:
+- vistas de frontend o portal que consuman `notifications`
+
+================================================================
+6. PRIORIDAD 1: AUTH
+================================================================
+
+Problemas confirmados:
+- `services/auth/src/routes/auth.routes.js` exige `refreshToken` en body
+- `services/auth/src/controllers/auth.controller.js` ya acepta cookie httpOnly, pero el validator bloquea el flujo
+- `gateway/src/routes/proxy.js` no reenvia `X-JTI`
+- `logout` depende de `req.user.jti`
+
+Reparación:
+- quitar obligatoriedad de `refreshToken` en body
+- mantener compatibilidad temporal: cookie primero, body como fallback
+- reenviar `X-JTI` desde gateway
+- validar que `authMiddleware` cargue `jti` del JWT a `req.user`
+- mantener `logoutAll` sobre `sp_revoke_user_sessions`, ya confirmado en AWS RDS
+- actualizar OpenAPI auth y gateway
+
+Endpoints reparados:
+- `POST /auth/refresh`
+- `POST /auth/logout`
+- `POST /auth/logout-all`
+- `GET /auth/me`
+- `GET /auth/sessions`
+
+Smoke tests:
+- login exitoso
+- refresh solo con cookie
+- refresh con body legacy opcional
+- logout revoca sesión actual
+- logoutAll revoca todas las sesiones
+- access token viejo queda revocado si corresponde
+
+================================================================
+7. PRIORIDAD 2: GATEWAY
+================================================================
+
+Problemas confirmados:
+- `ALLOWED_ORIGINS` y `CORS_ORIGINS` desalineados
+- faltan headers válidos para browser:
+  - `X-CSRF-Token`
+  - `X-Request-Id`
+  - `X-Branch-Id`
+- `subdomainMiddleware` usa `X-Internal-Token`
+- gateway usa fallback de `x-branch-id` del browser
+- no hay limpieza explícita de headers internos peligrosos antes del proxy
+
+Reparación:
+- unificar variable canónica de CORS en `ALLOWED_ORIGINS`
+- opcionalmente aceptar `CORS_ORIGINS` como fallback transitorio con warning
+- agregar headers permitidos de browser estrictamente necesarios
+- no permitir `X-Org-Id` ni `X-Tenant-Id` desde browser como fuente de verdad
+- cambiar `subdomainMiddleware` para usar `signRequest` + `X-Internal-Sig`
+- limpiar o sobrescribir siempre:
+  - `X-User-*`
+  - `X-Org-Id`
+  - `X-Branch-Id`
+  - `X-Internal-Sig`
+  - `X-Forwarded-*`
+
+Endpoints/zonas impactadas:
+- todo el tráfico browser -> gateway -> microservicios
+- multitenancy por subdominio
+- auth refresh y rutas protegidas
+
+Smoke tests:
+- preflight OPTIONS con `Authorization`, `X-CSRF-Token`, `X-Request-Id`, `X-Branch-Id`
+- request con headers internos forjados desde browser debe ser ignorado
+- tenant resolver por subdominio debe devolver `req.tenantOrgId` correcto
+
+================================================================
+8. PRIORIDAD ALTA TRANSVERSAL: PATIENTS
+================================================================
+
+Objetivo:
+Reparar el módulo principal de operación veterinaria sin deshabilitar endpoints.
+
+Endpoints obligatorios:
+- `GET /patients`
+- `GET /patients?page=1&limit=12`
+- `GET /patients/:id`
+- `POST /patients`
+- `PUT/PATCH /patients/:id`
+- `GET /patients/:id/timeline`
+- `POST /patients/:id/owners`
+- `GET /patients/species/all`
+- `GET /patients/breeds`
+- `GET /clients`
+- `POST /clients`
+
+Problemas confirmados:
+- drift entre código y AWS RDS
+- columnas conflictivas:
+  - `chip_number` vs `microchip_number`
+  - `birthdate` vs `birth_date`
+  - `is_active` vs `active`
+- `POST /patients` no inserta `organization_id`
+- `GET /patients` filtra por `clients.branch_id` o `patients.organization_id` según schema, pero `GET /patients/:id` exige `p.organization_id = :orgId`
+- `GET /patients/:id/timeline` depende de `sp_get_patient_timeline`, ausente
+- `POST /patients/:id/owners` depende de `sp_transfer_patient_ownership`, ausente
+- OpenAPI service/gateway mezcla criterios de tipos para `page` y `limit`
+- frontend consume `page` y `limit` como query strings
+
+Criterio de diseño para reparar:
+- columna canónica de paciente:
+  - `chip_number`
+  - `birthdate`
+  - `is_active`
+- mantener lectura compatible con:
+  - `microchip_number`
+  - `birth_date`
+  - `active`
+- scope del paciente:
+  - canónico en `patients.organization_id`
+  - visibilidad por branch derivada de `patient_owners + clients.branch_id`
+- no confiar org/branch del browser
+- `organization_id` debe venir del JWT/gateway
+- no agregar `patients.branch_id` salvo que el modelo final lo requiera realmente; primero reparar con `organization_id` + ownership
+
+Queries corregidas requeridas:
+
+`GET /patients`
+- aceptar `page` y `limit` como query string numérico
+- OpenAPI debe reflejar eso sin producir `400`
+- mantener filtro dinámico por schema, pero endurecer:
+  - usar `patients.organization_id = :orgId` como filtro base cuando exista
+  - complementar con `clients.branch_id = :branchId` para visibilidad por sucursal
+- soportar:
+  - DB vacía -> `200` con `[]`
+  - DB con registros -> paginación consistente
+
+`GET /patients/:id`
+- dejar de depender de una sola variante rígida de columnas
+- ampliar select para exponer campos canónicos y owner principal
+- devolver owner/teléfono principal aunque la tabla detalle no repita esos campos
+
+`POST /patients`
+- insertar `organization_id`
+- escribir `birthdate`, `chip_number`, `is_active`
+- si existen columnas legacy y se opta por sync temporal, escribir ambas o usar trigger
+- validar que `primaryOwnerId` pertenezca a la misma organización/sucursal visible para el usuario
+- crear `patient_owners` correctamente
+- evitar pacientes huérfanos
+
+`PUT/PATCH /patients/:id`
+- aceptar payloads modernos:
+  - `birthDate`
+  - `microchipNumber`
+  - `microchip`
+  - `weightKg`
+- mapear a columnas canónicas
+- si hay sync temporal, replicar a legacy
+
+`GET /patients/:id/timeline`
+- opción A: crear `sp_get_patient_timeline`
+- opción B: reemplazar por query/union directa segura
+- recomendación:
+  - usar query directa si el timeline solo lo consume patients
+  - crear procedure solo si será reutilizada por portal, reports o branches
+
+`POST /patients/:id/owners`
+- opción A: crear `sp_transfer_patient_ownership`
+- opción B: transaction segura en código
+- recomendación:
+  - usar transaction segura en código si la operación solo agrega co-owner
+  - reservar procedure para transferencias complejas cross-branch
+
+`GET /patients/species/all`
+- ya tiene fallback de drift; mantenerlo
+- verificar coherencia de aliases `/patients/species/all` y `/species/all`
+
+`GET /patients/breeds`
+- normalizar alias:
+  - frontend usa `/patients/breeds/all`
+  - gateway documenta `/patients/breeds/all`
+- mantener compatibilidad con `speciesId`
+
+`GET /clients`
+- aceptar `page`/`limit` como query string numérico
+- soportar `is_active` y fallback si hay `active`
+- validar conteo de `pet_count`
+
+`POST /clients`
+- mantener `branch_id` desde `req.user.branchId`
+- opcionalmente poblar `organization_id` si la DB real lo requiere y existe
+- verificar consistencia con modelo AWS RDS real
+
+Archivos específicos a tocar:
+- `services/patients/src/routes/patients.routes.js`
+- `services/patients/src/routes/clients.routes.js`
+- `services/patients/src/routes/branches.routes.js`
+- `services/patients/src/openapi.yaml`
+- `gateway/docs/openapi.yaml`
+- `andromeda-front/src/views/PacientesView.vue`
+- `andromeda-front/src/api/index.js`
+- `tests/contract/patients.contract.test.js`
+- `tests/integration/patients.integration.test.js`
+- `tests/unit/gateway-openapi-patients.test.js`
+
+Migraciones necesarias para Patients:
+- `027_patients_runtime_compat.sql`
+- `030_reports_patients_bridge.sql` si se usa `patients_branch`
+- parte de `028_core_missing_procedures.sql` para timeline/ownership si se decide SQL
+
+Procedures/vistas a crear o reemplazar:
+- `sp_get_patient_timeline` o query directa segura
+- `sp_transfer_patient_ownership` o transaction segura
+- `patients_branch` o view equivalente
+
+Smoke tests obligatorios:
+- listar pacientes con DB vacía
+- listar pacientes con registros
+- `GET /patients?page=1&limit=12`
+- `GET /patients?limit=1`
+- crear cliente
+- crear paciente asociado a cliente
+- obtener paciente por id
+- actualizar paciente
+- obtener timeline
+- agregar/transferir owner
+- listar especies
+- listar razas
+
+================================================================
+9. PRIORIDAD 3: NOTIFICATIONS
+================================================================
+
+Problemas confirmados:
+- `services/notifications/src/index.js` no usa `buildApp`
+- usa headers inyectados sin wrapper común
+- `notification_logs` real no tiene columnas necesarias para read/unread y metadata rica
+- `services/portal/src/index.js` también consulta el esquema largo esperado
+
+Reparación elegida:
+- agregar migración compatible a `notification_logs`
+- mantener columnas reales existentes
+- agregar columnas faltantes, no reemplazar las actuales
+- conservar `body` y `message` temporalmente en paralelo si hace falta
+- `read_at` debe existir para soportar read/unread real
+- notifications debe usar `buildApp` o `requireInternalSig`
+
+Compatibilidad recomendada:
+- escritura:
+  - `title`
+  - `message`
+  - `body` como espejo temporal si el schema legado lo sigue usando
+  - `sent_at`
+  - `read_at`
+  - `severity`
+  - `notification_type`
+- lectura:
+  - `COALESCE(message, body)` mientras dure la transición
+  - `COALESCE(sent_at, created_at)`
+
+Endpoints reparados:
+- `GET /notifications`
+- `PATCH /notifications/:id/read`
+- `PATCH /notifications/read-all`
+- `POST /notifications/push`
+- `GET /portal/notifications`
+- `PATCH /portal/notifications/:id/read`
+
+Archivos a tocar:
+- `services/notifications/src/index.js`
+- `services/portal/src/index.js`
+- `shared/serviceBase.js` si se migra a wrapper común
+- tests de portal/notifications
+
+Smoke tests:
+- crear notificación interna
+- listar notificaciones por usuario
+- marcar una como leída
+- marcar todas como leídas
+- listar notificaciones de portal
+- marcar como leída desde portal
+
+================================================================
+10. PRIORIDAD 4: REPORTS
+================================================================
+
+Objetivo:
+Reparar, no ocultar.
+
+Endpoints que deben funcionar:
+- `GET /reports/dashboard`
+- `GET /reports/kpis`
+- `GET /reports/security`
+- `GET /reports/executive`
+
+Hallazgos confirmados:
+- faltan:
+  - `sp_branch_stats`
+  - `sp_executive_dashboard`
+  - `v_branch_daily_kpis`
+  - `v_login_failures_last_24h`
+  - `v_active_sessions`
+  - `patients_branch`
+- `reports` además tiene queries candidatas a seguir funcionando con tablas reales
+
+Estrategia:
+- inventariar endpoint por endpoint
+- para agregados reutilizables:
+  - crear vista o procedure
+- para casos simples:
+  - reemplazar por query directa segura
+
+Plan por endpoint:
+
+`GET /reports/dashboard`
+- opción preferida: crear `sp_branch_stats`
+- alternativa: query agregada directa si el procedure no aporta reutilización
+
+`GET /reports/kpis`
+- crear `v_branch_daily_kpis`
+- además arreglar dependencia colateral en `branches.routes.js`
+
+`GET /reports/security`
+- crear:
+  - `v_login_failures_last_24h`
+  - `v_active_sessions`
+- validar que `sessions` real tenga `last_activity_at`, `expires_at`, `is_revoked`
+
+`GET /reports/executive`
+- crear `sp_executive_dashboard`
+- consolidar KPIs de:
+  - revenue
+  - diagnósticos
+  - ocupación
+  - tele/grooming si aplica
+
+`patients_branch`
+- recomendación: crear vista de compatibilidad basada en:
+  - `patients`
+  - `patient_owners`
+  - `clients`
+- usarla tanto en `reports` como en búsqueda multibranch si conviene
+
+Archivos a tocar:
+- `services/reports/src/index.js`
+- `services/patients/src/routes/branches.routes.js`
+- `gateway/docs/openapi.yaml`
+- `andromeda-front/src/views/ReportesView.vue`
+- `andromeda-front/src/api/index.js`
+- `tests/unit/reports.test.js`
+- contratos/integración si existen o se agregan
+
+Smoke tests:
+- dashboard devuelve KPIs de sucursal
+- kpis devuelve vista diaria
+- security devuelve fallos de login y sesiones activas
+- executive devuelve summary y datasets esperados
+- reportes simples existentes no regresionan
+
+================================================================
+11. PRIORIDAD 5: AI
+================================================================
+
+Hallazgos confirmados:
+- `services/ai/src/index.js` usa `weight`, no `weight_kg`
+- consulta `medical_records.diagnosis` y `medical_records.treatment`, que no coinciden con el modelo más normalizado observado
+- no usa `buildApp`
+- permisos propios y débiles
+- `014_ai.sql` ya define las tablas necesarias, pero la DB real no las reflejó por completo
+
+Reparación:
+- aplicar migración reconciliadora `029_ai_runtime_compat.sql`
+- endurecer AI con `buildApp` o `requireInternalSig` + permisos canónicos
+- adaptar queries:
+  - `patients.weight` -> `patients.weight_kg` o alias compatible
+  - historial clínico:
+    - si `medical_records.diagnosis` no existe, reconstruir desde `diagnoses`
+    - si `medical_records.treatment` no existe, reconstruir desde `treatments`
+- normalizar contexto de paciente para prompts y risk engine
+
+Tablas que deben existir al final:
+- `ai_chat_sessions`
+- `ai_chat_messages`
+- `ai_diagnosis_suggestions`
+- `ai_image_analyses`
+- `ai_risk_assessments`
+
+Endpoints reparados:
+- `POST /ai/diagnosis`
+- `POST /ai/images/analyze`
+- `POST /ai/chat`
+- `GET /ai/chat/:sessionId`
+- `POST /ai/chat/:sessionId/messages`
+- `GET /ai/patients/:patientId/risk`
+- `GET /ai/patients/:patientId/risk/history`
+
+Archivos a tocar:
+- `services/ai/src/index.js`
+- `shared/serviceBase.js` o `shared/internalAuth.js`
+- `gateway/docs/openapi.yaml`
+- `tests/unit/ai.test.js`
+
+Smoke tests:
+- crear sesión de chat
+- guardar mensaje de usuario y respuesta AI
+- guardar sugerencia diagnóstica
+- guardar análisis de imagen
+- calcular y recuperar risk assessment
+
+================================================================
+12. PRIORIDAD 6: STORED PROCEDURES FALTANTES
+================================================================
+
+Inventario requerido:
+- `sp_get_patient_timeline`
+- `sp_transfer_patient_ownership`
+- `sp_sign_medical_record`
+- `sp_admit_hospitalization`
+- `sp_discharge_patient`
+- `sp_generate_invoice`
+- `sp_record_payment`
+- `sp_branch_stats`
+- `sp_executive_dashboard`
+- `sp_generate_reminders`
+
+Decisión por objeto:
+
+Mantener como procedure SQL:
+- `sp_sign_medical_record`
+- `sp_admit_hospitalization`
+- `sp_discharge_patient`
+- `sp_generate_invoice`
+- `sp_record_payment`
+- `sp_branch_stats`
+- `sp_executive_dashboard`
+- `sp_generate_reminders`
+
+Evaluar reemplazo por transacción segura en código:
+- `sp_get_patient_timeline`
+- `sp_transfer_patient_ownership`
+
+Criterio:
+- si el objeto encapsula reglas de integridad compartidas por varios módulos, conviene SQL
+- si solo lo usa un endpoint y es más legible en Node con transacción, conviene código directo
+
+Archivos impactados:
+- `services/patients/src/routes/patients.routes.js`
+- `services/medical/src/routes/medical-records.routes.js`
+- `services/lab-imaging/src/routes/hospitalization.routes.js`
+- `services/billing/src/index.js`
+- `services/reports/src/index.js`
+- `services/notifications/src/index.js`
+- `scripts/migrations/028_core_missing_procedures.sql`
+
+Smoke tests:
+- firmar medical record
+- admitir hospitalización
+- dar alta
+- generar factura
+- registrar pago
+- generar reminders
+- timeline de paciente
+- ownership
+
+================================================================
+13. PRIORIDAD 7: NORMALIZACION DB SIN ROMPER COMPATIBILIDAD
+================================================================
+
+Columnas canónicas definidas:
+- `patients.chip_number`
+- `patients.birthdate`
+- `patients.is_active`
+- `appointments.vet_id`
+- `appointments.scheduled_date`
+- `medical_records.temperature_celsius`
+
+Legacy compatibles temporalmente:
+- `patients.microchip_number`
+- `patients.birth_date`
+- `patients.active`
+- `appointments.veterinarian_id`
+- `appointments.appointment_date`
+- `medical_records.temperature`
+
+Estrategia:
+- no borrar columnas legacy
+- lectura: aceptar ambas
+- escritura: columna canónica
+- sync temporal:
+  - trigger SQL o dual write en backend
+- reportar todo acceso legacy para futura eliminación
+
+Módulos impactados:
+- patients
+- medical
+- billing/reports
+- AI
+
+================================================================
+14. PROCEDURES Y VISTAS A CREAR
+================================================================
+
+Procedures:
+- `sp_get_patient_timeline` si no se reemplaza por query
+- `sp_transfer_patient_ownership` si no se reemplaza por transacción
+- `sp_sign_medical_record`
+- `sp_admit_hospitalization`
+- `sp_discharge_patient`
+- `sp_generate_invoice`
+- `sp_record_payment`
+- `sp_branch_stats`
+- `sp_executive_dashboard`
+- `sp_generate_reminders`
+
+Vistas:
+- `v_branch_daily_kpis`
+- `v_login_failures_last_24h`
+- `v_active_sessions`
+- `patients_branch`
+
+Compatibilidad recomendada:
+- toda vista/procedure nueva debe depender solo de tablas reales confirmadas o de migraciones incluidas en este plan
+
+================================================================
+15. ENDPOINTS REPARADOS AL FINAL DE LA FASE
+================================================================
+
+Auth:
+- `POST /auth/refresh`
+- `POST /auth/logout`
+- `POST /auth/logout-all`
+
+Patients / clients:
+- `GET /patients`
+- `GET /patients?page=1&limit=12`
+- `GET /patients/:id`
+- `POST /patients`
+- `PUT /patients/:id`
+- `GET /patients/:id/timeline`
+- `POST /patients/:id/owners`
+- `GET /patients/species/all`
+- `GET /patients/breeds/all`
+- `GET /clients`
+- `POST /clients`
+
+Notifications / portal:
+- `GET /notifications`
+- `PATCH /notifications/:id/read`
+- `PATCH /notifications/read-all`
+- `GET /portal/notifications`
+- `PATCH /portal/notifications/:id/read`
+
+Reports:
+- `GET /reports/dashboard`
+- `GET /reports/kpis`
+- `GET /reports/security`
+- `GET /reports/executive`
+
+AI:
+- `POST /ai/diagnosis`
+- `POST /ai/images/analyze`
+- `POST /ai/chat`
+- `GET /ai/chat/:sessionId`
+- `POST /ai/chat/:sessionId/messages`
+- `GET /ai/patients/:patientId/risk`
+- `GET /ai/patients/:patientId/risk/history`
+
+Core proc-backed domains:
+- billing invoice/payment flows
+- hospitalization admit/discharge
+- medical record sign
+- reminders generation
+
+================================================================
+16. TESTS Y SMOKE TESTS
+================================================================
+
+Tests existentes a ampliar:
+- `tests/integration/auth.integration.test.js`
+- `tests/contract/patients.contract.test.js`
+- `tests/integration/patients.integration.test.js`
+- `tests/unit/gateway-openapi-patients.test.js`
+- `tests/security/cors.test.js`
+- `tests/unit/subdomain.test.js`
+- `tests/unit/reports.test.js`
+- `tests/unit/ai.test.js`
+- `tests/unit/portal.test.js`
+
+Nuevos smoke tests recomendados:
+- `tests/integration/notifications.integration.test.js`
+- `tests/integration/reports.integration.test.js`
+- `tests/integration/ai.integration.test.js`
+- `tests/integration/billing.integration.test.js`
+- `tests/integration/hospitalization.integration.test.js`
+
+Checklist mínimo por endpoint crítico:
+- status code esperado
+- envelope `{ success, data|error }`
+- compatibilidad con DB vacía donde aplique
+- compatibilidad con datos reales AWS RDS
+- validación de tenant/org
+- validación de permisos
+
+================================================================
+17. RIESGOS RESTANTES
+================================================================
+
+ALTO
+- `notification_logs` y otras tablas pueden requerir backfill cuidadoso para no romper dashboards o portal.
+
+ALTO
+- procedimientos nuevos en SQL pueden introducir lógica divergente si no se documentan junto al servicio que los consume.
+
+ALTO
+- `patients` cruza org, branch y ownership; si se corrige solo un endpoint sin un criterio canónico común, volverá a aparecer drift.
+
+MEDIO
+- AI depende de datos clínicos más normalizados que el código actual asume; puede requerir refactor de queries y no solo DDL.
+
+MEDIO
+- reportes puede arrastrar deuda histórica de endpoints frontend (`reportsApi`) que no coinciden con el backend actual.
+
+MEDIO
+- ramas multibranch y `branches.routes.js` también usan `v_branch_daily_kpis`, por lo que la reparación de reports impacta pacientes/admin.
+
+BAJO
+- coexistencia temporal de columnas legacy y canónicas aumenta complejidad mientras dure la transición.
+
+FUERA DE ALCANCE
+- 2FA completo
+- eliminación definitiva de columnas legacy
+- limpieza total de APIs viejas de frontend que hoy no estén en uso
+
+================================================================
+18. ORDEN RECOMENDADO DE EJECUCION
+================================================================
+
+Fase 1
+- Prioridad 1 auth
+- Prioridad 2 gateway
+
+Fase 2
+- Patients como pista crítica paralela inmediata
+- `027_patients_runtime_compat.sql`
+- ajustes OpenAPI + frontend patients
+
+Fase 3
+- Notifications + `025_notification_logs_compat.sql`
+- Portal notifications
+
+Fase 4
+- Reports + `026_reports_runtime_compat.sql` + `030_reports_patients_bridge.sql`
+
+Fase 5
+- AI + `029_ai_runtime_compat.sql`
+
+Fase 6
+- Procedures core + `028_core_missing_procedures.sql`
+
+Fase 7
+- Normalización final + `031_canonical_column_sync.sql`
+
+================================================================
+19. CRITERIO DE CIERRE
+================================================================
+
+La fase se considera cerrada cuando:
+- 2FA sigue fuera de esta entrega y no bloquea login
+- ningún endpoint listado como roto queda deshabilitado
+- cada endpoint crítico tiene reparación por:
+  - código
+  - migración
+  - procedure/vista
+  - o query directa segura
+- patients funciona end-to-end con cliente asociado y visibilidad correcta por org/branch
+- notifications y portal notifications soportan read/unread real
+- reports devuelve datos sin depender de objetos ausentes
+- AI persiste chat, diagnósticos, imágenes y riesgo sobre tablas reales en AWS RDS

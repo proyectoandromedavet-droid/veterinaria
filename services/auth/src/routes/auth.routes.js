@@ -52,11 +52,7 @@ router.post('/login',
   ctrl.login
 );
 
-router.post('/refresh',
-  body('refreshToken').notEmpty(),
-  validate,
-  ctrl.refresh
-);
+router.post('/refresh', ctrl.refresh);
 
 router.post('/password-reset/request',
   captchaMiddleware,
@@ -86,11 +82,12 @@ function fromHeaders(req, _res, next) {
   next();
 }
 
-router.post('/logout',      fromHeaders, ctrl.logout);
-router.post('/logout-all',  fromHeaders, ctrl.logoutAll);
-router.get('/me',           fromHeaders, ctrl.me);
+router.post('/logout',      requireInternalSig, fromHeaders, ctrl.logout);
+router.post('/logout-all',  requireInternalSig, fromHeaders, ctrl.logoutAll);
+router.get('/me',           requireInternalSig, fromHeaders, ctrl.me);
 
 router.post('/change-password',
+  requireInternalSig,
   fromHeaders,
   body('currentPassword').notEmpty(),
   body('newPassword').isLength({ min: 10 }).matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?])/),
@@ -98,26 +95,29 @@ router.post('/change-password',
   ctrl.changePassword
 );
 
-router.get('/sessions',              fromHeaders, ctrl.listSessions);
-router.delete('/sessions/:id',       fromHeaders, ctrl.revokeSession);
-router.get('/api-keys',              fromHeaders, ctrl.listApiKeys);
+router.get('/sessions',              requireInternalSig, fromHeaders, ctrl.listSessions);
+router.delete('/sessions/:id',       requireInternalSig, fromHeaders, ctrl.revokeSession);
+router.get('/api-keys',              requireInternalSig, fromHeaders, ctrl.listApiKeys);
 router.post('/api-keys',
+  requireInternalSig,
   fromHeaders,
   body('name').notEmpty().isLength({ max: 60 }),
   validate,
   ctrl.createApiKey
 );
-router.delete('/api-keys/:id',       fromHeaders, ctrl.deleteApiKey);
+router.delete('/api-keys/:id',       requireInternalSig, fromHeaders, ctrl.deleteApiKey);
 
 // ── 2FA ───────────────────────────────────────────────────────────────────────
-router.post('/2fa/setup',   fromHeaders, ctrl.setup2fa);
+router.post('/2fa/setup',   requireInternalSig, fromHeaders, ctrl.setup2fa);
 router.post('/2fa/verify',
+  requireInternalSig,
   fromHeaders,
   body('token').isLength({ min: 6, max: 6 }).isNumeric(),
   validate,
   ctrl.verify2fa
 );
 router.delete('/2fa',
+  requireInternalSig,
   fromHeaders,
   body('token').isLength({ min: 6, max: 6 }).isNumeric(),
   validate,
@@ -136,6 +136,7 @@ const twoFaChallengeLimit = rateLimit({
 });
 
 router.post('/2fa/challenge',
+  requireInternalSig,
   twoFaChallengeLimit,
   body('userId').notEmpty(),
   body('token').isLength({ min: 6, max: 6 }).isNumeric(),
@@ -145,7 +146,7 @@ router.post('/2fa/challenge',
 
 // ── Google Calendar OAuth — iniciar conexión (autenticado) ───────────────────
 // GET /auth/google/connect → redirige al consentimiento de Google
-router.get('/google/connect', fromHeaders, async (req, res) => {
+router.get('/google/connect', requireInternalSig, fromHeaders, async (req, res) => {
   const { v4: uuidv4 }   = require('uuid');
   const { getRedisSingleton } = require('../../../../shared/redis');
 

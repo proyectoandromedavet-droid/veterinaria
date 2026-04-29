@@ -41,8 +41,8 @@ router.get('/', async (req, res, next) => {
   try {
     const { date, vetId, status, patientId, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
-    const conditions = ['a.branch_id = :branchId'];
-    const params = { branchId: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const conditions = ['a.branch_id = :branchId', 'p.organization_id = :orgId'];
+    const params = { branchId: req.user.branchId, orgId: req.user.orgId, limit: parseInt(limit), offset: parseInt(offset) };
 
     if (date)      { conditions.push('DATE(a.scheduled_date) = :date');   params.date = date; }
     if (vetId)     { conditions.push('a.vet_id = :vetId');                params.vetId = vetId; }
@@ -102,8 +102,8 @@ router.get('/:id', async (req, res, next) => {
        JOIN patients p ON a.patient_id = p.id
        JOIN species  sp ON p.species_id = sp.id
        JOIN users    u  ON a.vet_id     = u.id
-       WHERE a.id = :id AND a.branch_id = :bid`,
-      { id: req.params.id, bid: req.user.branchId }
+       WHERE a.id = :id AND a.branch_id = :bid AND p.organization_id = :orgId`,
+      { id: req.params.id, bid: req.user.branchId, orgId: req.user.orgId }
     );
     if (!appt) return R.notFound(res);
     return R.ok(res, appt);
@@ -263,9 +263,9 @@ router.get('/agenda/ical', async (req, res, next) => {
        JOIN users    u   ON a.vet_id      = u.id
        JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
        JOIN clients  cl  ON po.client_id  = cl.id
-       WHERE DATE(a.scheduled_date) = :date AND a.branch_id = :bid
+       WHERE DATE(a.scheduled_date) = :date AND a.branch_id = :bid AND p.organization_id = :orgId
        ORDER BY a.scheduled_date ASC`,
-      { date, bid: req.user.branchId }
+      { date, bid: req.user.branchId, orgId: req.user.orgId }
     );
 
     const branch = await db.queryOne(
@@ -346,8 +346,8 @@ router.post('/:id/calendar/sync', async (req, res, next) => {
        JOIN users    u  ON a.vet_id     = u.id
        JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
        JOIN clients  cl ON po.client_id = cl.id
-       WHERE a.id = :id AND a.branch_id = :bid`,
-      { id: req.params.id, bid: req.user.branchId }
+       WHERE a.id = :id AND a.branch_id = :bid AND p.organization_id = :orgId`,
+      { id: req.params.id, bid: req.user.branchId, orgId: req.user.orgId }
     );
     if (!appt) return R.notFound(res);
 
@@ -366,8 +366,11 @@ router.post('/:id/calendar/sync', async (req, res, next) => {
 router.delete('/:id/calendar/sync', async (req, res, next) => {
   try {
     const appt = await db.queryOne(
-      'SELECT id, google_event_id FROM appointments WHERE id = :id AND branch_id = :bid',
-      { id: req.params.id, bid: req.user.branchId }
+      `SELECT a.id, a.google_event_id
+       FROM appointments a
+       JOIN patients p ON a.patient_id = p.id
+       WHERE a.id = :id AND a.branch_id = :bid AND p.organization_id = :orgId`,
+      { id: req.params.id, bid: req.user.branchId, orgId: req.user.orgId }
     );
     if (!appt) return R.notFound(res);
     if (!appt.google_event_id) return R.badRequest(res, 'Esta cita no tiene evento en Google Calendar');
