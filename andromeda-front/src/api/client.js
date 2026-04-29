@@ -3,13 +3,26 @@ import { useAuthStore } from '../stores/auth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4050'
 const CSRF_TOKEN_KEY = 'csrfToken'
+const DEFAULT_ORIGIN = 'http://localhost:4050'
+
+function getGatewayOrigin() {
+  const runtimeOrigin = typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : DEFAULT_ORIGIN
+
+  try {
+    return new URL(API_URL, runtimeOrigin).origin
+  } catch {
+    return runtimeOrigin
+  }
+}
 
 const SAFE_METHODS = new Set(['get', 'head', 'options'])
 
 let csrfTokenPromise = null
 
 async function fetchCsrfToken() {
-  const res = await axios.get(`${API_URL}/csrf-token`, { withCredentials: true })
+  const res = await axios.get(`${getGatewayOrigin()}/csrf-token`, { withCredentials: true })
   const token = res.data?.data?.csrfToken
   if (token) {
     localStorage.setItem(CSRF_TOKEN_KEY, token)

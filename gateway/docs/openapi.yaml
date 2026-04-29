@@ -19,7 +19,6 @@ servers:
     description: Local development
   - url: https://api.vetmanagerpro.com/api/v1
     description: Production
-
 tags:
   - name: Auth
     description: Autenticación, sesiones, API keys
@@ -179,9 +178,39 @@ components:
 security:
   - BearerAuth: []
   - ApiKeyAuth: []
-
-paths:
   # ── AUTH ────────────────────────────────────────────────────────────────────
+paths:
+  /csrf-token:
+    get:
+      summary: Obtain CSRF token
+      description: |
+        Endpoint de borde del gateway para obtener el token CSRF y la cookie asociada.
+        Se expone en la ra?z del gateway, fuera del prefijo `/api/v1`.
+      tags: [Auth]
+      servers:
+        - url: http://localhost:3000
+          description: Local gateway root
+        - url: https://api.vetmanagerpro.com
+          description: Production gateway root
+      responses:
+        '200':
+          description: CSRF token returned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      csrfToken:
+                        type: string
+                        example: csrf-token-value
+        '500':
+          description: Internal server error
   /auth/login:
     post:
       tags: [Auth]
