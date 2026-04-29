@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const { Router }   = require('express');
+const path = require('path');
 const { buildApp, startService } = require('../../../shared/serviceBase');
 const db           = require('../../../shared/db');
 const R            = require('../../../shared/response');
@@ -272,19 +273,6 @@ router.get('/new-patients', async (req, res, next) => {
     const rows = await db.query(
       `SELECT DATE_FORMAT(p.created_at, :fmt) AS period,
               COUNT(*) AS new_patients,
-              COUNT(DISTINCT sp.common_name) AS species_variety
-       FROM patients p
-       JOIN patients_branch pb ON pb.patient_id = p.id  -- simplified: use patient_owners join
-       JOIN species sp ON p.species_id = sp.id
-       WHERE p.created_at BETWEEN :from AND :to
-       GROUP BY period ORDER BY period ASC`,
-      { fmt, from: f, to: t }
-    );
-
-    // Fallback simpler query (patients created in branch context)
-    const rows2 = await db.query(
-      `SELECT DATE_FORMAT(p.created_at, :fmt) AS period,
-              COUNT(*) AS new_patients,
               sp.common_name AS species, COUNT(*) AS species_count
        FROM patients p
        JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type='primary'
@@ -294,7 +282,7 @@ router.get('/new-patients', async (req, res, next) => {
        GROUP BY period, sp.common_name ORDER BY period, species_count DESC`,
       { fmt, bid: req.user.branchId, from: f, to: t }
     );
-    return R.ok(res, rows2, { from: f, to: t, groupBy });
+    return R.ok(res, rows, { from: f, to: t, groupBy });
   } catch (e) { next(e); }
 });
 
@@ -1075,7 +1063,7 @@ function _defaultCols (type) {
 const app = buildApp('reports', (app, requirePerm) => {
   app.use('/reports/scheduled', requirePerm('reports:write'), scheduledRouter);
   app.use('/reports',           requirePerm('reports:read'),  router);
-});
+}, { specPath: path.join(__dirname, 'openapi.yaml') });
 
 const PORT = parseInt(process.env.PORT || '3008');
 if (process.env.NODE_ENV !== 'test') {

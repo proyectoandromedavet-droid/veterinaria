@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const http    = require('http');
+const path    = require('path');
 const express = require('express');
 const db        = require('../../../shared/db');
 const R         = require('../../../shared/response');
@@ -19,6 +20,7 @@ const {
   notificationOrderExpr,
   buildNotificationInsert,
 } = require('../../../shared/notificationLogSchema');
+const { withOpenApiValidation } = require('../../../shared/serviceBase');
 
 const app    = express();
 const server = http.createServer(app);
@@ -29,6 +31,8 @@ app.use((req, res, next) => {
   if (req.path === '/health') return next();
   return requireInternalSig(req, res, next);
 });
+
+withOpenApiValidation(app, path.join(__dirname, 'openapi.yaml'));
 
 // ── User context from gateway headers ────────────────────────────────────────
 app.use((req, _res, next) => {

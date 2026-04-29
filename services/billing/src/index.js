@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const { Router }  = require('express');
+const path = require('path');
 const { body, validationResult } = require('express-validator');
 const { buildApp, startService } = require('../../../shared/serviceBase');
 const db = require('../../../shared/db');
@@ -1228,7 +1229,7 @@ const app = buildApp('billing', (app, requirePerm) => {
   app.use('/purchase-orders',       requirePerm('inventory:read'),   guardWrite('inventory'),   purchaseOrdersRouter);
   app.use('/billing/consolidated',  requirePerm('reports:read'),     consolidatedRouter);
   app.use('/billing', requirePerm('billing:read'), stripeRouter);
-});
+}, { specPath: path.join(__dirname, 'openapi.yaml') });
 
 const PORT = parseInt(process.env.PORT || '4055');
 if (process.env.NODE_ENV !== 'test') {

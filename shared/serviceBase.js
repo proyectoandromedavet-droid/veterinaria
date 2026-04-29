@@ -87,7 +87,7 @@ function withOpenApiValidation(app, specPath, opts = {}) {
     const { middleware: openApiValidator } = require('express-openapi-validator');
     app.use(openApiValidator({
       apiSpec:           specPath,
-      validateRequests:  true,
+      validateRequests:  { allowUnknownQueryParameters: true, coerceTypes: false },
       validateResponses: false,
       validateSecurity:  false,   // security enforced by HMAC + RBAC, not by spec
       ignorePaths:       /^\/health/,

@@ -467,6 +467,328 @@ paths:
               schema:
                 type: object
 
+  /2fa/setup:
+    post:
+      summary: Start 2FA setup
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 2FA setup data
+
+  /2fa/verify:
+    post:
+      summary: Verify 2FA token
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 2FA verified
+
+  /2fa:
+    delete:
+      summary: Disable 2FA
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 2FA disabled
+
+  /2fa/challenge:
+    post:
+      summary: Validate 2FA challenge
+      security: []
+      responses:
+        '200':
+          description: 2FA challenge accepted
+
+  /google/connect:
+    get:
+      summary: Start Google Calendar OAuth flow
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: Redirect to Google OAuth
+
+  /google/callback:
+    get:
+      summary: Google OAuth callback
+      security: []
+      responses:
+        '302':
+          description: Redirect back to frontend
+
+  /audit/export:
+    get:
+      summary: Export audit logs
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Audit export
+
+  /admin/rbac/roles:
+    get:
+      summary: List roles and permissions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Roles list
+
+  /admin/rbac/orgs/{orgId}/overrides:
+    get:
+      summary: List org role overrides
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Role overrides
+
+  /admin/rbac/orgs/{orgId}/roles/{role}/effective:
+    get:
+      summary: Get effective permissions for an org role
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: role
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Effective permissions
+
+  /admin/rbac/orgs/{orgId}/roles/{role}:
+    put:
+      summary: Set role overrides
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: role
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Overrides saved
+    delete:
+      summary: Clear role overrides
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: role
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Overrides removed
+
+  /admin/rbac/orgs/{orgId}/sync:
+    post:
+      summary: Refresh RBAC cache
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Cache warmed
+
+  /admin/security-alerts:
+    get:
+      summary: List security alerts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Security alerts
+
+  /admin/security-alerts/{id}/acknowledge:
+    post:
+      summary: Acknowledge security alert
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Alert acknowledged
+
+  /admin/users:
+    get:
+      summary: List admin users
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Users list
+    post:
+      summary: Create admin user
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: User created
+
+  /admin/users/{id}/deactivate:
+    patch:
+      summary: Deactivate admin user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: User deactivated
+
+  /admin/plugins:
+    get:
+      summary: List plugins
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Plugins list
+
+  /admin/plugins/{id}/enable:
+    post:
+      summary: Enable plugin
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Plugin enabled
+
+  /admin/plugins/{id}/disable:
+    post:
+      summary: Disable plugin
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Plugin disabled
+
+  /admin/plugins/{id}/config:
+    put:
+      summary: Update plugin config
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Config updated
+
+  /me/ui-schema:
+    get:
+      summary: Get current UI schema
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: UI schema
+
+  /.well-known/jwks.json:
+    get:
+      summary: JWKS public key set
+      security: []
+      responses:
+        '200':
+          description: JWKS document
+
+  /schema:
+    get:
+      summary: List database schemas
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Schemas list
+
+  /schema/{table}:
+    get:
+      summary: Get table schema
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Table schema
+
+  /schema/{table}/typescript:
+    get:
+      summary: Generate TypeScript schema
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: TypeScript output
+
+  /schema/{table}/zod:
+    get:
+      summary: Generate Zod schema
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: table
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Zod output
+
   /health:
     get:
       summary: Health check

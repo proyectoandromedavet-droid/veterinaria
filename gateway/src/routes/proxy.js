@@ -198,7 +198,6 @@ function registerProxies(app) {
   registerVersioned(app, 'use', 'medical-records', authMiddleware, tenantLimiter, makeServiceProxy('medical'));
   registerVersioned(app, 'use', 'triage',          authMiddleware, tenantLimiter, makeServiceProxy('medical'));
   registerVersioned(app, 'use', 'prescriptions',   authMiddleware, tenantLimiter, makeServiceProxy('medical'));
-  registerVersioned(app, 'use', 'follow-ups',      authMiddleware, tenantLimiter, makeServiceProxy('medical'));
 
   // ── LAB & IMAGING ────────────────────────────────────────────────────────
   registerVersioned(app, 'use', 'lab',              authMiddleware, tenantLimiter, makeServiceProxy('lab'));

@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const { Router }  = require('express');
+const path = require('path');
 const { body, validationResult } = require('express-validator');
 const crypto      = require('crypto');
 const { buildApp, guardWrite, startService } = require('../../../shared/serviceBase');
@@ -632,7 +633,7 @@ const app = buildApp('telemedicine', (app, requirePerm) => {
   app.get('/tele/webrtc/config',    requirePerm('telemedicine:read'), (req, res) => {
     return R.ok(res, { ...webrtc.getIceServers(), provider: webrtc.PROVIDER });
   });
-});
+}, { specPath: path.join(__dirname, 'openapi.yaml') });
 
 const PORT = parseInt(process.env.PORT || '3006');
 startService(app, 'telemedicine', PORT);

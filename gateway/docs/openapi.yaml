@@ -1400,3 +1400,543 @@ paths:
       summary: Deuda pendiente consolidada por sucursal
       responses:
         '200': { description: Saldos pendientes agrupados por sucursal }
+
+  /auth/password-reset/request:
+    post:
+      tags: [Auth]
+      summary: Solicitar restablecimiento de contraseña
+      security: []
+      responses:
+        '200': { description: Correo de restablecimiento enviado }
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [Auth]
+      summary: Confirmar restablecimiento de contraseña
+      security: []
+      responses:
+        '200': { description: Contraseña actualizada }
+
+  /clients/signatures/public-key:
+    get:
+      tags: [Clients]
+      summary: Obtener clave pública de firmas digitales
+      responses:
+        '200': { description: Clave pública disponible }
+
+  /clients/signatures/verify:
+    post:
+      tags: [Clients]
+      summary: Verificar firma digital de cliente
+      responses:
+        '200': { description: Firma verificada }
+
+  /branches:
+    get:
+      tags: [Clients]
+      summary: Listar sucursales
+      responses:
+        '200': { description: Lista de sucursales }
+
+  /branches/{id}:
+    get:
+      tags: [Clients]
+      summary: Obtener sucursal por id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Sucursal encontrada }
+
+  /branches/{id}/settings:
+    patch:
+      tags: [Clients]
+      summary: Actualizar settings de sucursal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Settings actualizados }
+
+  /deworming:
+    get:
+      tags: [Vaccination]
+      summary: Listar desparasitaciones
+      responses:
+        '200': { description: Lista de desparasitaciones }
+    post:
+      tags: [Vaccination]
+      summary: Registrar desparasitación
+      responses:
+        '201': { description: Desparasitación creada }
+
+  /deworming/alerts:
+    get:
+      tags: [Vaccination]
+      summary: Alertas de desparasitación
+      responses:
+        '200': { description: Alertas de desparasitación }
+
+  /deworming/products:
+    get:
+      tags: [Vaccination]
+      summary: Productos de desparasitación
+      responses:
+        '200': { description: Catálogo de productos }
+
+  /price-lists:
+    get:
+      tags: [Billing]
+      summary: Listar listas de precios
+      responses:
+        '200': { description: Listado de listas de precios }
+
+  /price-lists/{id}/items:
+    get:
+      tags: [Billing]
+      summary: Ítems de una lista de precios
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Ítems de la lista }
+
+  /payments/mp/webhook:
+    post:
+      tags: [Billing]
+      summary: Webhook público de Mercado Pago
+      security: []
+      responses:
+        '200': { description: Webhook procesado }
+
+  /tele/webrtc/config:
+    get:
+      tags: [Telemedicine]
+      summary: Configuración WebRTC
+      responses:
+        '200': { description: Configuración WebRTC }
+
+  /triage/{id}:
+    post:
+      tags: [Appointments]
+      summary: Crear triage para un turno
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '201': { description: Triage registrado }
+
+  /prescriptions/{id}:
+    get:
+      tags: [Medical Records]
+      summary: Obtener prescripciones asociadas a una historia clínica
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Prescripciones de la HC }
+    post:
+      tags: [Medical Records]
+      summary: Crear prescripción para una historia clínica
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '201': { description: Prescripción creada }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Listar notificaciones del usuario
+      responses:
+        '200': { description: Notificaciones }
+
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Marcar notificación como leída
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Notificación leída }
+
+  /notifications/read-all:
+    patch:
+      tags: [Notifications]
+      summary: Marcar todas como leídas
+      responses:
+        '204': { description: Notificaciones leídas }
+
+  /notifications/push:
+    post:
+      tags: [Notifications]
+      summary: Crear notificación interna
+      responses:
+        '201': { description: Notificación creada }
+
+  /notifications/reminders/generate:
+    post:
+      tags: [Notifications]
+      summary: Generar recordatorios
+      responses:
+        '201': { description: Recordatorios generados }
+
+  /notifications/reminders:
+    get:
+      tags: [Notifications]
+      summary: Listar recordatorios
+      responses:
+        '200': { description: Recordatorios }
+
+  /notifications/messages/send:
+    post:
+      tags: [Notifications]
+      summary: Enviar mensaje
+      responses:
+        '200': { description: Mensaje enviado }
+
+  /notifications/messages/template:
+    post:
+      tags: [Notifications]
+      summary: Crear mensaje desde plantilla
+      responses:
+        '200': { description: Plantilla procesada }
+
+  /notifications/messages/reminder/{reminderId}:
+    post:
+      tags: [Notifications]
+      summary: Enviar mensaje para recordatorio
+      parameters:
+        - in: path
+          name: reminderId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Mensaje de recordatorio enviado }
+
+  /notifications/messages/bulk-reminders:
+    post:
+      tags: [Notifications]
+      summary: Enviar mensajes masivos de recordatorios
+      responses:
+        '200': { description: Mensajes enviados }
+
+  /notifications/messages:
+    get:
+      tags: [Notifications]
+      summary: Listar mensajes enviados
+      responses:
+        '200': { description: Mensajes }
+
+  /notifications/fcm/register:
+    post:
+      tags: [Notifications]
+      summary: Registrar token FCM
+      responses:
+        '201': { description: Token registrado }
+
+  /notifications/fcm/unregister:
+    delete:
+      tags: [Notifications]
+      summary: Borrar token FCM
+      responses:
+        '204': { description: Token borrado }
+
+  /notifications/fcm/tokens:
+    get:
+      tags: [Notifications]
+      summary: Listar tokens FCM
+      responses:
+        '200': { description: Tokens FCM }
+
+  /notifications/fcm/send:
+    post:
+      tags: [Notifications]
+      summary: Enviar push FCM
+      responses:
+        '200': { description: Push enviado }
+
+  /notifications/fcm/broadcast:
+    post:
+      tags: [Notifications]
+      summary: Broadcast FCM
+      responses:
+        '200': { description: Broadcast enviado }
+
+  /portal/auth/register:
+    post:
+      tags: [Portal]
+      summary: Registrar dueño de mascota
+      security: []
+      responses:
+        '201': { description: Dueño registrado }
+
+  /portal/auth/login:
+    post:
+      tags: [Portal]
+      summary: Iniciar sesión de portal
+      security: []
+      responses:
+        '200': { description: Sesión iniciada }
+
+  /portal/auth/refresh:
+    post:
+      tags: [Portal]
+      summary: Renovar tokens de portal
+      security: []
+      responses:
+        '200': { description: Tokens renovados }
+
+  /portal/auth/forgot-password:
+    post:
+      tags: [Portal]
+      summary: Recuperar contraseña de portal
+      security: []
+      responses:
+        '200': { description: Correo enviado }
+
+  /portal/me:
+    get:
+      tags: [Portal]
+      summary: Obtener perfil de portal
+      responses:
+        '200': { description: Perfil devuelto }
+    put:
+      tags: [Portal]
+      summary: Actualizar perfil de portal
+      responses:
+        '204': { description: Perfil actualizado }
+
+  /portal/me/password:
+    put:
+      tags: [Portal]
+      summary: Cambiar contraseña de portal
+      responses:
+        '204': { description: Contraseña actualizada }
+
+  /portal/pets:
+    get:
+      tags: [Portal]
+      summary: Listar mascotas del dueño
+      responses:
+        '200': { description: Mascotas }
+
+  /portal/pets/{id}:
+    get:
+      tags: [Portal]
+      summary: Obtener mascota del dueño
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Mascota encontrada }
+
+  /portal/pets/{id}/medical-history:
+    get:
+      tags: [Portal]
+      summary: Historia clínica resumida del dueño
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Historia clínica }
+
+  /portal/pets/{id}/vaccinations:
+    get:
+      tags: [Portal]
+      summary: Vacunas de la mascota
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Vacunas }
+
+  /portal/pets/{id}/prescriptions:
+    get:
+      tags: [Portal]
+      summary: Prescripciones de la mascota
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Prescripciones }
+
+  /portal/appointments:
+    get:
+      tags: [Portal]
+      summary: Listar turnos del dueño
+      responses:
+        '200': { description: Turnos }
+    post:
+      tags: [Portal]
+      summary: Solicitar turno desde portal
+      responses:
+        '201': { description: Turno solicitado }
+
+  /portal/appointments/{id}/cancel:
+    patch:
+      tags: [Portal]
+      summary: Cancelar turno desde portal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Turno cancelado }
+
+  /portal/invoices:
+    get:
+      tags: [Portal]
+      summary: Listar facturas del dueño
+      responses:
+        '200': { description: Facturas }
+
+  /portal/invoices/{id}:
+    get:
+      tags: [Portal]
+      summary: Obtener factura del dueño
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Factura }
+
+  /portal/invoices/{id}/pay:
+    post:
+      tags: [Portal]
+      summary: Pagar factura desde portal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Pago procesado }
+
+  /portal/notifications:
+    get:
+      tags: [Portal]
+      summary: Notificaciones del dueño
+      responses:
+        '200': { description: Notificaciones }
+
+  /portal/notifications/{id}/read:
+    patch:
+      tags: [Portal]
+      summary: Marcar notificación de portal como leída
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Notificación leída }
+
+  /portal/fcm/register:
+    post:
+      tags: [Portal]
+      summary: Registrar FCM del dueño
+      responses:
+        '201': { description: Token registrado }
+
+  /portal/telemedicine:
+    get:
+      tags: [Portal]
+      summary: Sesiones de telemedicina del dueño
+      responses:
+        '200': { description: Teleconsultas }
+
+  /ai/diagnosis:
+    post:
+      tags: [AI]
+      summary: Diagnóstico asistido por IA
+      responses:
+        '200': { description: Diagnóstico generado }
+
+  /ai/images/analyze:
+    post:
+      tags: [AI]
+      summary: Análisis de imágenes por IA
+      responses:
+        '200': { description: Análisis generado }
+
+  /ai/chat:
+    post:
+      tags: [AI]
+      summary: Crear sesión de chat IA
+      responses:
+        '201': { description: Chat creado }
+
+  /ai/chat/{sessionId}:
+    get:
+      tags: [AI]
+      summary: Obtener historial de chat IA
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Historial }
+
+  /ai/chat/{sessionId}/messages:
+    post:
+      tags: [AI]
+      summary: Enviar mensaje a chat IA
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Mensaje procesado }
+
+  /ai/patients/{patientId}/risk:
+    get:
+      tags: [AI]
+      summary: Evaluación de riesgo de paciente
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Riesgo calculado }
+
+  /ai/patients/{patientId}/risk/history:
+    get:
+      tags: [AI]
+      summary: Historial de riesgo de paciente
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Historial de riesgo }

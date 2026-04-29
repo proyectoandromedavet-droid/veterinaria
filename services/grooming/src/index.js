@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const { Router }  = require('express');
+const path = require('path');
 const { body, validationResult } = require('express-validator');
 const { buildApp, guardWrite, startService } = require('../../../shared/serviceBase');
 const db = require('../../../shared/db');
@@ -412,7 +413,7 @@ const app = buildApp('grooming', (app, requirePerm) => {
   app.use('/grooming/groomers',        requirePerm('grooming:read'),   guardWrite('grooming'),  groomersRouter);
   app.use('/grooming/patient-profile', requirePerm('grooming:read'),   guardWrite('grooming'),  profileRouter);
   app.use('/grooming/service-types',   requirePerm('grooming:read'),   guardWrite('grooming'),  serviceTypesRouter);
-});
+}, { specPath: path.join(__dirname, 'openapi.yaml') });
 
 const PORT = parseInt(process.env.PORT || '3007');
 if (process.env.NODE_ENV !== 'test') {

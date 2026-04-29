@@ -15,12 +15,14 @@
  */
 
 const express    = require('express');
+const path = require('path');
 const { body, param, validationResult } = require('express-validator');
 const db         = require('../../../shared/db');
 const R          = require('../../../shared/response');
 const ai         = require('../../../shared/ai');
 const { computeRiskScores, summarizeRisks } = require('../../../shared/riskEngine');
 const { requireInternalSig } = require('../../../shared/internalAuth');
+const { withOpenApiValidation } = require('../../../shared/serviceBase');
 const { hasPermission } = require('../../../shared/rbac');
 const { getTableColumns } = require('../../../shared/schemaEngine');
 
@@ -155,7 +157,7 @@ No reemplazás el criterio del veterinario tratante.`;
 
 // ─── Express app ──────────────────────────────────────────────────────────────
 
-function buildApp() {
+function buildApp(specPath) {
   const app = express();
   app.use(express.json({ limit: '10mb' }));   // 10 MB para imágenes en base64
 
@@ -169,6 +171,7 @@ function buildApp() {
     if (req.path === '/health') return next();
     return requireInternalSig(req, res, next);
   });
+  if (specPath) withOpenApiValidation(app, specPath);
 
   const auth = requirePerm('ai:use');
 
@@ -555,7 +558,7 @@ function buildApp() {
 
 if (require.main === module) {
   const PORT = process.env.PORT || 4061;
-  const app  = buildApp();
+  const app  = buildApp(path.join(__dirname, 'openapi.yaml'));
   app.listen(PORT, () => console.log(`[AI service] Puerto ${PORT} — proveedor: ${ai.PROVIDER}`));
 }
 
