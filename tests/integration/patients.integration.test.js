@@ -91,6 +91,22 @@ describe('GET /patients', () => {
     expect(res.body.meta.total).toBe(2);
   });
 
+  test('200 - accepts default pagination with limit only', async () => {
+    db.query.mockImplementation((sql, params) => {
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) return Promise.resolve(SCHEMA_ROWS);
+      if (sql.includes('COUNT(DISTINCT p.id)')) return Promise.resolve([{ total: 0 }]);
+      expect(params.limit).toBe(1);
+      expect(params.offset).toBe(0);
+      return Promise.resolve([]);
+    });
+
+    const res = await request(app).get('/patients?limit=1').set(AUTH);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.meta.page).toBe(1);
+    expect(res.body.meta.limit).toBe(1);
+  });
+
   test('200 - accepts query string page and limit', async () => {
     db.query.mockImplementation((sql, params) => {
       if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) return Promise.resolve(SCHEMA_ROWS);
@@ -103,6 +119,20 @@ describe('GET /patients', () => {
     const res = await request(app).get('/patients?page=1&limit=12').set(AUTH);
     expect(res.status).toBe(200);
     expect(res.body.meta.limit).toBe(12);
+  });
+
+  test('200 - accepts search with limit only', async () => {
+    db.query.mockImplementation((sql, params) => {
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) return Promise.resolve(SCHEMA_ROWS);
+      if (sql.includes('COUNT(DISTINCT p.id)')) return Promise.resolve([{ total: 0 }]);
+      expect(params.s).toBe('%test%');
+      expect(params.limit).toBe(1);
+      return Promise.resolve([]);
+    });
+
+    const res = await request(app).get('/patients?search=test&limit=1').set(AUTH);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
   });
 });
 

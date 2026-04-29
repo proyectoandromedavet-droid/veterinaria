@@ -473,7 +473,7 @@ paths:
           schema: { type: string }
         - in: query
           name: speciesId
-          schema: { type: integer }
+          schema: { type: string, pattern: '^[0-9]+$' }
         - in: query
           name: species
           schema: { type: string }

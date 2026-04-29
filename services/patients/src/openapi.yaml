@@ -126,16 +126,15 @@ paths:
         - name: page
           in: query
           schema:
-            type: integer
-            minimum: 1
-            default: 1
+            type: string
+            pattern: '^[0-9]+$'
+            default: '1'
         - name: limit
           in: query
           schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
+            type: string
+            pattern: '^[0-9]+$'
+            default: '20'
         - name: search
           in: query
           schema:
@@ -143,7 +142,8 @@ paths:
         - name: speciesId
           in: query
           schema:
-            type: integer
+            type: string
+            pattern: '^[0-9]+$'
         - name: species
           in: query
           schema:
