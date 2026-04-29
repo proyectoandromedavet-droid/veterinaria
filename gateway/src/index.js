@@ -52,7 +52,6 @@ app.get('/.well-known/security.txt', securityTxtHandler);
 // ── CSRF Token endpoint ───────────────────────────────────────────────────────
 // El frontend debe llamar GET /csrf-token antes de cualquier mutación.
 // La cookie _csrf se setea y el token se retorna en el body para ponerlo en X-CSRF-Token.
-app.get('/csrf-token', csrfToken);
 
 // ── Health check — before all middleware so it's always reachable ─────────────
 app.get('/health', async (_req, res) => {
@@ -103,7 +102,13 @@ app.use(cookieParser());
 
 // ── CORS + logging ────────────────────────────────────────────────────────────
 app.use(corsMiddleware);
+app.options('*', corsMiddleware);
 app.use(morganMiddleware);
+
+// ?? CSRF Token endpoint ???????????????????????????????????????????????????????
+// El frontend debe llamar GET /csrf-token antes de cualquier mutaci?n.
+// La cookie _csrf se setea y el token se retorna en el body para ponerlo en X-CSRF-Token.
+app.get('/csrf-token', csrfToken);
 
 // ── Body parsing + sanitization ───────────────────────────────────────────────
 // Límite configurable via JSON_BODY_LIMIT. Default: 512kb para APIs REST.
