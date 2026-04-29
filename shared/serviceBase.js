@@ -205,11 +205,40 @@ function buildApp(serviceName, routesFn, opts = {}) {
     });
   });
 
+  function logNotFound(req, err) {
+    log.warn('Route not found', {
+      service: serviceName,
+      method: req.method,
+      originalUrl: req.originalUrl,
+      baseUrl: req.baseUrl,
+      path: req.path,
+      requestId: req.headers['x-request-id'] || req.requestId || null,
+      userId: req.user?.userId || req.user?.id || null,
+      error: err?.message || 'not found',
+    });
+  }
+
+  function isNotFoundLike(err) {
+    return err?.status === 404
+      || err?.statusCode === 404
+      || err?.name === 'NotFoundError'
+      || err?.code === 'NOT_FOUND'
+      || /(^|\s)not found(\s|$)/i.test(err?.message || '');
+  }
+
   routesFn(app, requirePerm);
 
   // 404
   app.use((req, res) =>
-    res.status(404).json({ success: false, error: { message: `Not found: ${req.method} ${req.path}` } })
+    res.status(404).json({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Route not found',
+        path: req.originalUrl,
+        method: req.method,
+      },
+    })
   );
 
   // AppError handler — convierte errores tipados a responses estándar
@@ -219,6 +248,19 @@ function buildApp(serviceName, routesFn, opts = {}) {
   app.use((err, req, res, _next) => {
     const isProd = process.env.NODE_ENV === 'production';
     log.error(err.message, { stack: err.stack, traceId: req.headers['x-trace-id'] });
+
+    if (isNotFoundLike(err)) {
+      logNotFound(req, err);
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Route not found',
+          path: req.originalUrl,
+          method: req.method,
+        },
+      });
+    }
 
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, error: { message: 'Duplicate entry', code: 'DUPLICATE_ENTRY' } });

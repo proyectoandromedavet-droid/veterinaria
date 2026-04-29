@@ -97,7 +97,67 @@ components:
           type: string
           minLength: 8
 
+    InternalApiKeyRequest:
+      type: object
+      required: [apiKey]
+      properties:
+        apiKey:
+          type: string
+          minLength: 8
+
+    InternalOrgLookupResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            id:
+              type: integer
+            slug:
+              type: string
+            name:
+              type: string
+
 paths:
+  /internal/validate-api-key:
+    post:
+      summary: Validate an API key for gateway/internal use
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternalApiKeyRequest'
+      responses:
+        '200':
+          description: API key validated
+        '401':
+          description: Invalid API key
+
+  /internal/orgs/by-slug/{slug}:
+    get:
+      summary: Resolve organization by slug for gateway/subdomain routing
+      security: []
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organization found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalOrgLookupResponse'
+        '404':
+          description: Organization not found
+
   /login:
     post:
       summary: Authenticate user

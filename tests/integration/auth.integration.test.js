@@ -342,3 +342,55 @@ describe('Admin mounts', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('Internal auth routes', () => {
+  test('200 — POST /internal/validate-api-key is reachable under OpenAPI validation', async () => {
+    const apiKey = 'test-api-key';
+
+    db.queryOne.mockResolvedValueOnce({
+      id: 77,
+      user_id: 1,
+      email: 'vet@clinic.com',
+      organization_id: 5,
+      branch_id: 10,
+      scopes: JSON.stringify(['patients:read']),
+    });
+    db.query
+      .mockResolvedValueOnce([{ affectedRows: 1 }])
+      .mockResolvedValueOnce([{ name: 'veterinarian' }]);
+
+    const res = await request(app)
+      .post('/internal/validate-api-key')
+      .set('X-Internal-Sig', signRequest('POST', '/internal/validate-api-key', ''))
+      .send({ apiKey });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toMatchObject({
+      userId: 1,
+      email: 'vet@clinic.com',
+      orgId: 5,
+      branchId: 10,
+    });
+    expect(db.queryOne).toHaveBeenCalledWith(expect.stringContaining('api_keys'), expect.objectContaining({ hash: jwt.hashToken(apiKey) }));
+  });
+
+  test('200 — GET /internal/orgs/by-slug/:slug is reachable under OpenAPI validation', async () => {
+    db.queryOne.mockResolvedValueOnce({
+      org_id: 5,
+      plan: 'pro',
+      status: 'active',
+    });
+
+    const res = await request(app)
+      .get('/internal/orgs/by-slug/vet-clinic')
+      .set('X-Internal-Sig', signRequest('GET', '/internal/orgs/by-slug/vet-clinic', ''));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      orgId: 5,
+      plan: 'pro',
+    });
+  });
+});

@@ -263,9 +263,22 @@ registerProxies(app);
 
 // ── 404 catch-all ─────────────────────────────────────────────────────────────
 app.use((req, res) => {
+  logger.warn('Route not found', {
+    method: req.method,
+    originalUrl: req.originalUrl,
+    baseUrl: req.baseUrl,
+    path: req.path,
+    requestId: req.headers['x-request-id'] || req.requestId || null,
+    userId: req.user?.userId || req.user?.id || null,
+  });
   res.status(404).json({
     success: false,
-    error:   { message: `Route not found: ${req.method} ${req.path}` },
+    error: {
+      code: 'NOT_FOUND',
+      message: 'Route not found',
+      path: req.originalUrl,
+      method: req.method,
+    },
   });
 });
 
@@ -279,6 +292,26 @@ app.use((err, req, res, _next) => {
   }
   if (err.message?.includes('CORS')) {
     return res.status(403).json({ success: false, error: { message: err.message } });
+  }
+  if (err.status === 404 || err.statusCode === 404 || err.name === 'NotFoundError' || /not found/i.test(err.message || '')) {
+    logger.warn('Route not found', {
+      method: req.method,
+      originalUrl: req.originalUrl,
+      baseUrl: req.baseUrl,
+      path: req.path,
+      requestId: req.headers['x-request-id'] || req.requestId || null,
+      userId: req.user?.userId || req.user?.id || null,
+      error: err.message,
+    });
+    return res.status(404).json({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Route not found',
+        path: req.originalUrl,
+        method: req.method,
+      },
+    });
   }
   logger.error('Unhandled error', { error: err.message, stack: err.stack, requestId: req.requestId });
   res.status(500).json({ success: false, error: { message: 'Internal server error' } });
