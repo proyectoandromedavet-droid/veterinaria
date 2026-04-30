@@ -79,6 +79,24 @@ const initials = computed(() =>
   displayName.value.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase()).join('')
 )
 
+function normalizeRoleList(input) {
+  if (!input) return []
+  if (Array.isArray(input)) {
+    return input
+      .map((role) => {
+        if (!role) return null
+        if (typeof role === 'string') return role.trim()
+        if (typeof role === 'object') return String(role.name || role.role || role.value || '').trim()
+        return null
+      })
+      .filter(Boolean)
+  }
+  if (typeof input === 'string') {
+    return input.split(',').map((role) => role.trim()).filter(Boolean)
+  }
+  return []
+}
+
 const ROLE_LABELS = {
   superadmin: 'Super Admin',
   org_admin: 'Admin',
@@ -97,7 +115,7 @@ const ROLE_LABELS = {
   read_only: 'Solo Lectura',
 }
 const displayRole = computed(() =>
-  auth.roles.map(r => ROLE_LABELS[r] || r).join(', ') || ''
+  normalizeRoleList(auth.roles).map(r => ROLE_LABELS[r] || r).join(', ') || ''
 )
 
 const PAGE_TITLES = {

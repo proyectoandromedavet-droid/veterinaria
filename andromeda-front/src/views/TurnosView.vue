@@ -168,19 +168,56 @@ const items   = ref([])
 const loading = ref(false)
 const error   = ref('')
 
+function asArray(value) {
+  return Array.isArray(value) ? value : []
+}
+
+function normalizeRoleList(input) {
+  if (!input) return []
+  if (Array.isArray(input)) {
+    return input
+      .map((role) => {
+        if (!role) return null
+        if (typeof role === 'string') return role.trim()
+        if (typeof role === 'object') return String(role.name || role.role || role.value || '').trim()
+        return null
+      })
+      .filter(Boolean)
+  }
+  if (typeof input === 'string') {
+    return input.split(',').map((role) => role.trim()).filter(Boolean)
+  }
+  return []
+}
+
+function normalizeAppointment(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    species: row.species || row.species_name || row.speciesName || '',
+    patient_name: row.patient_name || row.patient?.name || row.patientName || '',
+    owner_name: row.owner_name || row.owner?.full_name || row.ownerName || '',
+    reason: row.reason || row.appointment_type || row.appointmentType || '',
+    appointment_type: row.appointment_type || row.appointmentType || '',
+    vet_name: row.vet_name || row.veterinarian_name || row.vetName || '',
+    scheduled_date: row.scheduled_date || row.scheduledDate || '',
+    status: row.status || 'scheduled',
+  }
+}
+
 // ── Vets list ─────────────────────────────────────────────────────────────
 const vetList = ref([])
 async function loadVets() {
   try {
     const VET_ROLES = ['veterinarian','surgeon','vet_technician','tele_vet']
-    const currentRoles = auth.roles || []
+    const currentRoles = normalizeRoleList(auth.roles)
     const currentUser = auth.user || {}
     const isAdmin = currentRoles.includes('superadmin') || currentRoles.includes('org_admin')
 
     if (isAdmin) {
       const { data } = await adminUsersApi.list({ limit: 100 })
-      vetList.value = (data.data || []).filter(u =>
-        u.roles && VET_ROLES.some(r => u.roles.includes(r))
+      vetList.value = asArray(data?.data).filter(u =>
+        normalizeRoleList(u.roles).some(r => VET_ROLES.includes(r))
       )
       return
     }
@@ -204,7 +241,7 @@ const typeList = ref([])
 async function loadTypes() {
   try {
     const { data } = await http.get('/appointments/types')
-    typeList.value = data.data || []
+    typeList.value = asArray(data?.data || data)
   } catch { typeList.value = [] }
 }
 
@@ -241,7 +278,7 @@ async function load() {
     if (filters.date)   params.date   = filters.date
     if (filters.status) params.status = filters.status
     const { data } = await http.get('/appointments', { params })
-    const rows = data.data || data.appointments || data || []
+    const rows = asArray(data?.data || data?.appointments || data).map(normalizeAppointment).filter(Boolean)
     const needle = filters.search.trim().toLowerCase()
     items.value = needle
       ? rows.filter((row) => [row.patient_name, row.owner_name, row.reason, row.appointment_type]
@@ -300,7 +337,12 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || data || []
+      patientResults.value = asArray(data?.data || data).map((row) => ({
+        ...row,
+        species: row.species || row.species_name || row.speciesName || '',
+        primary_owner: row.primary_owner || row.owner_name || row.ownerName || '',
+        owner_name: row.owner_name || row.primary_owner || row.ownerName || '',
+      })).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }
