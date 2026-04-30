@@ -159,8 +159,11 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useAuthStore } from '../stores/auth'
 import http from '../api/client'
+import { adminUsersApi } from '../api/adminUsers'
 
+const auth = useAuthStore()
 const items   = ref([])
 const loading = ref(false)
 const error   = ref('')
@@ -169,11 +172,30 @@ const error   = ref('')
 const vetList = ref([])
 async function loadVets() {
   try {
-    const { data } = await http.get('/auth/admin/users', { params: { limit: 100 } })
     const VET_ROLES = ['veterinarian','surgeon','vet_technician','tele_vet']
-    vetList.value = (data.data || []).filter(u =>
-      u.roles && VET_ROLES.some(r => u.roles.includes(r))
-    )
+    const currentRoles = auth.roles || []
+    const currentUser = auth.user || {}
+    const isAdmin = currentRoles.includes('superadmin') || currentRoles.includes('org_admin')
+
+    if (isAdmin) {
+      const { data } = await adminUsersApi.list({ limit: 100 })
+      vetList.value = (data.data || []).filter(u =>
+        u.roles && VET_ROLES.some(r => u.roles.includes(r))
+      )
+      return
+    }
+
+    if (VET_ROLES.some(r => currentRoles.includes(r))) {
+      vetList.value = [{
+        id: currentUser.id || currentUser.userId || null,
+        first_name: currentUser.first_name || currentUser.name || currentUser.email || 'Yo',
+        last_name: '',
+        roles: currentRoles,
+      }]
+      return
+    }
+
+    vetList.value = []
   } catch { vetList.value = [] }
 }
 
