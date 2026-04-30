@@ -16,6 +16,7 @@ const db          = require('../../../../shared/db');
 const R           = require('../../../../shared/response');
 const mb          = require('../../../../shared/multibranch');
 const { enqueue } = require('../../../../shared/webhooks/dispatcher');
+const eventBus    = require('../../../../shared/eventBus');
 
 const router = Router();
 const validate = (req, res, next) => {
@@ -251,6 +252,13 @@ router.post('/transfers/patients',
         payload: { patientId, fromBranchId: req.user.branchId, toBranchId, transferType },
         orgId  : req.user.orgId,
       }).catch(() => {});
+      eventBus.publish('patients.transfer.requested', {
+        patientId,
+        fromBranchId: req.user.branchId,
+        toBranchId,
+        transferType,
+        requestedBy: req.user.userId,
+      }, { orgId: req.user.orgId }).catch(() => {});
 
       return R.created(res, result);
     } catch (e) {
@@ -326,6 +334,14 @@ router.post('/transfers/stock',
         reason,
         batchId           : batchId || null,
       });
+
+      eventBus.publish('inventory.transfer.requested', {
+        itemId,
+        fromBranchId: req.user.branchId,
+        toBranchId,
+        quantity,
+        requestedBy: req.user.userId,
+      }, { orgId: req.user.orgId }).catch(() => {});
 
       return R.created(res, result);
     } catch (e) {
