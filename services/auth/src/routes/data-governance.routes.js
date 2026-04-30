@@ -44,6 +44,27 @@ function validate(req, res, next) {
   next();
 }
 
+async function getTableColumns(tableName) {
+  const rows = await db.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :tableName`,
+    { tableName },
+  );
+  return new Set(rows.map((row) => row.COLUMN_NAME));
+}
+
+function deletedSet(columns) {
+  return columns.has('deleted_at') ? ', deleted_at = NOW()' : '';
+}
+
+function activePredicate(columns, alias = '') {
+  const prefix = alias ? `${alias}.` : '';
+  if (columns.has('is_active')) return `${prefix}is_active = 1`;
+  if (columns.has('active')) return `${prefix}active = 1`;
+  return '1 = 1';
+}
+
 router.use(adminOnly);
 
 // GET /admin/data-governance/policies
@@ -156,12 +177,88 @@ router.post('/enforce', async (req, res, next) => {
           );
           affected = result.affectedRows || 0;
         } else if (policy.action === 'anonymize' && policy.data_type === 'clients') {
+          const clientCols = await getTableColumns('clients');
           const result = await db.query(
             `UPDATE clients SET
-               full_name = CONCAT('ANON-', id), email = CONCAT('anon-', id, '@redacted.local'),
-               phone = NULL, address = NULL
-             WHERE org_id = :orgId AND updated_at < :cutoff AND is_anonymized = 0
+               ${clientCols.has('first_name') ? "first_name = CONCAT('ANON-', id)," : ''}
+               ${clientCols.has('last_name') ? "last_name = 'REDACTED'," : ''}
+               email = CONCAT('anon-', id, '@redacted.local'),
+               phone = NULL,
+               ${clientCols.has('document_number') ? 'document_number = NULL,' : ''}
+               ${clientCols.has('tax_id') ? 'tax_id = NULL,' : ''}
+               address = NULL,
+               ${clientCols.has('notes') ? 'notes = NULL,' : ''}
+               ${clientCols.has('is_anonymized') ? 'is_anonymized = 1,' : ''}
+               updated_at = NOW()
+             WHERE org_id = :orgId AND updated_at < :cutoff
+               AND ${activePredicate(clientCols)}
+               ${clientCols.has('is_anonymized') ? 'AND is_anonymized = 0' : ''}
              LIMIT 100`,
+            { orgId, cutoff },
+          );
+          affected = result.affectedRows || 0;
+        } else if (policy.action === 'archive' && policy.data_type === 'appointments') {
+          const cols = await getTableColumns('appointments');
+          const result = await db.query(
+            `UPDATE appointments
+             SET ${cols.has('status') ? "status = 'archived'," : ''}
+                 updated_at = NOW()
+                 ${deletedSet(cols)}
+             WHERE organization_id = :orgId
+               AND updated_at < :cutoff
+               AND ${activePredicate(cols)}
+             LIMIT 500`,
+            { orgId, cutoff },
+          );
+          affected = result.affectedRows || 0;
+        } else if (policy.action === 'anonymize' && policy.data_type === 'patients') {
+          const cols = await getTableColumns('patients');
+          const result = await db.query(
+            `UPDATE patients
+             SET name = CONCAT('Paciente ', id),
+                 ${cols.has('chip_number') ? 'chip_number = NULL,' : ''}
+                 ${cols.has('microchip_number') ? 'microchip_number = NULL,' : ''}
+                 ${cols.has('tattoo_number') ? 'tattoo_number = NULL,' : ''}
+                 ${cols.has('tattoo_code') ? 'tattoo_code = NULL,' : ''}
+                 ${cols.has('passport_number') ? 'passport_number = NULL,' : ''}
+                 ${cols.has('photo_url') ? 'photo_url = NULL,' : ''}
+                 ${cols.has('notes') ? 'notes = NULL,' : ''}
+                 updated_at = NOW()
+             WHERE organization_id = :orgId
+               AND updated_at < :cutoff
+               AND ${activePredicate(cols)}
+             LIMIT 200`,
+            { orgId, cutoff },
+          );
+          affected = result.affectedRows || 0;
+        } else if (policy.action === 'anonymize' && policy.data_type === 'staff') {
+          const cols = await getTableColumns('users');
+          const result = await db.query(
+            `UPDATE users
+             SET first_name = CONCAT('STAFF-', id),
+                 last_name = 'REDACTED',
+                 email = CONCAT('staff-', id, '@redacted.local'),
+                 ${cols.has('phone') ? 'phone = NULL,' : ''}
+                 updated_at = NOW()
+                 ${deletedSet(cols)}
+             WHERE organization_id = :orgId
+               AND updated_at < :cutoff
+               AND ${activePredicate(cols)}
+             LIMIT 200`,
+            { orgId, cutoff },
+          );
+          affected = result.affectedRows || 0;
+        } else if (policy.action === 'archive' && policy.data_type === 'invoices') {
+          const cols = await getTableColumns('invoices');
+          const result = await db.query(
+            `UPDATE invoices
+             SET ${cols.has('status') ? "status = 'archived'," : ''}
+                 updated_at = NOW()
+                 ${deletedSet(cols)}
+             WHERE org_id = :orgId
+               AND updated_at < :cutoff
+               AND ${activePredicate(cols)}
+             LIMIT 500`,
             { orgId, cutoff },
           );
           affected = result.affectedRows || 0;
