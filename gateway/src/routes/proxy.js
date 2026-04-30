@@ -8,7 +8,8 @@ const { requireFeature }          = require('../../../shared/featureFlags');
 const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
 const { tenantMismatchGuard }     = require('../middleware/subdomain');
 const { injectVersionHeader }     = require('../middleware/versioning');
-const { resolveServiceTarget, listServices } = require('../../../shared/serviceRegistry');
+const { listServices } = require('../../../shared/serviceRegistry');
+const { SERVICE_FALLBACKS, resolveRuntimeServiceTarget } = require('../../../shared/serviceTargets');
 
 const API_VERSIONS = ['v1', 'v2'];
 
@@ -28,19 +29,7 @@ function registerVersioned(app, method, pathSuffix, ...middlewares) {
   }
 }
 
-const SERVICES = {
-  auth:          process.env.SERVICE_AUTH          || 'http://localhost:4051',
-  patients:      process.env.SERVICE_PATIENTS      || 'http://localhost:4052',
-  medical:       process.env.SERVICE_MEDICAL       || 'http://localhost:4053',
-  lab:           process.env.SERVICE_LAB           || 'http://localhost:4054',
-  billing:       process.env.SERVICE_BILLING       || 'http://localhost:4055',
-  telemedicine:  process.env.SERVICE_TELEMEDICINE  || 'http://localhost:4056',
-  grooming:      process.env.SERVICE_GROOMING      || 'http://localhost:4057',
-  reports:       process.env.SERVICE_REPORTS       || 'http://localhost:4058',
-  notifications: process.env.SERVICE_NOTIFICATIONS || 'http://localhost:4059',
-  portal:        process.env.SERVICE_PORTAL        || 'http://localhost:4060',
-  ai:            process.env.SERVICE_AI            || 'http://localhost:4061',
-};
+const SERVICES = SERVICE_FALLBACKS;
 
 const DANGEROUS_BROWSER_HEADERS = [
   'x-user-id',
@@ -70,7 +59,7 @@ function makeProxy(target, pathRewrite = {}, name) {
     target,
     router: async () => {
       if (!name) return target;
-      return resolveServiceTarget(name, target);
+      return resolveRuntimeServiceTarget(name);
     },
     changeOrigin: true,
     pathRewrite,

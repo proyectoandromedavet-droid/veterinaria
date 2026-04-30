@@ -14,6 +14,7 @@
 const { verifyAccess } = require('../../../shared/jwt');
 const { getRedisSingleton } = require('../../../shared/redis');
 const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
+const { resolveRuntimeServiceTarget } = require('../../../shared/serviceTargets');
 const { logger }       = require('./logger');
 const { checkDeviceFingerprint } = require('../../../shared/deviceFingerprint');
 
@@ -75,7 +76,8 @@ async function authenticateApiKey(req, res, next) {
 
   try {
     const path = '/internal/validate-api-key';
-    const response = await fetch(`${process.env.SERVICE_AUTH}${path}`, {
+    const authTarget = await resolveRuntimeServiceTarget('auth');
+    const response = await fetch(`${authTarget}${path}`, {
       method:  'POST',
       headers: {
         'Content-Type': 'application/json',

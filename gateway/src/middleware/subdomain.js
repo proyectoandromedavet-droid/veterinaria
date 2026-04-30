@@ -23,9 +23,7 @@
 
 const { get: cacheGet, set: cacheSet } = require('../../../shared/cache');
 const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
-
-
-const INTERNAL_AUTH_URL = process.env.SERVICE_AUTH || 'http://localhost:4051';
+const { resolveRuntimeServiceTarget } = require('../../../shared/serviceTargets');
 const SLUG_CACHE_TTL    = parseInt(process.env.SUBDOMAIN_CACHE_TTL || '3600');
 
 /**
@@ -54,8 +52,9 @@ async function resolveSlug(slug) {
 
   try {
     const path = `/internal/orgs/by-slug/${encodeURIComponent(slug)}`;
+    const authTarget = await resolveRuntimeServiceTarget('auth');
     const res = await fetch(
-      `${INTERNAL_AUTH_URL}${path}`,
+      `${authTarget}${path}`,
       {
         headers: { [INTERNAL_SIG_HEADER]: signRequest('GET', path, '') },
         signal:  AbortSignal.timeout(2000),

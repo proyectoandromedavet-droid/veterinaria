@@ -26,6 +26,7 @@ const { sendPasswordReset, sendWelcome, sendNewDeviceLogin } = require('../../..
 const { sendTemplate } = require('../../../shared/messaging');
 const fcm     = require('../../../shared/fcm');
 const { requireInternalSig } = require('../../../shared/internalAuth');
+const eventBus = require('../../../shared/eventBus');
 const {
   getNotificationSchema,
   notificationExpr,
@@ -100,6 +101,17 @@ function buildOwnerRefresh(client) {
   return jwt.signRefresh({ clientId: client.id, role: 'owner' });
 }
 
+function publishPortalEvent(topic, payload, req, extraMeta = {}) {
+  const meta = {
+    orgId: req.owner?.orgId || req.headers['x-org-id'] || null,
+    clientId: req.owner?.clientId || payload.clientId || null,
+    branchId: payload.branchId || null,
+    source: 'portal',
+    ...extraMeta,
+  };
+  return eventBus.publish(topic, payload, meta).catch(() => {});
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // AUTH
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -150,6 +162,11 @@ app.post('/portal/auth/register',
         const accessToken  = buildOwnerToken({ ...client });
         const refreshToken = buildOwnerRefresh(client);
         sendWelcome({ to: email, name: firstName, orgName: 'VetManager Pro' }).catch(() => {});
+        publishPortalEvent('portal.owner.registered', {
+          clientId: client.id,
+          email,
+          orgId: client.organization_id || orgId || null,
+        }, req);
         return R.created(res, { accessToken, refreshToken });
       }
 
@@ -162,6 +179,11 @@ app.post('/portal/auth/register',
       const accessToken  = buildOwnerToken({ id: r.insertId, organization_id: orgId });
       const refreshToken = buildOwnerRefresh({ id: r.insertId });
       sendWelcome({ to: email, name: firstName, orgName: 'VetManager Pro' }).catch(() => {});
+      publishPortalEvent('portal.owner.registered', {
+        clientId: r.insertId,
+        email,
+        orgId,
+      }, req);
       return R.created(res, { accessToken, refreshToken });
     } catch (e) { next(e); }
   }
@@ -225,6 +247,12 @@ app.post('/portal/auth/login',
          VALUES (:id, :ip, :ua, TRUE)`,
         { id: client.id, ip, ua }
       ).catch(() => {});
+      publishPortalEvent('portal.owner.logged_in', {
+        clientId: client.id,
+        email: client.email,
+        orgId: client.organization_id || null,
+        ip,
+      }, req, { ip });
 
       return R.ok(res, {
         accessToken, refreshToken,
@@ -545,6 +573,16 @@ app.post('/portal/appointments',
         }).catch(() => {});
       }
 
+      publishPortalEvent('portal.appointment.requested', {
+        appointmentId: r.insertId,
+        patientId,
+        clientId: req.owner.clientId,
+        branchId: branchId || null,
+        orgId: req.owner.orgId || null,
+        appointmentDate,
+        reason,
+      }, req);
+
       return R.created(res, { id: r.insertId, message: 'Solicitud de cita enviada. Le confirmaremos a la brevedad.' });
     } catch (e) { next(e); }
   }
@@ -565,6 +603,12 @@ app.patch('/portal/appointments/:id/cancel', portalAuth, async (req, res, next) 
       `UPDATE appointments SET status='cancelled', cancellation_reason=:reason, updated_at=NOW() WHERE id=:id`,
       { reason: req.body.reason || 'Cancelado por el dueño', id: apt.id }
     );
+    publishPortalEvent('portal.appointment.cancelled', {
+      appointmentId: apt.id,
+      clientId: req.owner.clientId,
+      orgId: req.owner.orgId || null,
+      reason: req.body.reason || 'Cancelado por el dueño',
+    }, req);
     return R.noContent(res);
   } catch (e) { next(e); }
 });
@@ -648,6 +692,14 @@ app.post('/portal/invoices/:id/pay', portalAuth, async (req, res, next) => {
       orgId:         req.owner.orgId,
       branchId:      inv.branch_id,
     });
+    publishPortalEvent('portal.invoice.payment_requested', {
+      invoiceId: inv.id,
+      clientId: req.owner.clientId,
+      orgId: req.owner.orgId || null,
+      branchId: inv.branch_id || null,
+      amount: inv.total_amount - inv.paid_amount,
+      currency: inv.currency,
+    }, req);
 
     return R.ok(res, pref);
   } catch (e) { next(e); }
@@ -711,6 +763,12 @@ app.post('/portal/fcm/register', portalAuth, async (req, res, next) => {
     );
 
     await fcm.subscribeToTopic([token], `owner_${req.owner.clientId}`).catch(() => {});
+    publishPortalEvent('portal.owner.fcm_registered', {
+      clientId: req.owner.clientId,
+      orgId: req.owner.orgId || null,
+      platform,
+      deviceName: deviceName || null,
+    }, req);
     return R.ok(res, { message: 'Token FCM registrado' });
   } catch (e) { next(e); }
 });

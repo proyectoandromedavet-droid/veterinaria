@@ -10,12 +10,14 @@
  *   stop();   // graceful shutdown
  */
 
-const { processPending } = require('./dispatcher');
+const { enqueue, processPending } = require('./dispatcher');
+const eventBus = require('../eventBus');
 
 const INTERVAL_MS = parseInt(process.env.WEBHOOK_POLL_MS || '15000');
 
 let timer = null;
 let running = false;
+let stopEventBus = null;
 
 async function tick() {
   if (running) return;
@@ -32,6 +34,19 @@ async function tick() {
 function start() {
   if (timer) return;
   timer = setInterval(tick, INTERVAL_MS);
+  if (!stopEventBus) {
+    const consumerName = `webhook-worker-${process.env.HOSTNAME || process.pid}`;
+    eventBus.subscribe(consumerName, async ({ topic, payload, meta }) => {
+      await enqueue({
+        event: topic,
+        payload,
+        orgId: meta?.orgId || payload?.orgId || null,
+      });
+      await processPending();
+    }).then((stopper) => {
+      stopEventBus = stopper;
+    }).catch(() => {});
+  }
   // Fire immediately on startup too
   tick();
 }
@@ -40,6 +55,10 @@ function stop() {
   if (timer) {
     clearInterval(timer);
     timer = null;
+  }
+  if (stopEventBus) {
+    stopEventBus().catch?.(() => {});
+    stopEventBus = null;
   }
 }
 

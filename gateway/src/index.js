@@ -40,6 +40,7 @@ const webhookWorker                   = require('../../shared/webhooks/worker');
 const { appErrorHandler }             = require('../../shared/errors');
 const { csrfToken, csrfProtect }      = require('../../shared/csrf');
 const { securityTxtHandler }          = require('./routes/security-txt');
+const { listKnownServiceTargets, resolveRuntimeServiceTarget } = require('../../shared/serviceTargets');
 
 const app    = express();
 const server = http.createServer(app);
@@ -177,29 +178,17 @@ app.use(auditMiddleware({ mode: process.env.AUDIT_MODE || 'all' }));
 
 
 // ── Deep health check — agrega estado de todos los servicios ─────────────────
-const SERVICE_URLS = {
-  auth:          process.env.SERVICE_AUTH          || 'http://localhost:4051',
-  patients:      process.env.SERVICE_PATIENTS      || 'http://localhost:4052',
-  medical:       process.env.SERVICE_MEDICAL       || 'http://localhost:4053',
-  lab:           process.env.SERVICE_LAB           || 'http://localhost:4054',
-  billing:       process.env.SERVICE_BILLING       || 'http://localhost:4055',
-  telemedicine:  process.env.SERVICE_TELEMEDICINE  || 'http://localhost:4056',
-  grooming:      process.env.SERVICE_GROOMING      || 'http://localhost:4057',
-  reports:       process.env.SERVICE_REPORTS       || 'http://localhost:4058',
-  notifications: process.env.SERVICE_NOTIFICATIONS || 'http://localhost:4059',
-  portal:        process.env.SERVICE_PORTAL        || 'http://localhost:4060',
-  ai:            process.env.SERVICE_AI            || 'http://localhost:4061',
-};
-
 app.get('/health/deep', async (_req, res) => {
   const TIMEOUT_MS = 3000;
   const results    = {};
   let   allOk      = true;
+  const services = await listKnownServiceTargets();
 
   await Promise.all(
-    Object.entries(SERVICE_URLS).map(async ([name, baseUrl]) => {
+    services.map(async ({ name, url: fallbackUrl, source }) => {
       const t0 = Date.now();
       try {
+        const baseUrl = await resolveRuntimeServiceTarget(name) || fallbackUrl;
         const ctrl = new AbortController();
         const tid  = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
         const resp = await fetch(`${baseUrl}/health`, { signal: ctrl.signal });
@@ -208,11 +197,19 @@ app.get('/health/deep', async (_req, res) => {
         results[name] = {
           status:  resp.ok ? (body.status || 'ok') : 'error',
           latency: Date.now() - t0,
+          source,
+          target: baseUrl,
           checks:  body.checks || undefined,
         };
         if (!resp.ok) allOk = false;
       } catch (e) {
-        results[name] = { status: 'unreachable', latency: Date.now() - t0, error: e.message };
+        results[name] = {
+          status: 'unreachable',
+          latency: Date.now() - t0,
+          source,
+          target: fallbackUrl,
+          error: e.message,
+        };
         allOk = false;
       }
     })
