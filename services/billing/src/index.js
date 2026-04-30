@@ -659,11 +659,14 @@ afipRouter.get('/:id/pdf', async (req, res, next) => {
 
 // ── Suppliers ─────────────────────────────────────────────────────────────────
 const suppliersRouter = Router();
+const notDeleted = (alias) => `${alias}.deleted_at IS NULL`;
 
 suppliersRouter.get('/', async (req, res, next) => {
   try {
     const rows = await db.query(
-      `SELECT * FROM suppliers WHERE org_id = :oid AND is_active = 1 ORDER BY name`,
+      `SELECT * FROM suppliers
+       WHERE org_id = :oid AND is_active = 1 AND ${notDeleted('suppliers')}
+       ORDER BY name`,
       { oid: req.user.orgId }
     );
     return R.ok(res, rows);
@@ -696,7 +699,7 @@ suppliersRouter.put('/:id',
       await db.query(
         `UPDATE suppliers SET name=:name, tax_id=:taxId, contact_name=:contact, email=:email,
           phone=:phone, address=:address, payment_terms=:terms, notes=:notes, updated_at=NOW()
-         WHERE id=:id AND org_id=:oid`,
+         WHERE id=:id AND org_id=:oid AND ${notDeleted('suppliers')}`,
         { id: req.params.id, oid: req.user.orgId, name, taxId: taxId||null, contact: contactName||null, email: email||null, phone: phone||null, address: address||null, terms: paymentTerms||30, notes: notes||null }
       );
       return R.noContent(res);
@@ -707,7 +710,8 @@ suppliersRouter.put('/:id',
 suppliersRouter.delete('/:id', async (req, res, next) => {
   try {
     await db.query(
-      `UPDATE suppliers SET is_active=0 WHERE id=:id AND org_id=:oid`,
+      `UPDATE suppliers SET is_active=0, deleted_at=NOW(), updated_at=NOW()
+       WHERE id=:id AND org_id=:oid AND ${notDeleted('suppliers')}`,
       { id: req.params.id, oid: req.user.orgId }
     );
     return R.noContent(res);
@@ -751,7 +755,7 @@ inventoryRouter.put('/items/:id',
         `UPDATE inventory_items SET name=:name, sku=:sku, description=:desc, unit_cost=:cost,
           sale_price=:price, minimum_stock=:min, supplier_id=:sup,
           is_active=:active, updated_at=NOW()
-         WHERE id=:id`,
+         WHERE id=:id AND ${notDeleted('inventory_items')}`,
         { id: req.params.id, name, sku: sku||null, desc: description||null, cost: unitCost||0, price: salePrice||0, min: minimumStock||0, sup: supplierId||null, active: isActive!==false?1:0 }
       );
       if (reorderPoint !== undefined) {
@@ -781,9 +785,9 @@ inventoryRouter.get('/batches', async (req, res, next) => {
               ii.name AS item_name, ii.sku,
               s.name AS supplier_name
        FROM inventory_batches ib
-       JOIN inventory_items ii ON ib.item_id = ii.id
-       LEFT JOIN suppliers s   ON ib.supplier_id = s.id
-       WHERE ${conds.join(' AND ')}
+       JOIN inventory_items ii ON ib.item_id = ii.id AND ${notDeleted('ii')}
+       LEFT JOIN suppliers s   ON ib.supplier_id = s.id AND ${notDeleted('s')}
+       WHERE ${conds.join(' AND ')} AND ${notDeleted('ib')}
        ORDER BY ib.expiry_date ASC
        LIMIT :limit OFFSET :offset`,
       p
@@ -832,8 +836,8 @@ inventoryRouter.get('/alerts', async (req, res, next) => {
       `SELECT sa.id, sa.alert_type, sa.current_stock, sa.threshold, sa.expiry_date,
               sa.notified, sa.created_at, ii.id AS item_id, ii.name AS item_name, ii.sku
        FROM stock_alerts sa
-       JOIN inventory_items ii ON sa.item_id = ii.id
-       WHERE sa.branch_id = :bid AND sa.resolved = :res
+       JOIN inventory_items ii ON sa.item_id = ii.id AND ${notDeleted('ii')}
+       WHERE sa.branch_id = :bid AND sa.resolved = :res AND ${notDeleted('sa')}
        ORDER BY sa.created_at DESC`,
       { bid: req.user.branchId, res: resolved === 'true' ? 1 : 0 }
     );
@@ -845,7 +849,9 @@ inventoryRouter.get('/alerts', async (req, res, next) => {
 inventoryRouter.patch('/alerts/:id/resolve', async (req, res, next) => {
   try {
     await db.query(
-      `UPDATE stock_alerts SET resolved=1, resolved_at=NOW() WHERE id=:id AND branch_id=:bid`,
+      `UPDATE stock_alerts
+       SET resolved=1, resolved_at=NOW()
+       WHERE id=:id AND branch_id=:bid AND ${notDeleted('stock_alerts')}`,
       { id: req.params.id, bid: req.user.branchId }
     );
     return R.noContent(res);
@@ -870,11 +876,13 @@ async function checkAndGenerateAlerts(branchId) {
      JOIN inventory_items ii ON ist.item_id = ii.id
      WHERE ist.branch_id = :bid
        AND ii.is_active = 1
+       AND ${notDeleted('ii')}
        AND ist.quantity_available <= ist.reorder_point
        AND NOT EXISTS (
          SELECT 1 FROM stock_alerts sa
          WHERE sa.item_id = ii.id AND sa.branch_id = :bid
            AND sa.alert_type IN ('low_stock','out_of_stock') AND sa.resolved = 0
+           AND ${notDeleted('sa')}
        )`,
     { bid: branchId }
   );
@@ -896,12 +904,15 @@ async function checkAndGenerateAlerts(branchId) {
      JOIN inventory_items ii ON ib.item_id = ii.id
      WHERE ib.branch_id = :bid
        AND ib.quantity_available > 0
+       AND ${notDeleted('ib')}
+       AND ${notDeleted('ii')}
        AND ib.expiry_date IS NOT NULL
        AND ib.expiry_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 DAY)
        AND NOT EXISTS (
          SELECT 1 FROM stock_alerts sa
          WHERE sa.item_id = ib.item_id AND sa.branch_id = :bid
            AND sa.alert_type = 'expiring_soon' AND sa.expiry_date = ib.expiry_date AND sa.resolved = 0
+           AND ${notDeleted('sa')}
        )`,
     { bid: branchId }
   );
@@ -935,8 +946,8 @@ purchaseOrdersRouter.get('/', async (req, res, next) => {
       `SELECT po.id, po.po_number, po.status, po.ordered_date, po.expected_date,
               po.received_date, po.total_amount, s.name AS supplier_name, po.created_at
        FROM purchase_orders po
-       JOIN suppliers s ON po.supplier_id = s.id
-       WHERE ${conds.join(' AND ')}
+       JOIN suppliers s ON po.supplier_id = s.id AND ${notDeleted('s')}
+       WHERE ${conds.join(' AND ')} AND ${notDeleted('po')}
        ORDER BY po.created_at DESC
        LIMIT :limit OFFSET :offset`,
       p
@@ -950,16 +961,16 @@ purchaseOrdersRouter.get('/:id', async (req, res, next) => {
     const po = await db.queryOne(
       `SELECT po.*, s.name AS supplier_name, s.email AS supplier_email, s.phone AS supplier_phone
        FROM purchase_orders po
-       JOIN suppliers s ON po.supplier_id = s.id
-       WHERE po.id = :id AND po.branch_id = :bid`,
+       JOIN suppliers s ON po.supplier_id = s.id AND ${notDeleted('s')}
+       WHERE po.id = :id AND po.branch_id = :bid AND ${notDeleted('po')}`,
       { id: req.params.id, bid: req.user.branchId }
     );
     if (!po) return R.notFound(res, 'Orden de compra no encontrada');
     const items = await db.query(
       `SELECT poi.*, ii.name AS item_name, ii.sku
        FROM purchase_order_items poi
-       JOIN inventory_items ii ON poi.item_id = ii.id
-       WHERE poi.purchase_order_id = :pid`,
+       JOIN inventory_items ii ON poi.item_id = ii.id AND ${notDeleted('ii')}
+       WHERE poi.purchase_order_id = :pid AND ${notDeleted('poi')}`,
       { pid: po.id }
     );
     return R.ok(res, { ...po, items });
@@ -1006,7 +1017,10 @@ purchaseOrdersRouter.post('/',
 purchaseOrdersRouter.patch('/:id/send', async (req, res, next) => {
   try {
     const po = await db.queryOne(
-      `SELECT po.*, s.email FROM purchase_orders po JOIN suppliers s ON po.supplier_id=s.id WHERE po.id=:id AND po.branch_id=:bid`,
+      `SELECT po.*, s.email
+       FROM purchase_orders po
+       JOIN suppliers s ON po.supplier_id = s.id AND ${notDeleted('s')}
+       WHERE po.id = :id AND po.branch_id = :bid AND ${notDeleted('po')}`,
       { id: req.params.id, bid: req.user.branchId }
     );
     if (!po)               return R.notFound(res, 'OC no encontrada');
@@ -1035,9 +1049,10 @@ purchaseOrdersRouter.post('/:id/receive',
     try {
       const { items } = req.body;
       const po = await db.queryOne(
-        `SELECT * FROM purchase_orders WHERE id=:id AND branch_id=:bid AND status IN ('sent','partial')`,
-        { id: req.params.id, bid: req.user.branchId }
-      );
+      `SELECT * FROM purchase_orders
+       WHERE id=:id AND branch_id=:bid AND status IN ('sent','partial') AND ${notDeleted('purchase_orders')}`,
+      { id: req.params.id, bid: req.user.branchId }
+    );
       if (!po) return R.notFound(res, 'OC no encontrada o no está en estado enviada');
 
       await db.transaction(async (conn) => {
