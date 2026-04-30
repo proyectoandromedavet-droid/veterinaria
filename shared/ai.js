@@ -8,6 +8,12 @@
 
 const PROVIDER = process.env.AI_PROVIDER || 'openai';
 const DEFAULT_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '1024');
+const { getBreaker } = require('./circuitBreaker');
+const aiBreaker = getBreaker('openai', {
+  threshold: parseInt(process.env.AI_CIRCUIT_THRESHOLD || process.env.CIRCUIT_THRESHOLD || '5'),
+  timeout: parseInt(process.env.AI_CIRCUIT_TIMEOUT_MS || process.env.CIRCUIT_TIMEOUT_MS || '30000'),
+  successReq: parseInt(process.env.AI_CIRCUIT_SUCCESS || process.env.CIRCUIT_SUCCESS || '2'),
+});
 
 // ─── HTTP helper ──────────────────────────────────────────────────────────────
 
@@ -170,7 +176,17 @@ function getAdapter() {
  * @returns {Promise<string>}
  */
 async function complete(messages, opts = {}) {
-  return getAdapter().complete(messages, opts);
+  if (!aiBreaker.canRequest()) {
+    throw Object.assign(new Error('AI provider temporarily unavailable'), { code: 'AI_CIRCUIT_OPEN' });
+  }
+  try {
+    const result = await getAdapter().complete(messages, opts);
+    aiBreaker.onSuccess();
+    return result;
+  } catch (err) {
+    aiBreaker.onFailure();
+    throw err;
+  }
 }
 
 /**
@@ -181,7 +197,17 @@ async function complete(messages, opts = {}) {
  * @returns {Promise<string>}
  */
 async function analyzeImage(base64OrUrl, prompt, opts = {}) {
-  return getAdapter().analyzeImage(base64OrUrl, prompt, opts);
+  if (!aiBreaker.canRequest()) {
+    throw Object.assign(new Error('AI provider temporarily unavailable'), { code: 'AI_CIRCUIT_OPEN' });
+  }
+  try {
+    const result = await getAdapter().analyzeImage(base64OrUrl, prompt, opts);
+    aiBreaker.onSuccess();
+    return result;
+  } catch (err) {
+    aiBreaker.onFailure();
+    throw err;
+  }
 }
 
 /**
@@ -190,7 +216,17 @@ async function analyzeImage(base64OrUrl, prompt, opts = {}) {
  * @returns {Promise<number[]>}
  */
 async function embedText(text) {
-  return getAdapter().embedText(text);
+  if (!aiBreaker.canRequest()) {
+    throw Object.assign(new Error('AI provider temporarily unavailable'), { code: 'AI_CIRCUIT_OPEN' });
+  }
+  try {
+    const result = await getAdapter().embedText(text);
+    aiBreaker.onSuccess();
+    return result;
+  } catch (err) {
+    aiBreaker.onFailure();
+    throw err;
+  }
 }
 
 module.exports = { complete, analyzeImage, embedText, PROVIDER, adapters };

@@ -17,7 +17,7 @@ const crypto      = require('crypto');
 const db          = require('../../../../shared/db');
 const R           = require('../../../../shared/response');
 const { requireInternalSig } = require('../../../../shared/internalAuth');
-const { sendWelcome }        = require('../../../../shared/email');
+const { enqueueJob }         = require('../../../../shared/notificationRetry');
 
 const router = Router();
 
@@ -137,11 +137,18 @@ router.post('/users',
       });
 
       // Enviar email de bienvenida con contraseña temporal (fire-and-forget)
-      sendWelcome({
-        to:           email,
-        name:         `${firstName} ${lastName}`,
-        orgName:      branch.org_name,
-        tempPassword,
+      enqueueJob({
+        channel: 'email',
+        payload: {
+          kind: 'welcome',
+          to: email,
+          name: `${firstName} ${lastName}`,
+          orgName: branch.org_name,
+          tempPassword,
+        },
+        createdBy: req.user.userId || null,
+        orgId: req.user.orgId,
+        branchId,
       }).catch(() => {});
 
       await auditPermissionChange(req, {

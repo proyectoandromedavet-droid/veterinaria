@@ -9,12 +9,8 @@ const R              = require('../../../../shared/response');
 const { getRedisSingleton } = require('../../../../shared/redis');
 const twoFactor      = require('../../../../shared/twoFactor');
 const { enforcePassword } = require('../../../../shared/passwordPolicy');
-const {
-  send2faEnabled,
-  sendPasswordReset: sendPwResetEmail,
-  sendNewDeviceLogin,
-} = require('../../../../shared/email');
 const { captureFingerprint } = require('../../../../shared/deviceFingerprint');
+const { enqueueJob } = require('../../../../shared/notificationRetry');
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 async function getRedis() {
@@ -295,12 +291,19 @@ async function login(req, res) {
     { userId: user.id, ip }
   );
   if (!seenBefore) {
-    sendNewDeviceLogin({
-      to:        user.email,
-      name:      `${user.first_name} ${user.last_name}`,
-      ip,
-      userAgent: ua,
-      time:      new Date().toLocaleString('es-AR', { timeZone: process.env.TZ || 'America/Argentina/Buenos_Aires' }),
+    enqueueJob({
+      channel: 'email',
+      payload: {
+        kind:      'new_device_login',
+        to:        user.email,
+        name:      `${user.first_name} ${user.last_name}`,
+        ip,
+        userAgent: ua,
+        time:      new Date().toLocaleString('es-AR', { timeZone: process.env.TZ || 'America/Argentina/Buenos_Aires' }),
+      },
+      createdBy: user.id,
+      orgId: user.organization_id,
+      branchId: user.branch_id,
     }).catch(() => {});
   }
 
@@ -521,7 +524,16 @@ async function requestPasswordReset(req, res) {
     `SELECT email FROM users WHERE id = :id`, { id: user.id }
   );
   if (userRecord) {
-    sendPwResetEmail({ to: userRecord.email, token, expiresInMinutes: 60 }).catch(() => {});
+    enqueueJob({
+      channel: 'email',
+      payload: {
+        kind: 'password_reset',
+        to: userRecord.email,
+        token,
+        expiresInMinutes: 60,
+      },
+      createdBy: user.id,
+    }).catch(() => {});
   }
 
   // Token is sent by email only — never exposed in response (even in dev)
@@ -814,7 +826,11 @@ async function verify2fa(req, res) {
   });
 
   // Send confirmation email (fire-and-forget)
-  send2faEnabled({ to: user.email, name: user.email }).catch(() => {});
+  enqueueJob({
+    channel: 'email',
+    payload: { kind: '2fa_enabled', to: user.email, name: user.email },
+    createdBy: user.id,
+  }).catch(() => {});
 
   return R.ok(res, {
     message: '2FA enabled. Store recovery codes securely.',

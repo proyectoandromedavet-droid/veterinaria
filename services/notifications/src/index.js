@@ -21,6 +21,7 @@ const {
   buildNotificationInsert,
 } = require('../../../shared/notificationLogSchema');
 const { withOpenApiValidation } = require('../../../shared/serviceBase');
+const { enqueueJob, processPendingJobs } = require('../../../shared/notificationRetry');
 
 const app    = express();
 const server = http.createServer(app);
@@ -47,6 +48,7 @@ app.use((req, _res, next) => {
 
 // ── Redis pub/sub ─────────────────────────────────────────────────────────────
 let redisPub, redisSub;
+let retryInterval;
 
 async function getRedis() {
   if (!redisPub) {
@@ -380,14 +382,21 @@ app.post('/notifications/messages/send', async (req, res, next) => {
     if (!['sms', 'whatsapp', 'both'].includes(channel)) return R.badRequest(res, 'channel debe ser sms, whatsapp o both');
 
     let result;
-    if (channel === 'sms')       result = await messaging.sendSms(to, message);
-    if (channel === 'whatsapp')  result = await messaging.sendWhatsApp(to, message);
-    if (channel === 'both') {
-      const [sms, wa] = await Promise.allSettled([
-        messaging.sendSms(to, message),
-        messaging.sendWhatsApp(to, message),
-      ]);
-      result = { sms: sms.value || sms.reason?.message, whatsapp: wa.value || wa.reason?.message };
+    try {
+      if (channel === 'sms') result = await messaging.sendSms(to, message);
+      if (channel === 'whatsapp') result = await messaging.sendWhatsApp(to, message);
+      if (channel === 'both') {
+        const [sms, wa] = await Promise.allSettled([
+          messaging.sendSms(to, message),
+          messaging.sendWhatsApp(to, message),
+        ]);
+        result = { sms: sms.value || sms.reason?.message, whatsapp: wa.value || wa.reason?.message };
+        if (sms.status === 'rejected') await queueNotificationRetry({ channel: 'sms', payload: { to, message }, req });
+        if (wa.status === 'rejected') await queueNotificationRetry({ channel: 'whatsapp', payload: { to, message }, req });
+      }
+    } catch (err) {
+      await queueNotificationRetry({ channel, payload: { to, message }, req });
+      return res.status(202).json({ success: true, queued: true, message: 'Notification queued for retry', error: err.message });
     }
 
     await logMessage({ channel, to, message, result, userId: req.user.userId, branchId: req.user.branchId });
@@ -405,7 +414,13 @@ app.post('/notifications/messages/template', async (req, res, next) => {
     const { channel = 'whatsapp', to, template, vars = {} } = req.body;
     if (!to || !template) return R.badRequest(res, 'to y template son requeridos');
 
-    const result = await messaging.sendTemplate(channel, to, template, vars);
+    let result;
+    try {
+      result = await messaging.sendTemplate(channel, to, template, vars);
+    } catch (err) {
+      await queueNotificationRetry({ channel: 'template', payload: { channel, to, template, vars }, req });
+      return res.status(202).json({ success: true, queued: true, message: 'Template queued for retry', error: err.message });
+    }
     await logMessage({ channel, to, message: result.body, result: result.results, userId: req.user.userId, branchId: req.user.branchId, template });
     return R.ok(res, result);
   } catch (e) { next(e); }
@@ -435,14 +450,26 @@ app.post('/notifications/messages/reminder/:reminderId', async (req, res, next) 
     if (!reminder) return R.notFound(res, 'Recordatorio no encontrado');
     if (!reminder.phone) return R.badRequest(res, 'El cliente no tiene teléfono registrado');
 
-    const result = await messaging.sendTemplate(channel, reminder.phone, 'appointmentReminder', {
-      ownerName:  reminder.owner_name,
-      petName:    reminder.pet_name,
-      date:       new Date(reminder.due_date).toLocaleDateString('es-AR'),
-      time:       new Date(reminder.due_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-      vetName:    'su veterinario',
-      clinicName: reminder.clinic_name,
-    });
+    const templatePayload = {
+      channel,
+      to: reminder.phone,
+      template: 'appointmentReminder',
+      vars: {
+        ownerName:  reminder.owner_name,
+        petName:    reminder.pet_name,
+        date:       new Date(reminder.due_date).toLocaleDateString('es-AR'),
+        time:       new Date(reminder.due_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+        vetName:    'su veterinario',
+        clinicName: reminder.clinic_name,
+      },
+    };
+    let result;
+    try {
+      result = await messaging.sendTemplate(channel, templatePayload.to, templatePayload.template, templatePayload.vars);
+    } catch (err) {
+      await queueNotificationRetry({ channel: 'template', payload: templatePayload, req });
+      return res.status(202).json({ success: true, queued: true, message: 'Reminder queued for retry', error: err.message });
+    }
 
     // Marcar recordatorio como enviado
     await db.query(
@@ -484,17 +511,42 @@ app.post('/notifications/messages/bulk-reminders', async (req, res, next) => {
     let sent = 0, failed = 0;
     for (const r of reminders) {
       try {
-        await messaging.sendTemplate(channel, r.phone, 'appointmentReminder', {
-          ownerName:  r.owner_name,
-          petName:    r.pet_name,
-          date:       new Date(r.due_date).toLocaleDateString('es-AR'),
-          time:       new Date(r.due_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-          vetName:    'su veterinario',
-          clinicName: r.clinic_name,
-        });
+        const retryPayload = {
+          channel,
+          to: r.phone,
+          template: 'appointmentReminder',
+          vars: {
+            ownerName:  r.owner_name,
+            petName:    r.pet_name,
+            date:       new Date(r.due_date).toLocaleDateString('es-AR'),
+            time:       new Date(r.due_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+            vetName:    'su veterinario',
+            clinicName: r.clinic_name,
+          },
+        };
+        await messaging.sendTemplate(channel, retryPayload.to, retryPayload.template, retryPayload.vars);
         await db.query(`UPDATE reminders SET status='sent', sent_at=NOW() WHERE id=:id`, { id: r.id });
         sent++;
-      } catch (_) { failed++; }
+      } catch (_) {
+        await queueNotificationRetry({
+          channel: 'template',
+          payload: {
+            channel,
+            to: r.phone,
+            template: 'appointmentReminder',
+            vars: {
+              ownerName:  r.owner_name,
+              petName:    r.pet_name,
+              date:       new Date(r.due_date).toLocaleDateString('es-AR'),
+              time:       new Date(r.due_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+              vetName:    'su veterinario',
+              clinicName: r.clinic_name,
+            },
+          },
+          req,
+        }).catch(() => {});
+        failed++;
+      }
     }
 
     return R.ok(res, { total: reminders.length, sent, failed });
@@ -553,6 +605,16 @@ async function logMessage({ channel, to, message, result, userId, branchId, temp
       }
     );
   } catch (_) {} // no bloquear por fallo de log
+}
+
+async function queueNotificationRetry({ channel, payload, req }) {
+  await enqueueJob({
+    channel,
+    payload,
+    createdBy: req.user?.userId || null,
+    orgId: req.user?.orgId || null,
+    branchId: req.user?.branchId || null,
+  });
 }
 
 // ── FCM: registro de tokens ───────────────────────────────────────────────────
@@ -693,18 +755,21 @@ app.post('/notifications/fcm/broadcast', async (req, res, next) => {
 
     // Enviar a org
     if (orgId) {
-      await fcm.sendToTopic(`org_${orgId}`, payload).catch(() => {});
+      try { await fcm.sendToTopic(`org_${orgId}`, payload); }
+      catch (_) { await queueNotificationRetry({ channel: 'push_topic', payload: { topic: `org_${orgId}`, payload }, req }); }
       results.push(`org_${orgId}`);
     }
     // Enviar a sucursal
     if (branchId) {
-      await fcm.sendToTopic(`branch_${branchId}`, payload).catch(() => {});
+      try { await fcm.sendToTopic(`branch_${branchId}`, payload); }
+      catch (_) { await queueNotificationRetry({ channel: 'push_topic', payload: { topic: `branch_${branchId}`, payload }, req }); }
       results.push(`branch_${branchId}`);
     }
     // Enviar a roles
     if (roles?.length && orgId) {
       for (const role of roles) {
-        await fcm.sendToTopic(`role_${orgId}_${role}`, payload).catch(() => {});
+        try { await fcm.sendToTopic(`role_${orgId}_${role}`, payload); }
+        catch (_) { await queueNotificationRetry({ channel: 'push_topic', payload: { topic: `role_${orgId}_${role}`, payload }, req }); }
         results.push(`role_${orgId}_${role}`);
       }
     }
@@ -716,6 +781,20 @@ app.post('/notifications/fcm/broadcast', async (req, res, next) => {
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'notifications' }));
 
+app.get('/notifications/retries', async (req, res, next) => {
+  try {
+    const rows = await db.query(
+      `SELECT id, channel, status, attempt_count, max_attempts, next_attempt_at, last_error, created_at
+       FROM notification_retry_jobs
+       WHERE (:orgId IS NULL OR org_id = :orgId)
+       ORDER BY created_at DESC
+       LIMIT 100`,
+      { orgId: req.user?.orgId || null }
+    );
+    return R.ok(res, rows);
+  } catch (e) { next(e); }
+});
+
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
   console.error('[notifications]', err.message);
@@ -726,6 +805,9 @@ app.use((err, _req, res, _next) => {
 if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, async () => {
     await getRedis().catch(e => console.warn('[notifications] Redis not available:', e.message));
+    retryInterval = setInterval(() => {
+      processPendingJobs().catch((e) => console.warn('[notifications] retry worker:', e.message));
+    }, parseInt(process.env.NOTIFICATION_RETRY_INTERVAL_MS || '30000'));
     console.log(`[notifications] running on port ${PORT}`);
   });
 }
