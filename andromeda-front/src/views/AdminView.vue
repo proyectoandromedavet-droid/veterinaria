@@ -88,6 +88,27 @@
 
     <div class="admin__header admin__header--section">
       <div>
+        <h2 class="admin__title">Políticas de autenticación</h2>
+        <p class="admin__subtitle">2FA sigue opcional y desactivado por defecto. Desde acá sólo habilitás la activación manual por usuario.</p>
+      </div>
+    </div>
+
+    <div class="card card--section">
+      <div class="policy-row">
+        <div>
+          <strong>Permitir 2FA opcional para la organización</strong>
+          <p class="policy-help">No exige 2FA. Sólo habilita el setup voluntario cuando quieran usarlo.</p>
+        </div>
+        <label class="policy-switch">
+          <input type="checkbox" :checked="authPolicy.twoFactorOptionalEnabled" :disabled="savingAuthPolicy" @change="toggleTwoFactorPolicy($event.target.checked)" />
+          <span>{{ authPolicy.twoFactorOptionalEnabled ? 'Habilitado' : 'Deshabilitado' }}</span>
+        </label>
+      </div>
+      <div v-if="authPolicyError" class="alert alert--error">{{ authPolicyError }}</div>
+    </div>
+
+    <div class="admin__header admin__header--section">
+      <div>
         <h2 class="admin__title">Overrides de roles</h2>
         <p class="admin__subtitle">Permisos dinámicos por organización para rutas sensibles</p>
       </div>
@@ -261,6 +282,11 @@ const overrideForm = reactive({
   grant: '',
   revoke: '',
 })
+const authPolicy = reactive({
+  twoFactorOptionalEnabled: false,
+})
+const savingAuthPolicy = ref(false)
+const authPolicyError = ref('')
 
 const ROLES = [
   { value: 'org_admin',         label: 'Administrador de organización' },
@@ -415,6 +441,30 @@ async function loadOverrides() {
   }
 }
 
+async function loadAuthPolicy() {
+  authPolicyError.value = ''
+  try {
+    const { data } = await adminUsersApi.getAuthPolicy()
+    const payload = data?.data || data
+    authPolicy.twoFactorOptionalEnabled = Boolean(payload?.two_factor_optional_enabled ?? payload?.twoFactorOptionalEnabled)
+  } catch (e) {
+    authPolicyError.value = e.response?.data?.error?.message || 'No se pudo cargar la política de autenticación.'
+  }
+}
+
+async function toggleTwoFactorPolicy(enabled) {
+  savingAuthPolicy.value = true
+  authPolicyError.value = ''
+  try {
+    await adminUsersApi.updateAuthPolicy({ twoFactorOptionalEnabled: enabled })
+    authPolicy.twoFactorOptionalEnabled = enabled
+  } catch (e) {
+    authPolicyError.value = e.response?.data?.error?.message || 'No se pudo actualizar la política de 2FA.'
+  } finally {
+    savingAuthPolicy.value = false
+  }
+}
+
 async function saveOverride() {
   if (!overrideForm.role) {
     overrideError.value = 'Seleccioná un rol.'
@@ -493,6 +543,7 @@ function formatDateTime(iso) {
 
 onMounted(async () => {
   await loadPage()
+  await loadAuthPolicy()
   await loadOverrides()
 })
 </script>
@@ -534,6 +585,27 @@ onMounted(async () => {
 
 .card--section {
   margin-top: 18px;
+}
+
+.policy-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 16px;
+}
+
+.policy-help {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: 0.84rem;
+}
+
+.policy-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
 }
 
 .admin__header--section {

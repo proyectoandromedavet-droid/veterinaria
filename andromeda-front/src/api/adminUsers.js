@@ -5,4 +5,6 @@ export const adminUsersApi = {
   create:     (data)   => http.post('/auth/admin/users', data),
   deactivate: (id)     => http.patch(`/auth/admin/users/${id}/deactivate`),
   updateRole: (id, role) => http.patch(`/auth/admin/users/${id}/role`, { role }),
+  getAuthPolicy: () => http.get('/auth/admin/auth/policy'),
+  updateAuthPolicy: (data) => http.patch('/auth/admin/auth/policy', data),
 }

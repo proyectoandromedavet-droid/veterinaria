@@ -670,6 +670,22 @@ paths:
         '204':
           description: User deactivated
 
+  /admin/auth/policy:
+    get:
+      summary: Get organization authentication policy
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Authentication policy
+    patch:
+      summary: Update organization authentication policy
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Authentication policy updated
+
   /admin/plugins:
     get:
       summary: List plugins

@@ -175,7 +175,7 @@ router.get('/users',
     try {
       const { page = 1, limit = 50, isActive } = req.query;
       const offset = (parseInt(page) - 1) * parseInt(limit);
-      const conds  = ['b.organization_id = :orgId'];
+      const conds  = ['b.organization_id = :orgId', 'u.deleted_at IS NULL'];
       const params = { orgId: req.user.orgId, limit: parseInt(limit), offset };
 
       if (isActive !== undefined) {
@@ -231,13 +231,13 @@ router.patch('/users/:id/deactivate',
       const user = await db.queryOne(
         `SELECT u.id FROM users u
          JOIN branches b ON u.branch_id = b.id
-         WHERE u.id = :id AND b.organization_id = :orgId`,
+         WHERE u.id = :id AND b.organization_id = :orgId AND u.deleted_at IS NULL`,
         { id: req.params.id, orgId: req.user.orgId }
       );
       if (!user) return R.notFound(res, 'Usuario no encontrado');
 
       await db.query(
-        `UPDATE users SET is_active = 0, updated_at = NOW() WHERE id = :id`,
+        `UPDATE users SET is_active = 0, deleted_at = NOW(), updated_at = NOW() WHERE id = :id`,
         { id: req.params.id }
       );
       await db.callProc('sp_revoke_user_sessions', [req.params.id]);
@@ -270,7 +270,7 @@ router.patch('/users/:id/role',
         `SELECT u.id
          FROM users u
          JOIN branches b ON u.branch_id = b.id
-         WHERE u.id = :id AND b.organization_id = :orgId`,
+         WHERE u.id = :id AND b.organization_id = :orgId AND u.deleted_at IS NULL`,
         { id: targetUserId, orgId: req.user.orgId }
       );
       if (!targetUser) return R.notFound(res, 'Usuario no encontrado');
