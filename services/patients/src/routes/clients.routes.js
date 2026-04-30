@@ -9,6 +9,10 @@ const { signDocument, verifyDocument, getPublicKeyPem } = require('../../../../s
 
 const router = Router();
 
+function deletedPredicate(cols, alias) {
+  return cols.has('deleted_at') ? `${alias}.deleted_at IS NULL` : '1 = 1';
+}
+
 function validate(req, res, next) {
   const e = validationResult(req);
   if (!e.isEmpty()) return R.badRequest(res, 'Validation failed', e.array());
@@ -46,8 +50,10 @@ router.get('/', async (req, res, next) => {
     const clientCols = schema.clients || new Set();
     const ownerCols = schema.patient_owners || new Set();
     const activeExpr = clientCols.has('is_active') ? 'c.is_active' : (clientCols.has('active') ? 'c.active' : '1');
+    const clientDeleted = deletedPredicate(clientCols, 'c');
+    const ownerDeleted = deletedPredicate(ownerCols, 'po');
 
-    let where = `WHERE c.branch_id = :branchId AND ${activeExpr} = TRUE`;
+    let where = `WHERE c.branch_id = :branchId AND ${activeExpr} = TRUE AND ${clientDeleted}`;
     const params = { branchId, limit: parsedLimit, offset };
     if (search) {
       where += ` AND (c.first_name LIKE :s OR c.last_name LIKE :s OR c.email LIKE :s OR c.phone LIKE :s OR c.document_number LIKE :s)`;
@@ -63,6 +69,7 @@ router.get('/', async (req, res, next) => {
          FROM clients c
          LEFT JOIN patient_owners po ON po.client_id = c.id
            AND po.ownership_type = 'primary'
+           AND ${ownerDeleted}
            ${ownerCols.has('active') ? 'AND po.active = 1' : ''}
          ${where}
          GROUP BY c.id
@@ -87,6 +94,7 @@ router.get('/:id', async (req, res, next) => {
     const schema = await getClientSchema();
     const patientCols = schema.patients || new Set();
     const clientCols = schema.clients || new Set();
+    const ownerCols = schema.patient_owners || new Set();
 
     const client = await db.queryOne(
       `SELECT c.*,
@@ -97,6 +105,7 @@ router.get('/:id', async (req, res, next) => {
        LEFT JOIN currencies cu ON c.currency_id = cu.id
        WHERE c.id = :id
          AND c.branch_id = :branchId
+         AND ${deletedPredicate(clientCols, 'c')}
          ${clientCols.has('organization_id') ? 'AND c.organization_id = :orgId' : ''}`,
       { id: req.params.id, branchId: req.user.branchId, orgId: req.user.orgId }
     );
@@ -115,15 +124,19 @@ router.get('/:id', async (req, res, next) => {
         `SELECT p.id, p.name, ${chipExpr} AS chip_number,
                 sp.common_name AS species, b.name AS breed, p.sex, ${birthExpr} AS birthdate, ${activeExpr} AS is_active
          FROM patients p
-         JOIN patient_owners po ON po.patient_id = p.id AND po.client_id = :cid
+         JOIN patient_owners po ON po.patient_id = p.id AND po.client_id = :cid AND ${deletedPredicate(ownerCols, 'po')}
          LEFT JOIN species sp ON p.species_id = sp.id
          LEFT JOIN breeds b ON p.breed_id = b.id
+         WHERE ${deletedPredicate(patientCols, 'p')}
          ORDER BY p.name`,
         { cid: req.params.id }
       ),
       db.query(
         `SELECT name, relationship, phone, email, is_primary
-         FROM client_emergency_contacts WHERE client_id = :cid ORDER BY is_primary DESC`,
+         FROM client_emergency_contacts
+         WHERE client_id = :cid
+           ${clientCols.has('deleted_at') ? 'AND deleted_at IS NULL' : ''}
+         ORDER BY is_primary DESC`,
         { cid: req.params.id }
       ),
     ]);
@@ -240,6 +253,7 @@ router.put('/:id',
         `UPDATE clients SET ${sets.join(', ')}, updated_at = NOW()
          WHERE id = :id
            AND branch_id = :branchId
+           AND ${deletedPredicate(clientCols, 'clients')}
            ${clientCols.has('organization_id') ? 'AND organization_id = :orgId' : ''}`,
         params
       );
@@ -254,10 +268,12 @@ router.delete('/:id', async (req, res, next) => {
     const clientCols = schema.clients || new Set();
     const activeColumn = clientCols.has('is_active') ? 'is_active' : (clientCols.has('active') ? 'active' : null);
     if (!activeColumn) return R.badRequest(res, 'Client schema missing active column');
+    const deletedSet = clientCols.has('deleted_at') ? ', deleted_at = NOW()' : '';
 
     await db.query(
-      `UPDATE clients SET ${activeColumn} = FALSE, updated_at = NOW()
+      `UPDATE clients SET ${activeColumn} = FALSE${deletedSet}, updated_at = NOW()
        WHERE id = :id AND branch_id = :branchId
+       AND ${deletedPredicate(clientCols, 'clients')}
        ${clientCols.has('organization_id') ? 'AND organization_id = :orgId' : ''}`,
       { id: req.params.id, branchId: req.user.branchId, orgId: req.user.orgId }
     );

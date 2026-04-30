@@ -18,6 +18,10 @@ const ALLOWED_MIME_SIGNATURES = {
 };
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.pdf']);
 
+function deletedPredicate(cols, alias) {
+  return cols.has('deleted_at') ? `${alias}.deleted_at IS NULL` : '1 = 1';
+}
+
 function sanitizeFilename(name) {
   return path.basename(name)
     .replace(/[^a-zA-Z0-9._-]/g, '_')
@@ -110,11 +114,13 @@ async function ensurePatientVisible(patientId, user) {
   if (patientCols.has('organization_id')) scopes.push('p.organization_id = :orgId');
   if (clientCols.has('branch_id')) {
     scopes.push(
-      `EXISTS (
+       `EXISTS (
          SELECT 1
          FROM patient_owners po
          JOIN clients cl ON cl.id = po.client_id
          WHERE po.patient_id = p.id
+           AND ${deletedPredicate(ownerCols, 'po')}
+           AND ${deletedPredicate(clientCols, 'cl')}
            ${ownerCols.has('active') ? 'AND po.active = 1' : ''}
            AND cl.branch_id = :branchId
        )`
@@ -125,7 +131,9 @@ async function ensurePatientVisible(patientId, user) {
   return db.queryOne(
     `SELECT p.id
      FROM patients p
-     WHERE p.id = :id AND (${scopes.join(' OR ')})
+     WHERE p.id = :id
+       AND ${deletedPredicate(patientCols, 'p')}
+       AND (${scopes.join(' OR ')})
      LIMIT 1`,
     { id: patientId, orgId: user.orgId, branchId: user.branchId }
   );
@@ -177,7 +185,12 @@ router.get('/', async (req, res, next) => {
       throw new Error('Patients list schema unsupported: missing clients.branch_id and patients.organization_id');
     }
 
-    const conditions = [`(${scopeConditions.join(' OR ')})`];
+    const conditions = [
+      `(${scopeConditions.join(' OR ')})`,
+      deletedPredicate(patientCols, 'p'),
+      deletedPredicate(clientCols, 'cl'),
+      deletedPredicate(ownerCols, 'po'),
+    ];
     const params = { branchId, orgId, limit, offset };
 
     if (isActive !== 'all' && activeCol) {
@@ -297,7 +310,8 @@ router.get('/:id', async (req, res, next) => {
        LEFT JOIN species sp ON p.species_id = sp.id
        LEFT JOIN breeds b ON p.breed_id = b.id
        LEFT JOIN coat_colors co ON ${colorJoinExpr ? `${colorJoinExpr} = co.id` : '1 = 0'}
-       WHERE p.id = :id`,
+       WHERE p.id = :id
+         AND ${deletedPredicate(patientCols, 'p')}`,
       { id: req.params.id }
     );
     if (!patient) return R.notFound(res, 'Patient not found');
@@ -308,7 +322,10 @@ router.get('/:id', async (req, res, next) => {
                 po.ownership_type, po.start_date, po.end_date, po.notes
          FROM patient_owners po
          JOIN clients cl ON po.client_id = cl.id
-         WHERE po.patient_id = :pid ${ownerActiveFilter}
+         WHERE po.patient_id = :pid
+           AND ${deletedPredicate(ownerCols, 'po')}
+           AND ${deletedPredicate(clientCols, 'cl')}
+           ${ownerActiveFilter}
          ORDER BY FIELD(po.ownership_type,'primary','secondary')`,
         { pid: req.params.id }
       ),
@@ -637,7 +654,10 @@ router.get('/:id/owners', async (req, res, next) => {
               po.ownership_type, po.start_date, po.end_date, po.notes
        FROM patient_owners po
        JOIN clients cl ON cl.id = po.client_id
-       WHERE po.patient_id = :patientId ${ownerCols.has('active') ? 'AND po.active = 1' : ''}
+       WHERE po.patient_id = :patientId
+         AND ${deletedPredicate(ownerCols, 'po')}
+         AND ${deletedPredicate(clientCols, 'cl')}
+         ${ownerCols.has('active') ? 'AND po.active = 1' : ''}
        ORDER BY FIELD(po.ownership_type, 'primary', 'secondary', 'temporary_guardian', 'foster'), cl.last_name, cl.first_name`,
       { patientId: req.params.id }
     );
@@ -664,6 +684,7 @@ router.post('/:id/owners',
            FROM clients
            WHERE id = :clientId
              AND branch_id = :branchId
+             AND ${deletedPredicate(clientCols, 'clients')}
              ${clientCols.has('organization_id') ? 'AND organization_id = :orgId' : ''}`,
           { clientId: req.body.clientId, branchId: req.user.branchId, orgId: req.user.orgId }
         );
