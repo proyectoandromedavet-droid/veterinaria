@@ -26,10 +26,11 @@ const { enqueueJob, processPendingJobs } = require('../../../shared/notification
 const app    = express();
 const server = http.createServer(app);
 const PORT   = parseInt(process.env.PORT || '3009');
+const publicHealthPath = /^\/health(?:\/(?:live|ready|deep))?$/;
 
 app.use(express.json());
 app.use((req, res, next) => {
-  if (req.path === '/health') return next();
+  if (publicHealthPath.test(req.path)) return next();
   return requireInternalSig(req, res, next);
 });
 
@@ -779,7 +780,38 @@ app.post('/notifications/fcm/broadcast', async (req, res, next) => {
 });
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'notifications' }));
+async function runHealthChecks() {
+  const checks = {};
+  let ready = true;
+
+  try {
+    await db.getPool().execute('SELECT 1');
+    checks.db = 'ok';
+  } catch {
+    checks.db = 'error';
+    ready = false;
+  }
+
+  try {
+    const { ping } = await getRedis();
+    await ping();
+    checks.redis = 'ok';
+  } catch {
+    checks.redis = 'degraded';
+  }
+
+  return { ready, checks };
+}
+
+app.get('/health', async (_req, res) => {
+  const { ready, checks } = await runHealthChecks();
+  res.status(ready ? 200 : 503).json({ status: ready ? 'ok' : 'degraded', service: 'notifications', checks });
+});
+app.get('/health/live', (_req, res) => res.json({ status: 'ok', service: 'notifications' }));
+app.get('/health/ready', async (_req, res) => {
+  const { ready, checks } = await runHealthChecks();
+  res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', service: 'notifications', checks });
+});
 
 app.get('/notifications/retries', async (req, res, next) => {
   try {
@@ -811,5 +843,12 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`[notifications] running on port ${PORT}`);
   });
 }
+
+function shutdown() {
+  if (retryInterval) clearInterval(retryInterval);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 module.exports = app;

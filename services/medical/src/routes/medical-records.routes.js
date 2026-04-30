@@ -4,13 +4,21 @@ const { Router } = require('express');
 const { body, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R  = require('../../../../shared/response');
-const { encrypt, decrypt, decryptRows } = require('../../../../shared/encryption');
+const {
+  encrypt,
+  decrypt,
+  encryptFields,
+  decryptFields,
+  decryptRows,
+  ANAMNESIS_FIELDS,
+  PHYSICAL_EXAM_FIELDS,
+  MEDICAL_RECORD_FIELDS,
+  DIAGNOSIS_FIELDS,
+  TREATMENT_FIELDS,
+  PRESCRIPTION_FIELDS,
+} = require('../../../../shared/encryption');
 
 const router = Router();
-const MEDICAL_RECORD_FIELDS = ['chief_complaint', 'notes'];
-const DIAGNOSIS_FIELDS = ['diagnosis_name', 'diagnosis_code', 'notes', 'prognosis'];
-const TREATMENT_FIELDS = ['description', 'notes'];
-const PRESCRIPTION_FIELDS = ['notes', 'medication_name', 'instructions'];
 const validate = (req, res, next) => {
   const e = validationResult(req);
   if (!e.isEmpty()) return R.badRequest(res, 'Validation failed', e.array());
@@ -41,11 +49,11 @@ router.get('/', async (req, res, next) => {
        JOIN species sp      ON p.species_id  = sp.id
        JOIN users u         ON mr.vet_id     = u.id
        ${where}
-       ORDER BY mr.opened_at DESC
+      ORDER BY mr.opened_at DESC
        LIMIT :limit OFFSET :offset`,
       params
     );
-    return R.ok(res, rows);
+    return R.ok(res, decryptRows(rows, ['chief_complaint']));
   } catch (e) { next(e); }
 });
 
@@ -92,8 +100,8 @@ router.get('/:id', async (req, res, next) => {
       chief_complaint: decrypt(mr.chief_complaint),
       reason_for_visit: decrypt(mr.reason_for_visit),
       notes: decrypt(mr.notes),
-      anamnesis,
-      physicalExam: physExam,
+      anamnesis: decryptFields(anamnesis, ANAMNESIS_FIELDS),
+      physicalExam: decryptFields(physExam, PHYSICAL_EXAM_FIELDS),
       diagnoses: decryptRows(diagnoses, DIAGNOSIS_FIELDS),
       treatments: decryptRows(treatments, TREATMENT_FIELDS),
       prescriptions: decryptRows(prescriptions, PRESCRIPTION_FIELDS),
@@ -184,6 +192,21 @@ router.post('/:id/anamnesis',
         environment, contactWithAnimals, recentTravel, ownerObservations,
       } = req.body;
 
+      const encryptedAnamnesis = encryptFields({
+        current_illness_history: currentIllnessHistory,
+        illness_duration: illnessDuration || null,
+        illness_onset: illnessOnset || null,
+        other_signs: otherSigns || null,
+        vaccination_history: vaccinationHistory || null,
+        deworming_history: dewormingHistory || null,
+        previous_illnesses: previousIllnesses || null,
+        previous_surgeries: previousSurgeries || null,
+        current_medications: currentMedications || null,
+        feeding_brand: feedingBrand || null,
+        recent_travel: recentTravel || null,
+        owner_observations: ownerObservations || null,
+      }, ANAMNESIS_FIELDS);
+
       await db.query(
         `INSERT INTO anamnesis
            (medical_record_id, current_illness_history, illness_duration, illness_onset,
@@ -197,21 +220,51 @@ router.post('/:id/anamnesis',
                  :feed, :brand, :env, :contact, :travel, :obs)
          ON DUPLICATE KEY UPDATE
            current_illness_history = VALUES(current_illness_history),
-           illness_duration = VALUES(illness_duration)`,
+           illness_duration = VALUES(illness_duration),
+           illness_onset = VALUES(illness_onset),
+           appetite = VALUES(appetite),
+           thirst = VALUES(thirst),
+           urination = VALUES(urination),
+           defecation = VALUES(defecation),
+           vomiting = VALUES(vomiting),
+           coughing = VALUES(coughing),
+           sneezing = VALUES(sneezing),
+           pruritus = VALUES(pruritus),
+           locomotion_issues = VALUES(locomotion_issues),
+           other_signs = VALUES(other_signs),
+           vaccination_history = VALUES(vaccination_history),
+           deworming_history = VALUES(deworming_history),
+           previous_illnesses = VALUES(previous_illnesses),
+           previous_surgeries = VALUES(previous_surgeries),
+           current_medications = VALUES(current_medications),
+           feeding_type = VALUES(feeding_type),
+           feeding_brand = VALUES(feeding_brand),
+           environment = VALUES(environment),
+           contact_with_animals = VALUES(contact_with_animals),
+           recent_travel = VALUES(recent_travel),
+           owner_observations = VALUES(owner_observations)`,
         {
-          mid: req.params.id, cih: currentIllnessHistory,
-          dur: illnessDuration || null, onset: illnessOnset || null,
+          mid: req.params.id,
+          cih: encryptedAnamnesis.current_illness_history,
+          dur: encryptedAnamnesis.illness_duration,
+          onset: encryptedAnamnesis.illness_onset,
           app: appetite || null, thr: thirst || null,
           uri: urination || null, def: defecation || null,
           vom: vomiting || 0, cou: coughing || 0,
           sne: sneezing || 0, pru: pruritus || 0,
-          loc: locomotionIssues || 0, oth: otherSigns || null,
-          vac: vaccinationHistory || null, dew: dewormingHistory || null,
-          prev: previousIllnesses || null, surg: previousSurgeries || null,
-          meds: currentMedications || null, feed: feedingType || null,
-          brand: feedingBrand || null, env: environment || null,
-          contact: contactWithAnimals || 0, travel: recentTravel || null,
-          obs: ownerObservations || null,
+          loc: locomotionIssues || 0,
+          oth: encryptedAnamnesis.other_signs,
+          vac: encryptedAnamnesis.vaccination_history,
+          dew: encryptedAnamnesis.deworming_history,
+          prev: encryptedAnamnesis.previous_illnesses,
+          surg: encryptedAnamnesis.previous_surgeries,
+          meds: encryptedAnamnesis.current_medications,
+          feed: feedingType || null,
+          brand: encryptedAnamnesis.feeding_brand,
+          env: environment || null,
+          contact: contactWithAnimals || 0,
+          travel: encryptedAnamnesis.recent_travel,
+          obs: encryptedAnamnesis.owner_observations,
         }
       );
       return R.created(res);
@@ -223,8 +276,26 @@ router.post('/:id/anamnesis',
 router.post('/:id/physical-exam', async (req, res, next) => {
   try {
     const fields = req.body;
+    const encryptedTextFields = encryptFields(fields, [
+      'mucousMembranes',
+      'hydrationStatus',
+      'lymphNodes',
+      'skinCoat',
+      'eyes',
+      'ears',
+      'noseThroat',
+      'oralCavity',
+      'cardiovascular',
+      'respiratory',
+      'abdomen',
+      'musculoskeletal',
+      'neurological',
+      'urogenital',
+      'painAssessment',
+      'generalObservations',
+    ]);
     // Map camelCase to snake_case for DB columns
-    const cols = Object.entries(fields).map(([k, v]) => {
+    const cols = Object.entries(encryptedTextFields).map(([k, v]) => {
       const col = k.replace(/([A-Z])/g, '_$1').toLowerCase();
       return { col, v };
     }).filter(({ col }) => col !== 'medical_record_id');
@@ -258,7 +329,7 @@ router.post('/:id/diagnoses',
         {
           mid: req.params.id, name: encrypt(diagnosisName), type: diagnosisType,
           code: encrypt(diagnosisCode || null), primary: isPrimary ? 1 : 0,
-          notes: encrypt(notes || null), prog: encrypt(prognosis || null),
+          notes: encrypt(notes || null), prog: prognosis || null,
         }
       );
       return R.created(res, { id: r.insertId });

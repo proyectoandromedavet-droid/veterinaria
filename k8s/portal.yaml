@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vetmanager-portal
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vetmanager-portal
+  template:
+    metadata:
+      labels:
+        app: vetmanager-portal
+    spec:
+      containers:
+        - name: portal
+          image: ghcr.io/ajpfox10/veterinaria-portal:latest
+          ports:
+            - containerPort: 4060
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4060
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4060
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vetmanager-portal
+spec:
+  selector:
+    app: vetmanager-portal
+  ports:
+    - port: 4060
+      targetPort: 4060

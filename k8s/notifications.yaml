@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vetmanager-notifications
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vetmanager-notifications
+  template:
+    metadata:
+      labels:
+        app: vetmanager-notifications
+    spec:
+      containers:
+        - name: notifications
+          image: ghcr.io/ajpfox10/veterinaria-notifications:latest
+          ports:
+            - containerPort: 4059
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4059
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4059
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vetmanager-notifications
+spec:
+  selector:
+    app: vetmanager-notifications
+  ports:
+    - port: 4059
+      targetPort: 4059

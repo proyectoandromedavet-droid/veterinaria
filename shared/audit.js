@@ -8,6 +8,7 @@
  *           statusCode, ipAddress, userAgent, requestBody (sanitised), duration
  */
 
+const crypto = require('crypto');
 const db = require('./db');
 
 // Fields that should never be stored in audit logs
@@ -114,20 +115,89 @@ function auditMiddleware(options = {}) {
 
 async function writeAuditLog(entry) {
   try {
+    const immutablePayload = buildImmutablePayload(entry);
+    const prevHash = await getPreviousAuditHash(entry.org_id);
+    const entryHash = computeAuditHash(prevHash, immutablePayload);
+
     await db.query(
       `INSERT INTO audit_logs
          (user_id, org_id, branch_id, action, resource, resource_id,
           method, path, status_code, ip_address, user_agent,
-          request_id, request_body, duration_ms, created_at)
+          request_id, request_body, duration_ms, prev_hash, entry_hash, created_at)
        VALUES
          (:user_id, :org_id, :branch_id, :action, :resource, :resource_id,
           :method, :path, :status_code, :ip_address, :user_agent,
-          :request_id, :request_body, :duration_ms, :created_at)`,
-      entry,
+          :request_id, :request_body, :duration_ms, :prev_hash, :entry_hash, :created_at)`,
+      { ...entry, prev_hash: prevHash, entry_hash: entryHash },
     );
+    await writeImmutableAuditLog({ auditEntry: entry, immutablePayload, prevHash, entryHash });
   } catch (_) {
     // Audit write failures must not crash the application
   }
+}
+
+function getAuditSecret() {
+  return process.env.AUDIT_CHAIN_SECRET
+    || process.env.FIELD_ENCRYPTION_SECRET
+    || process.env.JWT_SECRET
+    || 'audit-chain-default';
+}
+
+function buildImmutablePayload(entry) {
+  return {
+    user_id: entry.user_id,
+    org_id: entry.org_id,
+    branch_id: entry.branch_id,
+    action: entry.action,
+    resource: entry.resource,
+    resource_id: entry.resource_id,
+    method: entry.method,
+    path: entry.path,
+    status_code: entry.status_code,
+    ip_address: entry.ip_address,
+    user_agent: entry.user_agent,
+    request_id: entry.request_id,
+    request_body: entry.request_body,
+    duration_ms: entry.duration_ms,
+    created_at: entry.created_at instanceof Date ? entry.created_at.toISOString() : entry.created_at,
+  };
+}
+
+function computeAuditHash(prevHash, payload) {
+  return crypto
+    .createHmac('sha256', getAuditSecret())
+    .update(`${prevHash || 'GENESIS'}|${JSON.stringify(payload)}`)
+    .digest('hex');
+}
+
+async function getPreviousAuditHash(orgId) {
+  const row = await db.queryOne(
+    `SELECT entry_hash
+     FROM audit_log_immutable
+     WHERE (:orgId IS NULL OR org_id = :orgId)
+     ORDER BY id DESC
+     LIMIT 1`,
+    { orgId: orgId || null }
+  ).catch(() => null);
+  return row?.entry_hash || null;
+}
+
+async function writeImmutableAuditLog({ auditEntry, immutablePayload, prevHash, entryHash }) {
+  await db.query(
+    `INSERT INTO audit_log_immutable
+       (org_id, audit_log_id, payload_json, prev_hash, entry_hash, export_status, created_at)
+     VALUES
+       (:org_id, (
+          SELECT id FROM audit_logs WHERE entry_hash = :entry_hash ORDER BY id DESC LIMIT 1
+       ), :payload_json, :prev_hash, :entry_hash, 'pending', :created_at)`,
+    {
+      org_id: auditEntry.org_id || null,
+      payload_json: JSON.stringify(immutablePayload),
+      prev_hash: prevHash,
+      entry_hash: entryHash,
+      created_at: auditEntry.created_at,
+    }
+  ).catch(() => {});
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -177,6 +247,7 @@ async function exportAuditLogs(opts) {
     userId,
     format = 'json',
     limit  = 10000,
+    source = 'audit_logs',
   } = opts;
 
   const conditions = [
@@ -190,16 +261,53 @@ async function exportAuditLogs(opts) {
   if (action)   { conditions.push('action = :action');     params.action   = action.toUpperCase(); }
   if (userId)   { conditions.push('user_id = :userId');    params.userId   = userId; }
 
-  const rows = await db.query(
-    `SELECT ${EXPORT_COLS.join(', ')}
-     FROM audit_logs
-     WHERE ${conditions.join(' AND ')}
-     ORDER BY created_at DESC
-     LIMIT :limit`,
-    params
-  );
+  const rows = source === 'immutable'
+    ? await db.query(
+      `SELECT ali.audit_log_id AS id,
+              ali.created_at,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.action')) AS action,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.resource')) AS resource,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.resource_id')) AS resource_id,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.method')) AS method,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.path')) AS path,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.status_code')) AS status_code,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.user_id')) AS user_id,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.org_id')) AS org_id,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.branch_id')) AS branch_id,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.ip_address')) AS ip_address,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.user_agent')) AS user_agent,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.request_id')) AS request_id,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.duration_ms')) AS duration_ms,
+              JSON_UNQUOTE(JSON_EXTRACT(ali.payload_json, '$.request_body')) AS request_body,
+              ali.prev_hash,
+              ali.entry_hash
+       FROM audit_log_immutable ali
+       WHERE ${conditions.map((c) => c.replace(/\borg_id\b/g, 'ali.org_id').replace(/\bcreated_at\b/g, 'ali.created_at')).join(' AND ')}
+       ORDER BY ali.created_at DESC
+       LIMIT :limit`,
+      params
+    )
+    : await db.query(
+      `SELECT ${EXPORT_COLS.join(', ')}, prev_hash, entry_hash
+       FROM audit_logs
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY created_at DESC
+       LIMIT :limit`,
+      params
+    );
 
   return { rows, format: format === 'csv' ? 'csv' : 'json' };
 }
 
-module.exports = { auditMiddleware, writeAuditLog, redactSensitive, exportAuditLogs, rowsToCsv };
+function rowsToNdjson(rows) {
+  return rows.map((row) => JSON.stringify(row)).join('\n');
+}
+
+module.exports = {
+  auditMiddleware,
+  writeAuditLog,
+  redactSensitive,
+  exportAuditLogs,
+  rowsToCsv,
+  rowsToNdjson,
+};

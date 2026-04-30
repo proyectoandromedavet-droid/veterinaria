@@ -18,7 +18,7 @@
  */
 
 const { Router } = require('express');
-const { exportAuditLogs, rowsToCsv } = require('../../../../shared/audit');
+const { exportAuditLogs, rowsToCsv, rowsToNdjson } = require('../../../../shared/audit');
 const R = require('../../../../shared/response');
 
 const router = Router();
@@ -51,6 +51,10 @@ router.get('/export', fromHeaders, requireAdminRole, async (req, res, next) => {
     const wantsCsv =
       req.query.format === 'csv' ||
       (req.headers['accept'] || '').includes('text/csv');
+    const wantsNdjson =
+      req.query.format === 'ndjson' ||
+      (req.headers['accept'] || '').includes('application/x-ndjson');
+    const source = req.query.source === 'immutable' ? 'immutable' : 'audit_logs';
 
     const { rows, format } = await exportAuditLogs({
       orgId,
@@ -59,12 +63,20 @@ router.get('/export', fromHeaders, requireAdminRole, async (req, res, next) => {
       resource: req.query.resource,
       action:   req.query.action,
       userId:   req.query.userId ? parseInt(req.query.userId) : undefined,
-      format:   wantsCsv ? 'csv' : 'json',
+      format:   wantsNdjson ? 'ndjson' : (wantsCsv ? 'csv' : 'json'),
       limit:    req.query.limit,
+      source,
     });
 
+    if (wantsNdjson) {
+      const filename = `audit-${source}-${orgId}-${new Date().toISOString().slice(0,10)}.ndjson`;
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(rowsToNdjson(rows));
+    }
+
     if (format === 'csv') {
-      const filename = `audit-${orgId}-${new Date().toISOString().slice(0,10)}.csv`;
+      const filename = `audit-${source}-${orgId}-${new Date().toISOString().slice(0,10)}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       return res.send(rowsToCsv(rows));

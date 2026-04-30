@@ -21,6 +21,7 @@ const db      = require('../../../shared/db');
 const jwt     = require('../../../shared/jwt');
 const R       = require('../../../shared/response');
 const mp      = require('../../../shared/mercadopago');
+const { decrypt, decryptRows } = require('../../../shared/encryption');
 const { sendPasswordReset, sendWelcome, sendNewDeviceLogin } = require('../../../shared/email');
 const { sendTemplate } = require('../../../shared/messaging');
 const fcm     = require('../../../shared/fcm');
@@ -45,6 +46,7 @@ const authLimiter = rateLimit({
 
 const app  = express();
 const PORT = parseInt(process.env.PORT || '4060');
+const publicHealthPath = /^\/health(?:\/(?:live|ready|deep))?$/;
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -52,7 +54,7 @@ app.use(express.urlencoded({ extended: true }));
 // Validate all requests come from the gateway (HMAC signature)
 // Exemptions: /health is checked by docker/orchestrator without HMAC
 app.use((req, res, next) => {
-  if (req.path === '/health') return next();
+  if (publicHealthPath.test(req.path)) return next();
   return requireInternalSig(req, res, next);
 });
 
@@ -419,7 +421,7 @@ app.get('/portal/pets/:id/medical-history', portalAuth, async (req, res, next) =
        ORDER BY mr.opened_at DESC`,
       { pid: req.params.id }
     );
-    return R.ok(res, records);
+    return R.ok(res, decryptRows(records, ['reason_for_visit', 'chief_complaint']));
   } catch (e) { next(e); }
 });
 
@@ -454,16 +456,18 @@ app.get('/portal/pets/:id/prescriptions', portalAuth, async (req, res, next) => 
     if (!owned) return R.forbidden(res, 'Sin acceso a esta mascota');
 
     const rows = await db.query(
-      `SELECT p.id, p.prescribed_date, p.medication_name, p.dosage, p.frequency,
-              p.duration_days, p.instructions, p.refills_allowed,
+      `SELECT p.id, p.created_at AS prescribed_date, pi.medication_name, pi.dose AS dosage, pi.frequency,
+              pi.duration_days, pi.instructions, p.refills_allowed,
               CONCAT(u.first_name,' ',u.last_name) AS prescribed_by
        FROM prescriptions p
+       JOIN medical_records mr ON p.medical_record_id = mr.id
+       LEFT JOIN prescription_items pi ON pi.prescription_id = p.id
        JOIN users u ON p.prescribed_by = u.id
-       WHERE p.patient_id=:pid
-       ORDER BY p.prescribed_date DESC`,
+       WHERE mr.patient_id=:pid
+       ORDER BY p.created_at DESC`,
       { pid: req.params.id }
     );
-    return R.ok(res, rows);
+    return R.ok(res, decryptRows(rows, ['medication_name', 'instructions']));
   } catch (e) { next(e); }
 });
 
@@ -741,7 +745,24 @@ app.get('/portal/telemedicine', portalAuth, async (req, res, next) => {
 // HEALTH + ERROR HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'portal', port: PORT }));
+async function runHealthChecks() {
+  try {
+    await db.getPool().execute('SELECT 1');
+    return { ready: true, checks: { db: 'ok' } };
+  } catch {
+    return { ready: false, checks: { db: 'error' } };
+  }
+}
+
+app.get('/health', async (_req, res) => {
+  const { ready, checks } = await runHealthChecks();
+  res.status(ready ? 200 : 503).json({ status: ready ? 'ok' : 'degraded', service: 'portal', port: PORT, checks });
+});
+app.get('/health/live', (_req, res) => res.json({ status: 'ok', service: 'portal', port: PORT }));
+app.get('/health/ready', async (_req, res) => {
+  const { ready, checks } = await runHealthChecks();
+  res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', service: 'portal', checks });
+});
 
 app.use((err, _req, res, _next) => {
   console.error('[portal]', err.message);

@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vetmanager-ai
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vetmanager-ai
+  template:
+    metadata:
+      labels:
+        app: vetmanager-ai
+    spec:
+      containers:
+        - name: ai
+          image: ghcr.io/ajpfox10/veterinaria-ai:latest
+          ports:
+            - containerPort: 4061
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4061
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4061
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vetmanager-ai
+spec:
+  selector:
+    app: vetmanager-ai
+  ports:
+    - port: 4061
+      targetPort: 4061

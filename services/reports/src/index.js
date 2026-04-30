@@ -7,6 +7,7 @@ const path = require('path');
 const { buildApp, startService } = require('../../../shared/serviceBase');
 const db           = require('../../../shared/db');
 const R            = require('../../../shared/response');
+const { decrypt }  = require('../../../shared/encryption');
 const { toExcel, toCsv } = require('../../../shared/export');
 const { consolidatedFinancials } = require('../../../shared/multibranch');
 const {
@@ -66,6 +67,37 @@ async function safeQuery(sql, params, fallback = []) {
     if (isSchemaError(err)) return fallback;
     throw err;
   }
+}
+
+function aggregateDiagnoses(rawRows, limit = 20) {
+  const totals = new Map();
+  let totalCount = 0;
+
+  for (const row of rawRows) {
+    const diagnosisName = decrypt(row.diagnosis_name) || 'Sin diagnóstico';
+    const diagnosisCode = decrypt(row.diagnosis_code) || null;
+    const species = row.species || 'N/D';
+    const key = `${diagnosisName}||${species}`;
+    const current = totals.get(key) || {
+      diagnosis_name: diagnosisName,
+      diagnosis_code: diagnosisCode,
+      species,
+      frequency: 0,
+      pct: 0,
+    };
+    current.frequency += 1;
+    if (!current.diagnosis_code && diagnosisCode) current.diagnosis_code = diagnosisCode;
+    totals.set(key, current);
+    totalCount += 1;
+  }
+
+  return Array.from(totals.values())
+    .sort((a, b) => b.frequency - a.frequency || a.diagnosis_name.localeCompare(b.diagnosis_name))
+    .slice(0, limit)
+    .map((row) => ({
+      ...row,
+      pct: totalCount ? Number(((row.frequency * 100) / totalCount).toFixed(2)) : 0,
+    }));
 }
 
 async function getBranchDashboard(branchId, from, to) {
@@ -292,10 +324,7 @@ router.get('/diagnoses', async (req, res, next) => {
     const { from, to } = dateRange(req.query);
     const limit = parseInt(req.query.limit || '20');
     const rows  = await db.query(
-      `SELECT d.diagnosis_name, d.diagnosis_code, d.diagnosis_type,
-              sp.common_name AS species,
-              COUNT(*) AS frequency,
-              ROUND(COUNT(*)*100.0/SUM(COUNT(*)) OVER(),2) AS pct
+      `SELECT d.diagnosis_name, d.diagnosis_code, sp.common_name AS species
        FROM diagnoses d
        JOIN medical_records mr ON d.medical_record_id = mr.id
        JOIN appointments a ON mr.appointment_id = a.id AND a.branch_id = :bid
@@ -303,11 +332,10 @@ router.get('/diagnoses', async (req, res, next) => {
        JOIN species sp ON p.species_id = sp.id
        WHERE DATE(d.created_at) BETWEEN :from AND :to
          AND d.is_primary = TRUE
-       GROUP BY d.diagnosis_name, sp.common_name
-       ORDER BY frequency DESC LIMIT :limit`,
-      { bid: req.user.branchId, from, to, limit }
+       ORDER BY d.created_at DESC`,
+      { bid: req.user.branchId, from, to }
     );
-    return R.ok(res, rows, { from, to });
+    return R.ok(res, aggregateDiagnoses(rows, limit), { from, to });
   } catch (e) { next(e); }
 });
 
@@ -601,18 +629,17 @@ async function fetchReportData (type, branchId, orgId, params = {}) {
     }
 
     case 'diagnoses':
-      return db.query(
-        `SELECT d.diagnosis_name, d.diagnosis_code, sp.common_name AS species,
-                COUNT(*) AS frequency, ROUND(COUNT(*)*100.0/SUM(COUNT(*)) OVER(),2) AS pct
+      return aggregateDiagnoses(await db.query(
+        `SELECT d.diagnosis_name, d.diagnosis_code, sp.common_name AS species
          FROM diagnoses d
          JOIN medical_records mr ON d.medical_record_id=mr.id
          JOIN appointments a ON mr.appointment_id=a.id AND a.branch_id=:bid
          JOIN patients p ON mr.patient_id=p.id
          JOIN species sp ON p.species_id=sp.id
          WHERE DATE(d.created_at) BETWEEN :from AND :to AND d.is_primary=TRUE
-         GROUP BY d.diagnosis_name, sp.common_name ORDER BY frequency DESC LIMIT :limit`,
-        { bid: branchId, from: f, to: t, limit: parseInt(limit) }
-      );
+         ORDER BY d.created_at DESC`,
+        { bid: branchId, from: f, to: t }
+      ), parseInt(limit));
 
     default:
       throw Object.assign(new Error(`Tipo de reporte desconocido: ${type}`), { code: 'UNKNOWN_REPORT' });
@@ -997,15 +1024,18 @@ router.get('/charts/top-diagnoses-bar', async (req, res, next) => {
     const t   = to   || now.toISOString().slice(0, 10);
 
     const rows = await db.query(
-      `SELECT d.diagnosis_name AS label, COUNT(*) AS value
+      `SELECT d.diagnosis_name, sp.common_name AS species
        FROM diagnoses d
        JOIN medical_records mr ON d.medical_record_id=mr.id
        JOIN appointments a ON mr.appointment_id=a.id AND a.branch_id=:bid
+       JOIN patients p ON mr.patient_id = p.id
+       JOIN species sp ON p.species_id = sp.id
        WHERE DATE(d.created_at) BETWEEN :from AND :to AND d.is_primary=TRUE
-       GROUP BY d.diagnosis_name ORDER BY value DESC LIMIT :lim`,
-      { bid: req.user.branchId, from: f, to: t, lim: parseInt(limit) }
+       ORDER BY d.created_at DESC`,
+      { bid: req.user.branchId, from: f, to: t }
     );
-    return R.ok(res, { labels: rows.map(r => r.label), values: rows.map(r => r.value) });
+    const grouped = aggregateDiagnoses(rows, parseInt(limit));
+    return R.ok(res, { labels: grouped.map(r => r.diagnosis_name), values: grouped.map(r => r.frequency) });
   } catch (e) { next(e); }
 });
 

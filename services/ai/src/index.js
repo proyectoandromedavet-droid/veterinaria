@@ -20,6 +20,7 @@ const { body, param, validationResult } = require('express-validator');
 const db         = require('../../../shared/db');
 const R          = require('../../../shared/response');
 const ai         = require('../../../shared/ai');
+const { decrypt, decryptRows } = require('../../../shared/encryption');
 const { computeRiskScores, summarizeRisks } = require('../../../shared/riskEngine');
 const { requireInternalSig } = require('../../../shared/internalAuth');
 const { withOpenApiValidation } = require('../../../shared/serviceBase');
@@ -159,16 +160,47 @@ No reemplazás el criterio del veterinario tratante.`;
 
 function buildApp(specPath) {
   const app = express();
+  const publicHealthPath = /^\/health(?:\/(?:live|ready|deep))?$/;
   app.use(express.json({ limit: '10mb' }));   // 10 MB para imágenes en base64
 
-  app.get('/health', (_req, res) => res.json({ ok: true, service: 'ai' }));
+  async function runHealthChecks() {
+    const checks = {};
+    let ready = true;
+
+    try {
+      await db.getPool().execute('SELECT 1');
+      checks.db = 'ok';
+    } catch {
+      checks.db = 'error';
+      ready = false;
+    }
+
+    try {
+      const { getAllStatus } = require('../../../shared/circuitBreaker');
+      checks.circuitBreakers = getAllStatus();
+    } catch {
+      checks.circuitBreakers = 'unavailable';
+    }
+
+    return { ready, checks };
+  }
+
+  app.get('/health', async (_req, res) => {
+    const { ready, checks } = await runHealthChecks();
+    res.status(ready ? 200 : 503).json({ status: ready ? 'ok' : 'degraded', service: 'ai', checks });
+  });
+  app.get('/health/live', (_req, res) => res.json({ status: 'ok', service: 'ai' }));
+  app.get('/health/ready', async (_req, res) => {
+    const { ready, checks } = await runHealthChecks();
+    res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', service: 'ai', checks });
+  });
 
   app.use((req, _res, next) => {
     req.user = getUser(req);
     next();
   });
   app.use((req, res, next) => {
-    if (req.path === '/health') return next();
+    if (publicHealthPath.test(req.path)) return next();
     return requireInternalSig(req, res, next);
   });
   if (specPath) withOpenApiValidation(app, specPath);
@@ -203,7 +235,7 @@ function buildApp(specPath) {
         // Historial reciente (últimos N registros médicos)
         const records = await db.query(
           `SELECT mr.created_at, mr.chief_complaint, mr.notes,
-                  GROUP_CONCAT(DISTINCT d.diagnosis_name ORDER BY d.is_primary DESC SEPARATOR ', ') AS diagnoses
+                  GROUP_CONCAT(DISTINCT d.diagnosis_name ORDER BY d.is_primary DESC SEPARATOR '||') AS diagnoses
            FROM medical_records mr
            JOIN patients p ON p.id = mr.patient_id
            LEFT JOIN diagnoses d ON d.medical_record_id = mr.id
@@ -215,9 +247,13 @@ function buildApp(specPath) {
         const recentHistory = records.length
           ? records.map(r => {
               const when = r.created_at?.toISOString?.().slice(0, 10) ?? '';
-              const diagnoses = r.diagnoses || 'N/A';
-              const notes = r.notes || 'N/A';
-              return `[${when}] Motivo: ${r.chief_complaint || 'N/A'} | Dx: ${diagnoses} | Notas: ${notes}`;
+              const diagnoses = (r.diagnoses || '')
+                .split('||')
+                .filter(Boolean)
+                .map(decrypt)
+                .join(', ') || 'N/A';
+              const notes = decrypt(r.notes) || 'N/A';
+              return `[${when}] Motivo: ${decrypt(r.chief_complaint) || 'N/A'} | Dx: ${diagnoses} | Notas: ${notes}`;
             }).join('\n')
           : null;
 
@@ -487,7 +523,9 @@ function buildApp(specPath) {
            ORDER BY mr.created_at DESC LIMIT 20`,
           { pid: patientId, org: user.orgId }
         ).catch(() => []);
-        const chronicConditions = chronicRows.map(r => r.diagnosis).filter(Boolean);
+        const chronicConditions = decryptRows(chronicRows, ['diagnosis'])
+          .map(r => r.diagnosis)
+          .filter(Boolean);
 
         // Calcular riesgo
         const history = {

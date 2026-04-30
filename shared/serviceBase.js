@@ -111,10 +111,11 @@ function withOpenApiValidation(app, specPath, opts = {}) {
 function buildApp(serviceName, routesFn, opts = {}) {
   const log = createLogger(serviceName);
   const app = express();
+  const publicHealthPath = /^\/health(?:\/(?:live|ready|deep))?$/;
   app.use(express.json({ limit: '10mb' }));
   // Zero-trust: all routes except /health require a valid gateway HMAC signature
   app.use((req, res, next) => {
-    if (req.path === '/health') return next();
+    if (publicHealthPath.test(req.path)) return next();
     return requireInternalSig(req, res, next);
   });
   app.use(fromHeaders);

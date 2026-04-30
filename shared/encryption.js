@@ -156,11 +156,57 @@ function hashForSearch (value) {
 
 // ─── Campos PII sugeridos por entidad ────────────────────────────────────────
 
+const ANAMNESIS_FIELDS = [
+  'current_illness_history',
+  'illness_duration',
+  'illness_onset',
+  'other_signs',
+  'vaccination_history',
+  'deworming_history',
+  'previous_illnesses',
+  'previous_surgeries',
+  'current_medications',
+  'feeding_brand',
+  'recent_travel',
+  'owner_observations',
+];
+
+const PHYSICAL_EXAM_FIELDS = [
+  'mucous_membranes',
+  'hydration_status',
+  'lymph_nodes',
+  'skin_coat',
+  'eyes',
+  'ears',
+  'nose_throat',
+  'oral_cavity',
+  'cardiovascular',
+  'respiratory',
+  'abdomen',
+  'musculoskeletal',
+  'neurological',
+  'urogenital',
+  'pain_assessment',
+  'general_observations',
+];
+
+const MEDICAL_RECORD_FIELDS = ['chief_complaint', 'notes'];
+const DIAGNOSIS_FIELDS = ['diagnosis_name', 'diagnosis_code', 'notes'];
+const TREATMENT_FIELDS = ['description', 'notes'];
+const PRESCRIPTION_FIELDS = ['notes', 'medication_name', 'instructions'];
+
 const PII_FIELDS = {
-  clients      : ['dni', 'email', 'phone', 'address', 'document_number'],
-  users        : ['email', 'phone'],
+  clients: ['dni', 'email', 'phone', 'address', 'document_number'],
+  users: ['email', 'phone'],
   tele_sessions: ['chief_complaint', 'notes'],
-  medical_records: ['subjective', 'objective', 'assessment', 'plan', 'notes'],
+  medical_records: [
+    ...MEDICAL_RECORD_FIELDS,
+    ...ANAMNESIS_FIELDS,
+    ...PHYSICAL_EXAM_FIELDS,
+  ],
+  diagnoses: DIAGNOSIS_FIELDS,
+  treatments: TREATMENT_FIELDS,
+  prescriptions: PRESCRIPTION_FIELDS,
 };
 
 module.exports = {
@@ -172,4 +218,10 @@ module.exports = {
   decryptRows,
   hashForSearch,
   PII_FIELDS,
+  ANAMNESIS_FIELDS,
+  PHYSICAL_EXAM_FIELDS,
+  MEDICAL_RECORD_FIELDS,
+  DIAGNOSIS_FIELDS,
+  TREATMENT_FIELDS,
+  PRESCRIPTION_FIELDS,
 };
