@@ -15,6 +15,7 @@ const { verifyAccess } = require('../../../shared/jwt');
 const { getRedisSingleton } = require('../../../shared/redis');
 const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
 const { logger }       = require('./logger');
+const { checkDeviceFingerprint } = require('../../../shared/deviceFingerprint');
 
 async function getRedis() {
   return getRedisSingleton('gateway-auth', 'gateway-auth');
@@ -23,6 +24,7 @@ async function getRedis() {
 function extractToken(req) {
   const auth = req.headers['authorization'];
   if (auth?.startsWith('Bearer ')) return auth.slice(7);
+  if (req.cookies?.accessToken) return req.cookies.accessToken;
   return null;
 }
 
@@ -60,7 +62,7 @@ async function authenticate(req, res, next) {
 
   req.user  = decoded;
   req.token = token;
-  next();
+  return checkDeviceFingerprint(req, res, next);
 }
 
 /**

@@ -4,8 +4,13 @@ const { Router } = require('express');
 const { body, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R  = require('../../../../shared/response');
+const { encrypt, decrypt, decryptRows } = require('../../../../shared/encryption');
 
 const router = Router();
+const MEDICAL_RECORD_FIELDS = ['chief_complaint', 'notes'];
+const DIAGNOSIS_FIELDS = ['diagnosis_name', 'diagnosis_code', 'notes', 'prognosis'];
+const TREATMENT_FIELDS = ['description', 'notes'];
+const PRESCRIPTION_FIELDS = ['notes', 'medication_name', 'instructions'];
 const validate = (req, res, next) => {
   const e = validationResult(req);
   if (!e.isEmpty()) return R.badRequest(res, 'Validation failed', e.array());
@@ -82,7 +87,17 @@ router.get('/:id', async (req, res, next) => {
       ),
     ]);
 
-    return R.ok(res, { ...mr, anamnesis, physicalExam: physExam, diagnoses, treatments, prescriptions });
+    return R.ok(res, {
+      ...mr,
+      chief_complaint: decrypt(mr.chief_complaint),
+      reason_for_visit: decrypt(mr.reason_for_visit),
+      notes: decrypt(mr.notes),
+      anamnesis,
+      physicalExam: physExam,
+      diagnoses: decryptRows(diagnoses, DIAGNOSIS_FIELDS),
+      treatments: decryptRows(treatments, TREATMENT_FIELDS),
+      prescriptions: decryptRows(prescriptions, PRESCRIPTION_FIELDS),
+    });
   } catch (e) { next(e); }
 });
 
@@ -111,7 +126,7 @@ router.post('/',
             bid:    req.user.branchId,
             pid:    patientId,
             uid:    req.user.userId,
-            reason: chiefComplaint,
+            reason: encrypt(chiefComplaint),
           }
         );
         appointmentId = apptResult.insertId;
@@ -141,11 +156,11 @@ router.post('/',
           apptId: appointmentId,
           pid:    patientId,
           uid:    req.user.userId,
-          cc:     chiefComplaint,
+          cc:     encrypt(chiefComplaint),
           wt:     weightKg         || null,
           bcs:    bodyConditionScore || null,
           temp:   temperatureC     || null,
-          notes:  notes            || null,
+          notes:  encrypt(notes || null),
         }
       );
 
@@ -241,9 +256,9 @@ router.post('/:id/diagnoses',
            (medical_record_id, diagnosis_name, diagnosis_type, diagnosis_code, is_primary, notes, prognosis)
          VALUES (:mid, :name, :type, :code, :primary, :notes, :prog)`,
         {
-          mid: req.params.id, name: diagnosisName, type: diagnosisType,
-          code: diagnosisCode || null, primary: isPrimary ? 1 : 0,
-          notes: notes || null, prog: prognosis || null,
+          mid: req.params.id, name: encrypt(diagnosisName), type: diagnosisType,
+          code: encrypt(diagnosisCode || null), primary: isPrimary ? 1 : 0,
+          notes: encrypt(notes || null), prog: encrypt(prognosis || null),
         }
       );
       return R.created(res, { id: r.insertId });
@@ -268,9 +283,9 @@ router.post('/:id/treatments', async (req, res, next) => {
        VALUES (:mid, :medId, :type, :desc, :dose, :unit, :freq, :route, :dur, :start, :notes, :user)`,
       {
         mid: req.params.id, medId: medicationId || null, type: treatmentType,
-        desc: description || null, dose: dose || null, unit: doseUnit || null,
+        desc: encrypt(description || null), dose: dose || null, unit: doseUnit || null,
         freq: frequency || null, route: route || null, dur: durationDays || null,
-        start: startDate || null, notes: notes || null, user: req.user.userId,
+        start: startDate || null, notes: encrypt(notes || null), user: req.user.userId,
       }
     );
     return R.created(res, { id: r.insertId });
@@ -317,7 +332,7 @@ const getPrescriptions = [async (req, res, next) => {
        WHERE p.medical_record_id = :mid`,
       { mid: req.params.id }
     );
-    return R.ok(res, rows);
+    return R.ok(res, decryptRows(rows, PRESCRIPTION_FIELDS));
   } catch (e) { next(e); }
 }];
 
@@ -332,7 +347,7 @@ const postPrescriptions = [
         `INSERT INTO prescriptions
            (medical_record_id, prescribed_by, notes, refills_allowed, status)
          VALUES (:mid, :uid, :notes, :refills, 'active')`,
-        { mid: req.params.id, uid: req.user.userId, notes: notes || null, refills }
+        { mid: req.params.id, uid: req.user.userId, notes: encrypt(notes || null), refills }
       );
       const prescId = r.insertId;
 
@@ -340,14 +355,14 @@ const postPrescriptions = [
       const itemRows = items.map(item => [
         prescId,
         item.medicationId  || null,
-        item.medicationName,
+        encrypt(item.medicationName),
         item.dose,
         item.doseUnit      || null,
         item.frequency,
         item.route         || null,
         item.durationDays  || null,
         item.quantity      || null,
-        item.instructions  || null,
+        encrypt(item.instructions || null),
       ]);
       const itemPlaceholders = itemRows.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(', ');
       await db.query(

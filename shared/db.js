@@ -6,7 +6,10 @@ const mysql = require('mysql2/promise');
 const SLOW_QUERY_MS = parseInt(process.env.SLOW_QUERY_MS || '500');
 
 let pool;
+let readPool;
 let _logger; // lazy-loaded to avoid circular deps
+let _primaryInitPromise = null;
+let _readInitPromise    = null;
 
 function getLogger() {
   if (!_logger) {
@@ -15,23 +18,80 @@ function getLogger() {
   return _logger;
 }
 
+function createPoolFromEnv(prefix = 'MYSQL') {
+  return mysql.createPool({
+    host:               process.env[`${prefix}_HOST`]     || 'localhost',
+    port:               parseInt(process.env[`${prefix}_PORT`] || '3306'),
+    database:           process.env[`${prefix}_DATABASE`] || 'vetmanager',
+    user:               process.env[`${prefix}_USER`]     || 'vetapp',
+    password:           process.env[`${prefix}_PASSWORD`] || '',
+    waitForConnections: true,
+    connectionLimit:    parseInt(process.env[`${prefix}_POOL_MAX`] || process.env.MYSQL_POOL_MAX || '10'),
+    queueLimit:         0,
+    timezone:           'Z',
+    charset:            'utf8mb4',
+    namedPlaceholders:  true,
+  });
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function warmPool(targetPool, label) {
+  const retries = Math.max(1, parseInt(process.env.DB_INIT_RETRIES || '3'));
+  const baseMs  = Math.max(100, parseInt(process.env.DB_INIT_RETRY_MS || '500'));
+  let lastErr;
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      await targetPool.execute('SELECT 1');
+      return targetPool;
+    } catch (err) {
+      lastErr = err;
+      getLogger().warn('DB warm-up failed', {
+        pool: label,
+        attempt,
+        retries,
+        message: err.message,
+      });
+      if (attempt < retries) await sleep(baseMs * attempt);
+    }
+  }
+
+  throw lastErr;
+}
+
 function getPool() {
-  if (!pool) {
-    pool = mysql.createPool({
-      host:               process.env.MYSQL_HOST     || 'localhost',
-      port:               parseInt(process.env.MYSQL_PORT || '3306'),
-      database:           process.env.MYSQL_DATABASE || 'vetmanager',
-      user:               process.env.MYSQL_USER     || 'vetapp',
-      password:           process.env.MYSQL_PASSWORD || '',
-      waitForConnections: true,
-      connectionLimit:    parseInt(process.env.MYSQL_POOL_MAX || '10'),
-      queueLimit:         0,
-      timezone:           'Z',
-      charset:            'utf8mb4',
-      namedPlaceholders:  true,
+  if (!pool) pool = createPoolFromEnv('MYSQL');
+  if (!_primaryInitPromise) {
+    _primaryInitPromise = warmPool(pool, 'primary').catch((err) => {
+      _primaryInitPromise = null;
+      throw err;
     });
   }
   return pool;
+}
+
+function getReadPool() {
+  const hasReplica = Boolean(process.env.MYSQL_READ_HOST);
+  if (!hasReplica) return getPool();
+
+  if (!readPool) readPool = createPoolFromEnv('MYSQL_READ');
+  if (!_readInitPromise) {
+    _readInitPromise = warmPool(readPool, 'read-replica').catch((err) => {
+      getLogger().warn('Read replica unavailable, falling back to primary pool', {
+        message: err.message,
+      });
+      _readInitPromise = null;
+      if (readPool) {
+        readPool.end().catch(() => {});
+        readPool = null;
+      }
+      return getPool();
+    });
+  }
+  return readPool;
 }
 
 /**
@@ -63,11 +123,32 @@ async function query(sql, params) {
   return rows;
 }
 
+async function queryRead(sql, params) {
+  const t0 = Date.now();
+  const [rows] = await getReadPool().query(sql, params);
+  const ms = Date.now() - t0;
+
+  if (ms >= SLOW_QUERY_MS) {
+    getLogger().warn('Slow read query detected', {
+      sql:      sql.replace(/\s+/g, ' ').slice(0, 200),
+      duration: ms,
+    });
+  }
+
+  if (!Array.isArray(rows)) return [rows];
+  return rows;
+}
+
 /**
  * Execute query returning only the first row (or null).
  */
 async function queryOne(sql, params) {
   const rows = await query(sql, params);
+  return rows[0] ?? null;
+}
+
+async function queryOneRead(sql, params) {
+  const rows = await queryRead(sql, params);
   return rows[0] ?? null;
 }
 
@@ -234,4 +315,17 @@ async function lockQuery(sql, params) {
   return transaction(async (conn) => conn.queryOne(sql, params));
 }
 
-module.exports = { getPool, query, queryOne, callProc, transaction, queryGrouped, placeholders, withLock, lockQuery };
+module.exports = {
+  getPool,
+  getReadPool,
+  query,
+  queryRead,
+  queryOne,
+  queryOneRead,
+  callProc,
+  transaction,
+  queryGrouped,
+  placeholders,
+  withLock,
+  lockQuery,
+};

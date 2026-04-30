@@ -44,7 +44,19 @@
               {{ u.first_name }} {{ u.last_name }}
             </td>
             <td class="table__email">{{ u.email }}</td>
-            <td><span class="badge badge--role">{{ formatRole(u.roles) }}</span></td>
+            <td>
+              <div class="role-cell">
+                <span class="badge badge--role">{{ formatRole(u.roles) }}</span>
+                <select
+                  class="role-select"
+                  :value="firstRole(u.roles)"
+                  :disabled="changingRoleId === u.id"
+                  @change="handleRoleChange(u, $event.target.value)"
+                >
+                  <option v-for="r in ROLES" :key="r.value" :value="r.value">{{ r.label }}</option>
+                </select>
+              </div>
+            </td>
             <td>{{ u.branch_name || '—' }}</td>
             <td>
               <span class="badge" :class="u.is_active ? 'badge--active' : 'badge--inactive'">
@@ -72,6 +84,49 @@
         <span>Página {{ meta.page }} de {{ meta.totalPages }}</span>
         <button :disabled="meta.page >= meta.totalPages" @click="loadPage(meta.page + 1)">Siguiente →</button>
       </div>
+    </div>
+
+    <div class="admin__header admin__header--section">
+      <div>
+        <h2 class="admin__title">Overrides de roles</h2>
+        <p class="admin__subtitle">Permisos dinámicos por organización para rutas sensibles</p>
+      </div>
+    </div>
+
+    <div class="card card--section">
+      <div class="rbac-controls">
+        <select v-model="overrideForm.role" class="role-select">
+          <option value="">Seleccioná un rol…</option>
+          <option v-for="r in roleCatalog" :key="r.name" :value="r.name">{{ formatRole(r.name) }}</option>
+        </select>
+        <input v-model.trim="overrideForm.grant" type="text" placeholder="Permisos grant, separados por coma" />
+        <input v-model.trim="overrideForm.revoke" type="text" placeholder="Permisos revoke, separados por coma" />
+        <button class="btn-primary" :disabled="savingOverride" @click="saveOverride">Guardar override</button>
+      </div>
+      <div v-if="overrideError" class="alert alert--error">{{ overrideError }}</div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Rol</th>
+            <th>Grant</th>
+            <th>Revoke</th>
+            <th>Actualizado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="overrides.length === 0">
+            <td colspan="5" class="table__empty">No hay overrides cargados para esta organización</td>
+          </tr>
+          <tr v-for="item in overrides" :key="item.role">
+            <td>{{ formatRole(item.role) }}</td>
+            <td>{{ (item.grant || []).join(', ') || '—' }}</td>
+            <td>{{ (item.revoke || []).join(', ') || '—' }}</td>
+            <td class="table__date">{{ formatDateTime(item.updated) }}</td>
+            <td><button class="btn-icon btn-icon--danger" @click="removeOverride(item.role)">✕</button></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <!-- ── Modal: nuevo usuario ───────────────────────────────────────── -->
@@ -187,6 +242,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { adminUsersApi } from '../api/adminUsers'
+import { adminRbacApi } from '../api/adminRbac'
 
 const auth = useAuthStore()
 
@@ -195,6 +251,16 @@ const users       = ref([])
 const meta        = ref({ page: 1, totalPages: 1 })
 const loading     = ref(false)
 const globalError = ref('')
+const changingRoleId = ref(null)
+const overrides = ref([])
+const roleCatalog = ref([])
+const savingOverride = ref(false)
+const overrideError = ref('')
+const overrideForm = reactive({
+  role: '',
+  grant: '',
+  revoke: '',
+})
 
 const ROLES = [
   { value: 'org_admin',         label: 'Administrador de organización' },
@@ -316,6 +382,72 @@ async function handleDeactivate() {
   }
 }
 
+async function handleRoleChange(user, role) {
+  const current = firstRole(user.roles)
+  if (!role || role === current) return
+  changingRoleId.value = user.id
+  globalError.value = ''
+  try {
+    await adminUsersApi.updateRole(user.id, role)
+    await loadPage(meta.value.page)
+  } catch (e) {
+    globalError.value = e.response?.data?.error?.message || 'No se pudo actualizar el rol.'
+  } finally {
+    changingRoleId.value = null
+  }
+}
+
+function parsePermissions(text) {
+  return text.split(',').map(v => v.trim()).filter(Boolean)
+}
+
+async function loadOverrides() {
+  if (!auth.orgId) return
+  try {
+    const [rolesRes, overridesRes] = await Promise.all([
+      adminRbacApi.listRoles(),
+      adminRbacApi.listOverrides(auth.orgId),
+    ])
+    roleCatalog.value = rolesRes.data?.data || []
+    overrides.value = overridesRes.data?.data || []
+  } catch (e) {
+    overrideError.value = e.response?.data?.error?.message || 'No se pudieron cargar los overrides.'
+  }
+}
+
+async function saveOverride() {
+  if (!overrideForm.role) {
+    overrideError.value = 'Seleccioná un rol.'
+    return
+  }
+  savingOverride.value = true
+  overrideError.value = ''
+  try {
+    await adminRbacApi.updateOverride(auth.orgId, overrideForm.role, {
+      grant: parsePermissions(overrideForm.grant),
+      revoke: parsePermissions(overrideForm.revoke),
+    })
+    overrideForm.role = ''
+    overrideForm.grant = ''
+    overrideForm.revoke = ''
+    await loadOverrides()
+  } catch (e) {
+    overrideError.value = e.response?.data?.error?.message || 'No se pudo guardar el override.'
+  } finally {
+    savingOverride.value = false
+  }
+}
+
+async function removeOverride(role) {
+  overrideError.value = ''
+  try {
+    await adminRbacApi.deleteOverride(auth.orgId, role)
+    await loadOverrides()
+  } catch (e) {
+    overrideError.value = e.response?.data?.error?.message || 'No se pudo eliminar el override.'
+  }
+}
+
 // ── Cargar usuarios ───────────────────────────────────────────────────────────
 async function loadPage(page = 1) {
   loading.value = true
@@ -339,9 +471,14 @@ function initials(u) {
 
 function formatRole(roles) {
   if (!roles) return '—'
-  const first = roles.split(',')[0]?.trim()
+  const first = firstRole(roles)
   const found = ROLES.find(r => r.value === first)
   return found ? found.label : first
+}
+
+function firstRole(roles) {
+  if (!roles) return ''
+  return String(roles).split(',')[0]?.trim()
 }
 
 function formatDate(iso) {
@@ -349,7 +486,15 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-onMounted(() => loadPage())
+function formatDateTime(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('es-AR')
+}
+
+onMounted(async () => {
+  await loadPage()
+  await loadOverrides()
+})
 </script>
 
 <style scoped>
@@ -385,6 +530,37 @@ onMounted(() => loadPage())
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.card--section {
+  margin-top: 18px;
+}
+
+.admin__header--section {
+  margin-top: 30px;
+  margin-bottom: 14px;
+}
+
+.rbac-controls {
+  display: grid;
+  grid-template-columns: 180px 1fr 1fr auto;
+  gap: 12px;
+  padding: 18px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.role-cell {
+  display: grid;
+  gap: 8px;
+}
+
+.role-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
 }
 
 .table-loading {
@@ -630,7 +806,8 @@ form {
   letter-spacing: 0.02em;
 }
 .field input,
-.field select {
+.field select,
+.rbac-controls input {
   width: 100%;
   padding: 10px 13px;
   border: 1.5px solid var(--border);
@@ -643,7 +820,9 @@ form {
   box-sizing: border-box;
 }
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.rbac-controls input:focus,
+.role-select:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-xlight);
 }
@@ -751,6 +930,7 @@ form {
   .form-row { grid-template-columns: 1fr; }
   .admin__header { flex-direction: column; }
   .admin__header .btn-primary { align-self: flex-start; }
+  .rbac-controls { grid-template-columns: 1fr; }
   .table th:nth-child(4),
   .table td:nth-child(4),
   .table th:nth-child(6),

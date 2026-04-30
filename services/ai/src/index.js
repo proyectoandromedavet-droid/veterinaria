@@ -23,7 +23,7 @@ const ai         = require('../../../shared/ai');
 const { computeRiskScores, summarizeRisks } = require('../../../shared/riskEngine');
 const { requireInternalSig } = require('../../../shared/internalAuth');
 const { withOpenApiValidation } = require('../../../shared/serviceBase');
-const { hasPermission } = require('../../../shared/rbac');
+const { hasPermissionDynamic } = require('../../../shared/rbac');
 const { getTableColumns } = require('../../../shared/schemaEngine');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -35,11 +35,11 @@ function validate(req, res, next) {
 }
 
 function requirePerm(perm) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const user  = req.user || getUser(req);
     const roles = user.roles || [];
     if (!user.userId) return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
-    if (hasPermission(roles, perm)) return next();
+    if (await hasPermissionDynamic(roles, perm, user.orgId)) return next();
     return res.status(403).json({ success: false, error: { message: 'Forbidden', required: perm } });
   };
 }

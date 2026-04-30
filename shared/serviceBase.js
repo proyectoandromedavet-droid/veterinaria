@@ -10,7 +10,7 @@
  */
 
 const express = require('express');
-const { hasPermission }       = require('./rbac');
+const { hasPermissionDynamic } = require('./rbac');
 const { createLogger }        = require('./logger');
 const { appErrorHandler }     = require('./errors');
 const { requireInternalSig }  = require('./internalAuth');
@@ -27,8 +27,9 @@ function fromHeaders(req, _res, next) {
 }
 
 function requirePerm(perm) {
-  return (req, res, next) => {
-    if (!hasPermission(req.user?.roles || [], perm)) {
+  return async (req, res, next) => {
+    const allowed = await hasPermissionDynamic(req.user?.roles || [], perm, req.user?.orgId || null);
+    if (!allowed) {
       return res.status(403).json({
         success: false,
         error:   { message: `Forbidden: requires '${perm}'` },
@@ -58,10 +59,11 @@ function guardWrite(resource) {
     PATCH : `${resource}:update`,
     DELETE: `${resource}:delete`,
   };
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const needed = map[req.method];
     if (!needed) return next();
-    if (!hasPermission(req.user?.roles || [], needed)) {
+    const allowed = await hasPermissionDynamic(req.user?.roles || [], needed, req.user?.orgId || null);
+    if (!allowed) {
       return res.status(403).json({
         success: false,
         error:   { message: `Forbidden: requires '${needed}'` },
@@ -202,6 +204,26 @@ function buildApp(serviceName, routesFn, opts = {}) {
       traceId: req.headers['x-trace-id'] || null,
       checks,
       latency,
+    });
+  });
+
+  app.get('/health/live', (_req, res) => {
+    res.status(200).json({
+      status:  'ok',
+      service: serviceName,
+      ts:      new Date().toISOString(),
+    });
+  });
+
+  app.get('/health/ready', async (req, res) => {
+    const { healthy, checks, latency } = await runHealthChecks();
+    res.status(healthy ? 200 : 503).json({
+      status:  healthy ? 'ready' : 'not_ready',
+      service: serviceName,
+      ts:      new Date().toISOString(),
+      checks,
+      latency,
+      traceId: req.headers['x-trace-id'] || null,
     });
   });
 

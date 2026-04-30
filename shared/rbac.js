@@ -169,9 +169,11 @@ function hasPermission(roles, perm) {
  * Usage: router.get('/patients', requirePermission('patients:read'), handler)
  */
 function requirePermission(perm) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const roles = req.user?.roles || [];
-    if (!hasPermission(roles, perm)) {
+    const orgId = req.user?.orgId || req.user?.organization_id || req.headers?.['x-org-id'] || null;
+    const allowed = await hasPermissionDynamic(roles, perm, orgId);
+    if (!allowed) {
       getRbacDenials()?.inc({ permission: perm, role: roles[0] || 'none', service: 'unknown' });
       return res.status(403).json({
         success: false,
@@ -187,9 +189,11 @@ function requirePermission(perm) {
  * @param {...string} perms
  */
 function requireAny(...perms) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const roles = req.user?.roles || [];
-    if (perms.some(p => hasPermission(roles, p))) return next();
+    const orgId = req.user?.orgId || req.user?.organization_id || req.headers?.['x-org-id'] || null;
+    const checks = await Promise.all(perms.map(p => hasPermissionDynamic(roles, p, orgId)));
+    if (checks.some(Boolean)) return next();
 
     getRbacDenials()?.inc({ permission: perms.join('|'), role: roles[0] || 'none', service: 'unknown' });
     res.status(403).json({
@@ -204,9 +208,11 @@ function requireAny(...perms) {
  * @param {...string} perms
  */
 function requireAll(...perms) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const roles = req.user?.roles || [];
-    const missing = perms.filter(p => !hasPermission(roles, p));
+    const orgId = req.user?.orgId || req.user?.organization_id || req.headers?.['x-org-id'] || null;
+    const results = await Promise.all(perms.map(async (p) => ({ perm: p, ok: await hasPermissionDynamic(roles, p, orgId) })));
+    const missing = results.filter(r => !r.ok).map(r => r.perm);
     if (!missing.length) return next();
 
     getRbacDenials()?.inc({ permission: missing[0], role: roles[0] || 'none', service: 'unknown' });
@@ -300,6 +306,7 @@ async function setRoleOverride(orgId, roleName, grant = [], revoke = []) {
   await cache.set(key, { grant, revoke }, RBAC_OVERRIDE_TTL);
 
   // Persist to DB so overrides survive Redis restarts
+  if (process.env.NODE_ENV === 'test') return;
   try {
     const db = require('./db');
     await db.query(
@@ -320,6 +327,7 @@ async function setRoleOverride(orgId, roleName, grant = [], revoke = []) {
  * @param {string|number} [orgId]  — if provided, only sync that org
  */
 async function loadOrgOverridesFromDb(orgId) {
+  if (process.env.NODE_ENV === 'test') return;
   try {
     const db    = require('./db');
     const cache = _getCache();

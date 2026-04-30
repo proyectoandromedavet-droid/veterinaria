@@ -143,6 +143,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Scan ${{ matrix.service }} image with Trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: vetmanager/${{ matrix.service }}:ci
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
   # ── Deploy to staging (only on push to staging branch) ──────────────────────
   deploy-staging:
     name: Deploy to staging
@@ -153,16 +162,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy
-        run: echo "Add your deployment script here (e.g. ssh deploy, kubectl apply, etc.)"
-        # Example for SSH deploy:
-        # uses: appleboy/ssh-action@v1
-        # with:
-        #   host: ${{ secrets.STAGING_HOST }}
-        #   username: ${{ secrets.STAGING_USER }}
-        #   key: ${{ secrets.STAGING_SSH_KEY }}
-        #   script: |
-        #     cd /opt/vetmanager-api
-        #     git pull origin staging
-        #     docker compose pull
-        #     docker compose up -d --remove-orphans
+      - name: Deploy over SSH
+        if: ${{ secrets.STAGING_HOST != '' && secrets.STAGING_USER != '' && secrets.STAGING_SSH_KEY != '' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -e
+            APP_DIR="${{ secrets.STAGING_APP_DIR }}"
+            if [ -z "$APP_DIR" ]; then APP_DIR="/opt/vetmanager-api"; fi
+            cd "$APP_DIR"
+            git fetch origin staging
+            git checkout staging
+            git reset --hard origin/staging
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+      - name: Skip deploy when staging secrets are absent
+        if: ${{ !(secrets.STAGING_HOST != '' && secrets.STAGING_USER != '' && secrets.STAGING_SSH_KEY != '') }}
+        run: echo "Staging deploy skipped because SSH secrets are not configured."

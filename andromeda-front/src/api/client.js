@@ -2,7 +2,6 @@ import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4050'
-const CSRF_TOKEN_KEY = 'csrfToken'
 const DEFAULT_ORIGIN = 'http://localhost:4050'
 
 function getGatewayOrigin() {
@@ -20,19 +19,20 @@ function getGatewayOrigin() {
 const SAFE_METHODS = new Set(['get', 'head', 'options'])
 
 let csrfTokenPromise = null
+let csrfTokenCache = null
 
 async function fetchCsrfToken() {
   const res = await axios.get(`${getGatewayOrigin()}/csrf-token`, { withCredentials: true })
   const token = res.data?.data?.csrfToken
   if (token) {
-    localStorage.setItem(CSRF_TOKEN_KEY, token)
+    csrfTokenCache = token
     return token
   }
   throw new Error('CSRF token missing from gateway response')
 }
 
 async function ensureCsrfToken() {
-  const cached = localStorage.getItem(CSRF_TOKEN_KEY)
+  const cached = csrfTokenCache
   if (cached) return cached
 
   if (!csrfTokenPromise) {
@@ -122,9 +122,9 @@ http.interceptors.response.use(
 )
 
 export function clearCsrfToken() {
-  localStorage.removeItem(CSRF_TOKEN_KEY)
+  csrfTokenCache = null
 }
 
-export { ensureCsrfToken, CSRF_TOKEN_KEY }
+export { ensureCsrfToken }
 
 export default http

@@ -51,6 +51,32 @@ function validate(req, res, next) {
   next();
 }
 
+async function auditPermissionChange(req, {
+  targetRoleName = null,
+  actionType,
+  previousValue = null,
+  newValue = null,
+}) {
+  await db.query(
+    `INSERT INTO permission_change_audit
+       (org_id, actor_user_id, target_role_name, action_type,
+        previous_value_json, new_value_json, request_id, ip_address)
+     VALUES
+       (:orgId, :actorUserId, :targetRoleName, :actionType,
+        :previousValue, :newValue, :requestId, :ipAddress)`,
+    {
+      orgId: req.user.orgId,
+      actorUserId: req.user.userId || null,
+      targetRoleName,
+      actionType,
+      previousValue: previousValue ? JSON.stringify(previousValue) : null,
+      newValue: newValue ? JSON.stringify(newValue) : null,
+      requestId: req.headers['x-request-id'] || req.requestId || null,
+      ipAddress: req.ip || null,
+    }
+  ).catch(() => {});
+}
+
 // Apply internal signature + role check to ALL routes in this router
 router.use(requireInternalSig, fromHeaders, requireAdmin);
 
@@ -108,6 +134,10 @@ router.put('/orgs/:orgId/roles/:role',
       const { orgId, role } = req.params;
       const grant  = req.body.grant  || [];
       const revoke = req.body.revoke || [];
+      const previousRow = await db.queryOne(
+        'SELECT added_permissions, removed_permissions FROM org_role_overrides WHERE org_id = :orgId AND role_name = :role',
+        { orgId, role }
+      );
 
       if (!ROLE_PERMISSIONS[role]) {
         return res.status(404).json({ success: false, error: { message: `Role '${role}' not found` } });
@@ -115,6 +145,15 @@ router.put('/orgs/:orgId/roles/:role',
 
       await setRoleOverride(orgId, role, grant, revoke);
       const effective = await getEffectivePermissions(role, orgId);
+      await auditPermissionChange(req, {
+        targetRoleName: role,
+        actionType: 'role_override_updated',
+        previousValue: previousRow ? {
+          grant: JSON.parse(previousRow.added_permissions || '[]'),
+          revoke: JSON.parse(previousRow.removed_permissions || '[]'),
+        } : null,
+        newValue: { grant, revoke, effective },
+      });
       res.json({ success: true, data: { orgId, role, grant, revoke, effective } });
     } catch (err) { next(err); }
   }
@@ -128,11 +167,24 @@ router.delete('/orgs/:orgId/roles/:role',
   async (req, res, next) => {
     try {
       const { orgId, role } = req.params;
+      const previousRow = await db.queryOne(
+        'SELECT added_permissions, removed_permissions FROM org_role_overrides WHERE org_id = :orgId AND role_name = :role',
+        { orgId, role }
+      );
       await setRoleOverride(orgId, role, [], []); // clear overrides
       await db.query(
         'DELETE FROM org_role_overrides WHERE org_id = :orgId AND role_name = :role',
         { orgId, role }
       );
+      await auditPermissionChange(req, {
+        targetRoleName: role,
+        actionType: 'role_override_deleted',
+        previousValue: previousRow ? {
+          grant: JSON.parse(previousRow.added_permissions || '[]'),
+          revoke: JSON.parse(previousRow.removed_permissions || '[]'),
+        } : null,
+        newValue: { grant: [], revoke: [] },
+      });
       res.json({ success: true, message: `Overrides for role '${role}' in org ${orgId} removed` });
     } catch (err) { next(err); }
   }

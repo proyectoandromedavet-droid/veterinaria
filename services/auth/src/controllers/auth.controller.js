@@ -14,6 +14,7 @@ const {
   sendPasswordReset: sendPwResetEmail,
   sendNewDeviceLogin,
 } = require('../../../../shared/email');
+const { captureFingerprint } = require('../../../../shared/deviceFingerprint');
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 async function getRedis() {
@@ -55,6 +56,32 @@ function parseUserAgent(ua = '') {
   if (/mobile/i.test(ua))  return 'mobile';
   if (/tablet/i.test(ua))  return 'tablet';
   return 'desktop';
+}
+
+function setSessionCookies(res, accessToken, refreshToken) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieBase = {
+    httpOnly: true,
+    secure:   isProd,
+    sameSite: 'strict',
+  };
+
+  res.cookie('accessToken', accessToken, {
+    ...cookieBase,
+    maxAge: 15 * 60 * 1000,
+    path:   '/',
+  });
+
+  res.cookie('refreshToken', refreshToken, {
+    ...cookieBase,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path:   '/api/v1/auth/refresh',
+  });
+}
+
+function clearSessionCookies(res) {
+  res.clearCookie('accessToken', { path: '/' });
+  res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
 }
 
 /**
@@ -236,7 +263,7 @@ async function login(req, res) {
   await db.callProc('sp_clear_failed_logins', [user.id]).catch(() => {});
 
   // Store session
-  await db.query(
+  const [sessionResult] = await db.query(
     `INSERT INTO sessions
        (user_id, session_token, jti, ip_address, user_agent, device_type, expires_at)
      VALUES (:userId, :token, :jti, :ip, :ua, :device, DATE_ADD(NOW(), INTERVAL 7 DAY))`,
@@ -249,6 +276,7 @@ async function login(req, res) {
       device: parseUserAgent(ua),
     }
   );
+  await captureFingerprint(sessionResult.insertId, req.headers['x-device-fingerprint']).catch(() => {});
 
   // Record successful login
   await db.query(
@@ -276,14 +304,7 @@ async function login(req, res) {
     }).catch(() => {});
   }
 
-  const isProd = process.env.NODE_ENV === 'production';
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure:   isProd,
-    sameSite: 'none',
-    maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days in ms
-    path:     '/api/v1/auth/refresh',
-  });
+  setSessionCookies(res, accessToken, refreshToken);
 
   return R.ok(res, {
     accessToken,
@@ -405,14 +426,7 @@ async function refresh(req, res) {
     redis.setEx(`rt:used:${tokenHash}`, 10 * 60, String(session.id))
   );
 
-  const isProdRefresh = process.env.NODE_ENV === 'production';
-  res.cookie('refreshToken', newRefresh, {
-    httpOnly: true,
-    secure:   isProdRefresh,
-    sameSite: 'none',
-    maxAge:   7 * 24 * 60 * 60 * 1000,
-    path:     '/api/v1/auth/refresh',
-  });
+  setSessionCookies(res, accessToken, newRefresh);
 
   return R.ok(res, { accessToken });
 }
@@ -438,7 +452,7 @@ async function logout(req, res) {
     { jti, userId }
   );
 
-  res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
+  clearSessionCookies(res);
   return R.noContent(res);
 }
 
@@ -447,7 +461,7 @@ async function logout(req, res) {
  */
 async function logoutAll(req, res) {
   await db.callProc('sp_revoke_user_sessions', [req.user.userId]);
-  res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
+  clearSessionCookies(res);
   return R.noContent(res);
 }
 
@@ -882,14 +896,7 @@ async function challenge2fa(req, res) {
     roles.map(r => r.name)
   );
 
-  const isProd2fa = process.env.NODE_ENV === 'production';
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure:   isProd2fa,
-    sameSite: 'none',
-    maxAge:   7 * 24 * 60 * 60 * 1000,
-    path:     '/api/v1/auth/refresh',
-  });
+  setSessionCookies(res, accessToken, refreshToken);
 
   return R.ok(res, { accessToken });
 }

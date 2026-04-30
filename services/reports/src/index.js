@@ -61,7 +61,7 @@ function isSchemaError(err) {
 
 async function safeQuery(sql, params, fallback = []) {
   try {
-    return await db.query(sql, params);
+    return await db.queryRead(sql, params);
   } catch (err) {
     if (isSchemaError(err)) return fallback;
     throw err;
@@ -70,7 +70,7 @@ async function safeQuery(sql, params, fallback = []) {
 
 async function getBranchDashboard(branchId, from, to) {
   const [patients, appointments, revenue, payments] = await Promise.all([
-    db.query(
+    db.queryRead(
       `SELECT COUNT(DISTINCT p.id) AS total_patients,
               COUNT(DISTINCT CASE WHEN DATE(p.created_at) BETWEEN :from AND :to THEN p.id END) AS new_patients
        FROM patients p
@@ -78,7 +78,7 @@ async function getBranchDashboard(branchId, from, to) {
        JOIN clients cl ON cl.id = po.client_id AND cl.branch_id = :bid`,
       { bid: branchId, from, to }
     ),
-    db.query(
+    db.queryRead(
       `SELECT COUNT(*) AS total_appointments,
               SUM(status = 'completed') AS completed_appointments,
               SUM(status = 'cancelled') AS cancelled_appointments,
@@ -88,7 +88,7 @@ async function getBranchDashboard(branchId, from, to) {
        WHERE branch_id = :bid AND DATE(scheduled_date) BETWEEN :from AND :to`,
       { bid: branchId, from, to }
     ),
-    db.query(
+    db.queryRead(
       `SELECT COUNT(*) AS total_invoices,
               ROUND(COALESCE(SUM(total_amount), 0), 2) AS gross_revenue,
               ROUND(COALESCE(SUM(paid_amount), 0), 2) AS collected_revenue,

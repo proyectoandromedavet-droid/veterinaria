@@ -45,12 +45,26 @@ async function getRedisClients() {
 // Map: userId → Set<WebSocket>
 const userSockets = new Map();
 
+function readCookie(req, name) {
+  const header = req.headers?.cookie;
+  if (!header) return null;
+  for (const part of header.split(';')) {
+    const [rawKey, ...rest] = part.trim().split('=');
+    if (rawKey === name) return decodeURIComponent(rest.join('='));
+  }
+  return null;
+}
+
 function getTokenFromRequest(req) {
   // 1. Authorization header (Bearer token)
   const header = req.headers['authorization'];
   if (header?.startsWith('Bearer ')) return header.slice(7);
 
-  // 2. Query param ?token= solo en desarrollo.
+  // 2. httpOnly cookie — preferred in production
+  const cookieToken = readCookie(req, 'accessToken');
+  if (cookieToken) return cookieToken;
+
+  // 3. Query param ?token= solo en desarrollo.
   // En producción el token en URL se filtra por logs, proxies y history.
   if (process.env.NODE_ENV === 'production') return null;
   try {

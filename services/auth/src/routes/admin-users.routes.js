@@ -45,6 +45,34 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+async function auditPermissionChange(req, {
+  targetUserId = null,
+  targetRoleName = null,
+  actionType,
+  previousValue = null,
+  newValue = null,
+}) {
+  await db.query(
+    `INSERT INTO permission_change_audit
+       (org_id, actor_user_id, target_user_id, target_role_name, action_type,
+        previous_value_json, new_value_json, request_id, ip_address)
+     VALUES
+       (:orgId, :actorUserId, :targetUserId, :targetRoleName, :actionType,
+        :previousValue, :newValue, :requestId, :ipAddress)`,
+    {
+      orgId: req.user.orgId,
+      actorUserId: req.user.userId || null,
+      targetUserId,
+      targetRoleName,
+      actionType,
+      previousValue: previousValue ? JSON.stringify(previousValue) : null,
+      newValue: newValue ? JSON.stringify(newValue) : null,
+      requestId: req.headers['x-request-id'] || req.requestId || null,
+      ipAddress: req.ip || null,
+    }
+  ).catch(() => {});
+}
+
 // ── POST /admin/users ─────────────────────────────────────────────────────────
 router.post('/users',
   requireInternalSig,
@@ -115,6 +143,13 @@ router.post('/users',
         orgName:      branch.org_name,
         tempPassword,
       }).catch(() => {});
+
+      await auditPermissionChange(req, {
+        targetUserId: userId,
+        targetRoleName: role,
+        actionType: 'user_role_assigned',
+        newValue: { role, branchId },
+      });
 
       return R.created(res, {
         id:      userId,
@@ -200,7 +235,74 @@ router.patch('/users/:id/deactivate',
       );
       await db.callProc('sp_revoke_user_sessions', [req.params.id]);
 
+      await auditPermissionChange(req, {
+        targetUserId: Number(req.params.id),
+        actionType: 'user_role_revoked',
+        previousValue: { isActive: true },
+        newValue: { isActive: false },
+      });
+
       return R.noContent(res);
+    } catch (e) { next(e); }
+  }
+);
+
+router.patch('/users/:id/role',
+  requireInternalSig,
+  fromHeaders,
+  requireAdmin,
+  param('id').isInt({ min: 1 }),
+  body('role').notEmpty().isLength({ max: 40 }),
+  validate,
+  async (req, res, next) => {
+    try {
+      const targetUserId = Number(req.params.id);
+      const { role } = req.body;
+
+      const targetUser = await db.queryOne(
+        `SELECT u.id
+         FROM users u
+         JOIN branches b ON u.branch_id = b.id
+         WHERE u.id = :id AND b.organization_id = :orgId`,
+        { id: targetUserId, orgId: req.user.orgId }
+      );
+      if (!targetUser) return R.notFound(res, 'Usuario no encontrado');
+
+      const newRole = await db.queryOne(`SELECT id, name FROM roles WHERE name = :name`, { name: role });
+      if (!newRole) return R.badRequest(res, `Rol '${role}' no existe`);
+
+      const activeRoles = await db.query(
+        `SELECT ur.role_id, r.name
+         FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = :userId AND ur.is_active = 1`,
+        { userId: targetUserId }
+      );
+      const previousRoles = activeRoles.map(r => r.name);
+
+      await db.transaction(async (conn) => {
+        await conn.query(
+          `UPDATE user_roles
+           SET is_active = 0
+           WHERE user_id = :userId AND is_active = 1`,
+          { userId: targetUserId }
+        );
+        await conn.query(
+          `INSERT INTO user_roles (user_id, role_id, is_active, assigned_by, assigned_at)
+           VALUES (:userId, :roleId, 1, :assignedBy, NOW())`,
+          { userId: targetUserId, roleId: newRole.id, assignedBy: req.user.userId || null }
+        );
+      });
+
+      await auditPermissionChange(req, {
+        targetUserId,
+        targetRoleName: role,
+        actionType: 'user_role_changed',
+        previousValue: { roles: previousRoles },
+        newValue: { roles: [role] },
+      });
+
+      return R.ok(res, { userId: targetUserId, role });
     } catch (e) { next(e); }
   }
 );

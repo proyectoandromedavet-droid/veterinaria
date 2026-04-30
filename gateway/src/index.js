@@ -80,6 +80,41 @@ app.get('/health', async (_req, res) => {
   });
 });
 
+app.get('/health/live', (_req, res) => {
+  res.status(200).json({
+    status:  'ok',
+    service: 'gateway',
+    ts:      new Date().toISOString(),
+  });
+});
+
+app.get('/health/ready', async (_req, res) => {
+  const checks  = {};
+  const latency = {};
+  let ready = true;
+
+  try {
+    const { getClient } = require('../../shared/cache');
+    const t0     = Date.now();
+    const client = await getClient();
+    await client.ping();
+    checks.redis  = 'ok';
+    latency.redis = Date.now() - t0;
+  } catch {
+    checks.redis = 'degraded';
+    ready = false;
+  }
+
+  res.status(ready ? 200 : 503).json({
+    status:  ready ? 'ready' : 'not_ready',
+    service: 'gateway',
+    version: V,
+    ts:      new Date().toISOString(),
+    checks,
+    latency,
+  });
+});
+
 // ── Security headers (must be first) ─────────────────────────────────────────
 app.set('trust proxy', 1);
 app.use(helmetMiddleware);
@@ -138,7 +173,7 @@ app.use(idempotency);
 app.use(httpMetrics('gateway'));
 
 // ── Audit logging ─────────────────────────────────────────────────────────────
-app.use(auditMiddleware({ mode: 'mutations' }));
+app.use(auditMiddleware({ mode: process.env.AUDIT_MODE || 'all' }));
 
 
 // ── Deep health check — agrega estado de todos los servicios ─────────────────

@@ -3,10 +3,6 @@ import { ref, computed } from 'vue'
 import { authApi } from '../api/auth'
 import { clearCsrfToken, ensureCsrfToken } from '../api/client'
 
-const ACCESS_TOKEN_KEY = 'accessToken'
-const LEGACY_ACCESS_TOKEN_KEY = 'andro_at'
-const USER_KEY = 'andro_user'
-
 function parseJwt(token) {
   try {
     return JSON.parse(atob(token.split('.')[1]))
@@ -57,10 +53,6 @@ export const useAuthStore = defineStore('auth', () => {
         }
       }
 
-      localStorage.removeItem(ACCESS_TOKEN_KEY)
-      localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
-      localStorage.removeItem(USER_KEY)
-
       hydrated.value = true
       hydrating.value = false
     })()
@@ -77,10 +69,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
     setTokens(payload.accessToken)
     await ensureCsrfToken().catch(() => {})
-    // Merge user info from response
-    if (payload.user) {
-      user.value = { ...user.value, ...payload.user, roles: payload.user.roles }
-    }
+    user.value = payload.user ? { ...user.value, ...payload.user, roles: payload.user.roles } : user.value
+    await fetchMe().catch(() => {})
     return { requiresTwoFactor: false }
   }
 
@@ -88,6 +78,7 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await authApi.twoFaChallenge({ pendingToken, code })
     const payload = res.data?.data || res.data
     setTokens(payload.accessToken)
+    await fetchMe().catch(() => {})
   }
 
   async function refresh() {
@@ -95,6 +86,7 @@ export const useAuthStore = defineStore('auth', () => {
     const payload = res.data?.data || res.data
     setTokens(payload.accessToken)
     await ensureCsrfToken().catch(() => {})
+    await fetchMe().catch(() => {})
   }
 
   async function fetchMe() {
@@ -108,9 +100,6 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = null
     user.value = null
     hydrated.value = false
-    localStorage.removeItem(ACCESS_TOKEN_KEY)
-    localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
     clearCsrfToken()
   }
 

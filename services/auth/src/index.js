@@ -102,6 +102,20 @@ app.get('/health', async (_req, res) => {
   });
 });
 
+app.get('/health/live', (_req, res) => {
+  res.status(200).json({ status: 'ok', service: 'auth', ts: new Date().toISOString() });
+});
+
+app.get('/health/ready', async (_req, res) => {
+  try {
+    const db = require('../../../shared/db');
+    await db.getPool().execute('SELECT 1');
+    res.status(200).json({ status: 'ready', service: 'auth', ts: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: 'not_ready', service: 'auth', ts: new Date().toISOString() });
+  }
+});
+
 app.use('/schema', require('./routes/schema.routes'));
 
 // Error handler — never leak internals

@@ -11,7 +11,11 @@ const crypto = require('crypto');
 const db     = require('./db');
 const logger = require('./logger');
 
-const ENABLED = () => process.env.DEVICE_FINGERPRINT_ENABLED === 'true';
+const ENABLED = () => {
+  if (process.env.DEVICE_FINGERPRINT_ENABLED === 'true') return true;
+  if (process.env.DEVICE_FINGERPRINT_ENABLED === 'false') return false;
+  return process.env.NODE_ENV === 'production';
+};
 
 /**
  * Normaliza el fingerprint del header (trunca a 64 chars, lowercase hex).
@@ -44,22 +48,28 @@ async function recordDeviceFingerprint(sessionId, rawFingerprint) {
 
 /**
  * Middleware que verifica que el fingerprint del request coincide con el de la sesión.
- * Solo actúa si el header X-Device-Fingerprint está presente.
+ * Usa req.user.jti si existe; como fallback acepta X-Session-Id.
  * No bloquea — solo loguea el evento de seguridad y continúa.
  */
 async function checkDeviceFingerprint(req, _res, next) {
   if (!ENABLED()) return next();
 
   const rawFp    = req.headers['x-device-fingerprint'];
-  const sessionId = req.headers['x-session-id'];
+  const sessionId = req.headers['x-session-id'] || null;
+  const sessionJti = req.user?.jti || req.headers['x-jti'] || null;
 
-  if (!rawFp || !sessionId) return next();
+  if (!rawFp || (!sessionId && !sessionJti)) return next();
 
   try {
     const fp  = normalizeFingerprint(rawFp);
     const row = await db.queryOne(
-      'SELECT device_fingerprint, user_id, org_id FROM user_sessions WHERE id = :sessionId AND expires_at > NOW()',
-      { sessionId },
+      `SELECT device_fingerprint, user_id, org_id, id
+       FROM sessions
+       WHERE expires_at > NOW()
+         AND is_revoked = FALSE
+         AND ((:sessionId IS NOT NULL AND id = :sessionId) OR (:sessionJti IS NOT NULL AND jti = :sessionJti))
+       LIMIT 1`,
+      { sessionId, sessionJti },
     );
 
     if (!row || !row.device_fingerprint) return next();
@@ -82,7 +92,7 @@ async function checkDeviceFingerprint(req, _res, next) {
           {
             userId:  row.user_id,
             orgId:   row.org_id,
-            details: JSON.stringify({ sessionId, newFp: fp.slice(0, 16) }),
+            details: JSON.stringify({ sessionId: row.id, newFp: fp.slice(0, 16) }),
             ip:      req.ip || null,
           },
         );
