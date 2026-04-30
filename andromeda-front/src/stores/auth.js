@@ -3,12 +3,53 @@ import { ref, computed } from 'vue'
 import { authApi } from '../api/auth'
 import { clearCsrfToken, ensureCsrfToken } from '../api/client'
 
+function decodeBase64Url(value) {
+  const normalized = String(value || '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(Math.ceil(String(value || '').length / 4) * 4, '=')
+  return atob(normalized)
+}
+
 function parseJwt(token) {
   try {
-    return JSON.parse(atob(token.split('.')[1]))
+    return JSON.parse(decodeBase64Url(token.split('.')[1]))
   } catch {
     return null
   }
+}
+
+function normalizeRoles(input) {
+  if (!input) return []
+  if (Array.isArray(input)) {
+    return input
+      .map((role) => {
+        if (!role) return null
+        if (typeof role === 'string') return role.trim()
+        if (typeof role === 'object') return String(role.name || role.role || role.value || '').trim()
+        return null
+      })
+      .filter(Boolean)
+  }
+  if (typeof input === 'string') {
+    return input.split(',').map((role) => role.trim()).filter(Boolean)
+  }
+  return []
+}
+
+function normalizePermissions(input) {
+  if (!input) return []
+  if (Array.isArray(input)) return input.map((permission) => String(permission).trim()).filter(Boolean)
+  if (typeof input === 'string') return input.split(',').map((permission) => permission.trim()).filter(Boolean)
+  return []
+}
+
+function normalizeUser(payload = {}) {
+  if (!payload || typeof payload !== 'object') return null
+  const normalized = { ...payload }
+  normalized.roles = normalizeRoles(payload.roles)
+  normalized.permissions = normalizePermissions(payload.permissions)
+  return normalized
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -19,7 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
   let hydratePromise = null
 
   const isAuthenticated = computed(() => !!accessToken.value)
-  const roles           = computed(() => user.value?.roles || [])
+  const roles           = computed(() => normalizeRoles(user.value?.roles))
   const orgId           = computed(() => user.value?.org_id || null)
 
   function hasRole(...check) {
@@ -37,7 +78,7 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = at
     const payload = parseJwt(at)
     if (payload) {
-      user.value = payload
+      user.value = normalizeUser(payload)
     }
   }
 
@@ -55,6 +96,7 @@ export const useAuthStore = defineStore('auth', () => {
 
       hydrated.value = true
       hydrating.value = false
+      hydratePromise = null
     })()
 
     return hydratePromise
@@ -69,7 +111,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
     setTokens(payload.accessToken)
     await ensureCsrfToken().catch(() => {})
-    user.value = payload.user ? { ...user.value, ...payload.user, roles: payload.user.roles } : user.value
+    user.value = payload.user ? normalizeUser({ ...user.value, ...payload.user }) : user.value
     await fetchMe().catch(() => {})
     return { requiresTwoFactor: false }
   }
@@ -92,7 +134,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchMe() {
     const res = await authApi.me()
     const payload = res.data?.data || res.data
-    user.value = { ...user.value, ...payload }
+    user.value = normalizeUser({ ...user.value, ...payload })
   }
 
   function logout() {
@@ -100,6 +142,8 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = null
     user.value = null
     hydrated.value = false
+    hydrating.value = false
+    hydratePromise = null
     clearCsrfToken()
   }
 

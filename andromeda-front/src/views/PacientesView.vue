@@ -216,6 +216,26 @@ const speciesFilter = ref('')
 const pagination   = ref({ page: 1, totalPages: 1 })
 const speciesList  = ref([])   // [{ id, common_name, slug }]
 
+function asArray(value) {
+  return Array.isArray(value) ? value : []
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    species: row.species || row.species_name || row.speciesName || '',
+    breed_name: row.breed_name || row.breedName || row.breed || '',
+    breed: row.breed || row.breed_name || row.breedName || '',
+    primary_owner: row.primary_owner || row.owner_name || row.ownerName || '',
+    owner_name: row.owner_name || row.primary_owner || row.ownerName || '',
+    owner_phone: row.owner_phone || row.ownerPhone || '',
+    weight_kg: row.weight_kg ?? row.weightKg ?? null,
+    chip_number: row.chip_number || row.microchip_number || row.microchipNumber || '',
+    is_active: row.is_active ?? row.active ?? true,
+  }
+}
+
 // ── Species display helpers ──────────────────────────────────────────────────
 
 const SPECIES_COLORS = {
@@ -272,7 +292,7 @@ function formatDate(iso) {
 async function loadSpecies() {
   try {
     const { data } = await http.get('/patients/species/all')
-    speciesList.value = data.data || data || []
+    speciesList.value = asArray(data?.data || data)
   } catch {
     // Si falla, no bloqueamos la vista; el select quedará vacío
   }
@@ -287,7 +307,7 @@ async function load(page = 1) {
     if (search.value)        params.search  = search.value
     if (speciesFilter.value) params.species = speciesFilter.value
     const { data } = await http.get('/patients', { params })
-    items.value = data.data || data.patients || data || []
+    items.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     const m = data.meta || data.pagination || {}
     pagination.value = { page: m.page || page, totalPages: m.totalPages || m.total_pages || 1 }
   } catch (e) {
