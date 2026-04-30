@@ -53,8 +53,11 @@
     "test:coverage": "jest --coverage",
     "test:unit": "jest tests/unit",
     "test:security": "jest tests/security",
+    "test:contract": "jest tests/contract",
+    "test:mutation": "npx @stryker-mutator/core run",
     "migrate": "node scripts/migrate.js",
     "migrate:status": "node scripts/migrate.js --status",
-    "migrate:dry": "node scripts/migrate.js --dry-run"
+    "migrate:dry": "node scripts/migrate.js --dry-run",
+    "migrate:rollback": "node scripts/migrate.js --rollback 1"
   }
 }

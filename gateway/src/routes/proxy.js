@@ -8,6 +8,7 @@ const { requireFeature }          = require('../../../shared/featureFlags');
 const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
 const { tenantMismatchGuard }     = require('../middleware/subdomain');
 const { injectVersionHeader }     = require('../middleware/versioning');
+const { resolveServiceTarget, listServices } = require('../../../shared/serviceRegistry');
 
 const API_VERSIONS = ['v1', 'v2'];
 
@@ -67,6 +68,10 @@ function makeProxy(target, pathRewrite = {}, name) {
 
   const proxy = createProxyMiddleware({
     target,
+    router: async () => {
+      if (!name) return target;
+      return resolveServiceTarget(name, target);
+    },
     changeOrigin: true,
     pathRewrite,
     on: {
@@ -156,6 +161,9 @@ function registerProxies(app) {
   registerVersioned(app, 'get', 'health/services', authMiddleware, (_req, res) =>
     res.json({ success: true, data: getAllStatus() })
   );
+  registerVersioned(app, 'get', 'platform/services', authMiddleware, async (_req, res) =>
+    res.json({ success: true, data: await listServices().catch(() => []) })
+  );
 
   // ── AUTH ─────────────────────────────────────────────────────────────────
   // Rate limiters only — no proxy here; fall through to catch-all so req.url is correct
@@ -166,7 +174,7 @@ function registerProxies(app) {
   // Auth proxy: pass {} to disable universal rewrite — catch-all already sets req.url correctly
   const _authProxy = makeServiceProxy('auth', {});
   // Paths that bypass JWT — checked against req.path inside the /api/vN/auth mount
-  const AUTH_PUBLIC = ['/login', '/refresh', '/register', '/password-reset', '/google', '/.well-known', '/internal'];
+  const AUTH_PUBLIC = ['/login', '/refresh', '/register', '/password-reset', '/google', '/sso', '/.well-known', '/internal'];
 
   // Public catch-all: forward without JWT check
   registerVersioned(app, 'use', 'auth', (req, res, next) => {

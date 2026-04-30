@@ -22,6 +22,7 @@ const {
 } = require('../../../shared/notificationLogSchema');
 const { withOpenApiValidation } = require('../../../shared/serviceBase');
 const { enqueueJob, processPendingJobs } = require('../../../shared/notificationRetry');
+const eventBus = require('../../../shared/eventBus');
 
 const app    = express();
 const server = http.createServer(app);
@@ -50,6 +51,7 @@ app.use((req, _res, next) => {
 // ── Redis pub/sub ─────────────────────────────────────────────────────────────
 let redisPub, redisSub;
 let retryInterval;
+let stopEventBus;
 
 async function getRedis() {
   if (!redisPub) {
@@ -221,6 +223,9 @@ app.post('/notifications/push', async (req, res, next) => {
     } catch (err) {
       console.warn('[notifications] publish degraded:', err.message);
     }
+    eventBus.publish('notifications.push', {
+      type, targetUserIds, targetRoles, orgId, branchId, title, message, severity, actionUrl,
+    }).catch(() => {});
 
     return R.created(res, { delivered: targetUserIds?.length || 0 });
   } catch (e) { next(e); }
@@ -837,6 +842,9 @@ app.use((err, _req, res, _next) => {
 if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, async () => {
     await getRedis().catch(e => console.warn('[notifications] Redis not available:', e.message));
+    stopEventBus = await eventBus.subscribe('notifications-service', async (event) => {
+      console.info('[notifications][event-bus]', { topic: event.topic, ts: event.ts });
+    }, ['notifications.push']).catch(() => null);
     retryInterval = setInterval(() => {
       processPendingJobs().catch((e) => console.warn('[notifications] retry worker:', e.message));
     }, parseInt(process.env.NOTIFICATION_RETRY_INTERVAL_MS || '30000'));
@@ -846,6 +854,7 @@ if (process.env.NODE_ENV !== 'test') {
 
 function shutdown() {
   if (retryInterval) clearInterval(retryInterval);
+  if (stopEventBus) stopEventBus().catch(() => {});
 }
 
 process.on('SIGTERM', shutdown);

@@ -1,6 +1,7 @@
 'use strict';
 
 const bcrypt  = require('bcryptjs');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
 const db             = require('../../../../shared/db');
@@ -11,6 +12,7 @@ const twoFactor      = require('../../../../shared/twoFactor');
 const { enforcePassword } = require('../../../../shared/passwordPolicy');
 const { captureFingerprint } = require('../../../../shared/deviceFingerprint');
 const { enqueueJob } = require('../../../../shared/notificationRetry');
+const oidc = require('../../../../shared/oidc');
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 async function getRedis() {
@@ -190,6 +192,79 @@ async function buildTokenPair(user, roles) {
   return { accessToken, refreshToken, jti };
 }
 
+async function ensureUserRoles(userId) {
+  const roleRows = await db.query(
+    `SELECT r.name FROM roles r
+     JOIN user_roles ur ON ur.role_id = r.id
+     WHERE ur.user_id = :userId AND ur.is_active = TRUE`,
+    { userId }
+  );
+  return roleRows.map((r) => r.name);
+}
+
+async function persistSession(req, user, refreshToken, jti) {
+  const ip = req.ip;
+  const ua = req.headers['user-agent'] || '';
+  const [sessionResult] = await db.query(
+    `INSERT INTO sessions
+       (user_id, session_token, jti, ip_address, user_agent, device_type, expires_at)
+     VALUES (:userId, :token, :jti, :ip, :ua, :device, DATE_ADD(NOW(), INTERVAL 7 DAY))`,
+    {
+      userId: user.id,
+      token: jwt.hashToken(refreshToken),
+      jti,
+      ip,
+      ua,
+      device: parseUserAgent(ua),
+    }
+  );
+  await captureFingerprint(sessionResult.insertId, req.headers['x-device-fingerprint']).catch(() => {});
+  return sessionResult.insertId;
+}
+
+async function finalizeLogin(res, req, user, roles, responseData = null) {
+  const { accessToken, refreshToken, jti } = await buildTokenPair(user, roles);
+  await persistSession(req, user, refreshToken, jti);
+  setSessionCookies(res, accessToken, refreshToken);
+  return {
+    accessToken,
+    expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m',
+    user: responseData || {
+      id: user.id,
+      email: user.email,
+      name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+      orgId: user.organization_id,
+      branchId: user.branch_id,
+      roles,
+    },
+  };
+}
+
+async function loadSsoConfig(provider, options = {}) {
+  const rows = await db.query(
+    `SELECT osc.*, o.name AS organization_name
+     FROM organization_sso_configs osc
+     JOIN organizations o ON o.id = osc.organization_id
+     WHERE osc.provider = :provider AND osc.is_active = 1`,
+    { provider: oidc.normalizeProvider(provider) }
+  );
+
+  if (!rows.length) return null;
+  if (options.orgId) return rows.find((row) => row.organization_id === Number(options.orgId)) || null;
+
+  const emailDomain = String(options.email || '').split('@')[1]?.toLowerCase();
+  if (!emailDomain) return rows[0];
+
+  return rows.find((row) => {
+    try {
+      const domains = JSON.parse(row.allowed_domains || '[]').map((d) => String(d).toLowerCase());
+      return domains.includes(emailDomain);
+    } catch {
+      return false;
+    }
+  }) || null;
+}
+
 // ── Controllers ───────────────────────────────────────────────────────────────
 
 /**
@@ -243,36 +318,11 @@ async function login(req, res) {
     return R.unauthorized(res, 'Invalid email or password');
   }
 
-  // Get roles
-  const roleRows = await db.query(
-    `SELECT r.name FROM roles r
-     JOIN user_roles ur ON ur.role_id = r.id
-     WHERE ur.user_id = :userId AND ur.is_active = TRUE`,
-    { userId: user.id }
-  );
-  const roles = roleRows.map((r) => r.name);
-
-  const { accessToken, refreshToken, jti } = await buildTokenPair(user, roles);
+  const roles = await ensureUserRoles(user.id);
 
   // Limpiar contadores de brute force (Redis + BD) al login exitoso
   await clearBruteForce(email, ip);
   await db.callProc('sp_clear_failed_logins', [user.id]).catch(() => {});
-
-  // Store session
-  const [sessionResult] = await db.query(
-    `INSERT INTO sessions
-       (user_id, session_token, jti, ip_address, user_agent, device_type, expires_at)
-     VALUES (:userId, :token, :jti, :ip, :ua, :device, DATE_ADD(NOW(), INTERVAL 7 DAY))`,
-    {
-      userId: user.id,
-      token:  jwt.hashToken(refreshToken),
-      jti,
-      ip,
-      ua,
-      device: parseUserAgent(ua),
-    }
-  );
-  await captureFingerprint(sessionResult.insertId, req.headers['x-device-fingerprint']).catch(() => {});
 
   // Record successful login
   await db.query(
@@ -307,20 +357,16 @@ async function login(req, res) {
     }).catch(() => {});
   }
 
-  setSessionCookies(res, accessToken, refreshToken);
-
-  return R.ok(res, {
-    accessToken,
-    expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m',
-    user: {
-      id:       user.id,
-      email:    user.email,
-      name:     `${user.first_name} ${user.last_name}`,
-      orgId:    user.organization_id,
-      branchId: user.branch_id,
-      roles,
-    },
+  const payload = await finalizeLogin(res, req, user, roles, {
+    id: user.id,
+    email: user.email,
+    name: `${user.first_name} ${user.last_name}`,
+    orgId: user.organization_id,
+    branchId: user.branch_id,
+    roles,
   });
+
+  return R.ok(res, payload);
 }
 
 /**
@@ -871,8 +917,9 @@ async function disable2fa(req, res) {
  * This prevents an attacker from targeting arbitrary userIds without knowing the password.
  */
 async function challenge2fa(req, res) {
-  const { pendingToken, token } = req.body;
-  if (!pendingToken || !token) return R.badRequest(res, 'pendingToken and token required');
+  const { pendingToken, token, code } = req.body;
+  const oneTimeCode = token || code;
+  if (!pendingToken || !oneTimeCode) return R.badRequest(res, 'pendingToken and token required');
 
   // Verify the short-lived pending token signed after password success
   let pending;
@@ -893,7 +940,7 @@ async function challenge2fa(req, res) {
   );
   if (!user || !user.two_factor_enabled) return R.badRequest(res, 'Invalid 2FA challenge');
 
-  const valid = twoFactor.verifyTwoFactor(user.two_factor_secret, token);
+  const valid = twoFactor.verifyTwoFactor(user.two_factor_secret, oneTimeCode);
   if (!valid) {
     logAuth401(req, 'POST /auth/2fa/challenge', { reason: 'invalid_totp_token' });
     return R.unauthorized(res, 'Invalid TOTP token');
@@ -907,14 +954,140 @@ async function challenge2fa(req, res) {
     `SELECT r.name FROM roles r JOIN user_roles ur ON ur.role_id = r.id
      WHERE ur.user_id = :uid AND ur.is_active = TRUE`, { uid: user.id }
   );
-  const { accessToken, refreshToken } = await buildTokenPair(
+  const payload = await finalizeLogin(
+    res,
+    req,
     { ...user, organization_id: orgRow?.organization_id },
     roles.map(r => r.name)
   );
 
-  setSessionCookies(res, accessToken, refreshToken);
+  return R.ok(res, { accessToken: payload.accessToken });
+}
 
-  return R.ok(res, { accessToken });
+async function ssoConnect(req, res) {
+  const provider = oidc.normalizeProvider(req.params.provider);
+  const configRow = await loadSsoConfig(provider, {
+    orgId: req.query.orgId,
+    email: req.query.email,
+  });
+  if (!configRow) return R.notFound(res, 'SSO configuration not found for provider/domain');
+
+  const config = {
+    ...oidc.getEnvConfig(provider),
+    clientId: configRow.client_id,
+    clientSecret: configRow.client_secret,
+    issuer: configRow.issuer,
+    scopes: JSON.parse(configRow.scopes || '["openid","email","profile"]'),
+  };
+  const authFlow = await oidc.buildAuthorizationUrl(provider, config);
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+  await runRedis('sso.connect.store-state', (redis) =>
+    redis.setEx(`sso:state:${authFlow.state}`, 600, JSON.stringify({
+      provider,
+      nonce: authFlow.nonce,
+      verifier: authFlow.verifier,
+      orgId: configRow.organization_id,
+      redirectTo: req.query.redirectTo || `${frontendUrl}/login?sso=success`,
+    }))
+  );
+
+  return res.redirect(authFlow.url);
+}
+
+async function ssoCallback(req, res) {
+  const provider = oidc.normalizeProvider(req.params.provider);
+  const { code, state, error } = req.query;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+  if (error) {
+    return res.redirect(`${frontendUrl}/login?sso_error=${encodeURIComponent(String(error))}`);
+  }
+  if (!code || !state) return R.badRequest(res, 'Missing code/state');
+
+  const stateRaw = await runRedis('sso.callback.load-state', (redis) => redis.get(`sso:state:${state}`));
+  if (!stateRaw) return res.redirect(`${frontendUrl}/login?sso_error=invalid_state`);
+  await runRedis('sso.callback.consume-state', (redis) => redis.del(`sso:state:${state}`));
+
+  const stateData = JSON.parse(stateRaw);
+  const configRow = await loadSsoConfig(provider, { orgId: stateData.orgId });
+  if (!configRow) return res.redirect(`${frontendUrl}/login?sso_error=sso_not_configured`);
+
+  const config = {
+    ...oidc.getEnvConfig(provider),
+    clientId: configRow.client_id,
+    clientSecret: configRow.client_secret,
+    issuer: configRow.issuer,
+    scopes: JSON.parse(configRow.scopes || '["openid","email","profile"]'),
+  };
+  const tokenResponse = await oidc.exchangeCode(provider, config, code, stateData.verifier);
+  const claims = oidc.decodeJwtWithoutVerify(tokenResponse.id_token);
+
+  if (claims.nonce !== stateData.nonce) {
+    return res.redirect(`${frontendUrl}/login?sso_error=invalid_nonce`);
+  }
+
+  const email = String(claims.email || '').toLowerCase();
+  const emailDomain = email.split('@')[1];
+  const allowedDomains = JSON.parse(configRow.allowed_domains || '[]').map((d) => String(d).toLowerCase());
+  if (!email || (allowedDomains.length && !allowedDomains.includes(emailDomain))) {
+    return res.redirect(`${frontendUrl}/login?sso_error=domain_not_allowed`);
+  }
+
+  let user = await db.queryOne(
+    `SELECT u.*, b.organization_id
+     FROM users u
+     JOIN branches b ON b.id = u.branch_id
+     WHERE LOWER(u.email) = :email AND u.is_active = TRUE`,
+    { email }
+  );
+
+  if (!user && configRow.auto_provision) {
+    let branchId = configRow.default_branch_id;
+    if (!branchId) {
+      const branchRow = await db.queryOne(
+        `SELECT id FROM branches WHERE organization_id = :orgId ORDER BY id ASC LIMIT 1`,
+        { orgId: configRow.organization_id }
+      );
+      branchId = branchRow?.id || null;
+    }
+    if (!branchId) return res.redirect(`${frontendUrl}/login?sso_error=branch_missing`);
+
+    const passwordHash = await bcrypt.hash(crypto.randomUUID(), 12);
+    const firstName = claims.given_name || claims.name?.split(' ')[0] || 'SSO';
+    const lastName = claims.family_name || claims.name?.split(' ').slice(1).join(' ') || provider.toUpperCase();
+
+    const [created] = await db.query(
+      `INSERT INTO users
+         (branch_id, first_name, last_name, email, password_hash, is_active, created_at, updated_at)
+       VALUES
+         (:branchId, :firstName, :lastName, :email, :passwordHash, 1, NOW(), NOW())`,
+      { branchId, firstName, lastName, email, passwordHash }
+    );
+    const role = await db.queryOne(`SELECT id FROM roles WHERE name = :name`, { name: configRow.default_role });
+    if (role?.id) {
+      await db.query(
+        `INSERT INTO user_roles (user_id, role_id, assigned_by, is_active, created_at)
+         VALUES (:userId, :roleId, NULL, 1, NOW())`,
+        { userId: created.insertId, roleId: role.id }
+      );
+    }
+    user = await db.queryOne(
+      `SELECT u.*, b.organization_id
+       FROM users u
+       JOIN branches b ON b.id = u.branch_id
+       WHERE u.id = :id`,
+      { id: created.insertId }
+    );
+  }
+
+  if (!user || Number(user.organization_id) !== Number(configRow.organization_id)) {
+    return res.redirect(`${frontendUrl}/login?sso_error=user_not_allowed`);
+  }
+
+  const roles = await ensureUserRoles(user.id);
+  await finalizeLogin(res, req, user, roles);
+  return res.redirect(stateData.redirectTo || `${frontendUrl}/`);
 }
 
 module.exports = {
@@ -924,6 +1097,7 @@ module.exports = {
   listApiKeys, createApiKey, deleteApiKey,
   validateApiKey,
   setup2fa, verify2fa, disable2fa, challenge2fa,
+  ssoConnect, ssoCallback,
   // Exported for unit testing only
   _checkBruteForce: checkBruteForce,
   _recordFailedAttempt: recordFailedAttempt,

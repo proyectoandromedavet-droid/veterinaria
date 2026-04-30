@@ -7,6 +7,7 @@ const path         = require('path');
 const express      = require('express');
 const cookieParser = require('cookie-parser');
 const { getJwks } = require('../../../shared/jwt');
+const { scanSuspiciousAccessPatterns } = require('../../../shared/securityAlerts');
 const {
   helmetMiddleware,
   hppMiddleware,
@@ -18,6 +19,7 @@ const { requireInternalSig } = require('../../../shared/internalAuth');
 const { withOpenApiValidation } = require('../../../shared/serviceBase');
 const app  = express();
 const PORT = parseInt(process.env.PORT || '3001');
+let alertScanInterval = null;
 
 // ── Security headers ──────────────────────────────────────────────────────────
 app.set('trust proxy', 1);
@@ -129,7 +131,12 @@ app.use((err, _req, res, _next) => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => console.log(`[auth] running on port ${PORT}`));
+  app.listen(PORT, () => {
+    alertScanInterval = setInterval(() => {
+      scanSuspiciousAccessPatterns(parseInt(process.env.SECURITY_ALERT_SCAN_WINDOW_MINUTES || '1', 10)).catch(() => {});
+    }, Math.max(30000, parseInt(process.env.SECURITY_ALERT_SCAN_INTERVAL_MS || '60000', 10)));
+    console.log(`[auth] running on port ${PORT}`);
+  });
 }
 
 module.exports = app;

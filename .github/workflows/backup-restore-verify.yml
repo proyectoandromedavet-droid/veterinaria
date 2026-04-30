@@ -1,0 +1,17 @@
+name: Backup Restore Verify
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  verify-restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify restore script exists and is executable
+        run: |
+          test -f scripts/backup/verify-restore.sh
+          chmod +x scripts/backup/verify-restore.sh
+          scripts/backup/verify-restore.sh --help || true

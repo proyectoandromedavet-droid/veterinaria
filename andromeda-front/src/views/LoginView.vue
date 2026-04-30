@@ -658,6 +658,13 @@
           <span v-if="loading" class="spinner"/>
           <span v-else>Ingresar</span>
         </button>
+        <div class="sso-block">
+          <p class="sso-block__label">o ingresá con tu directorio corporativo</p>
+          <div class="sso-block__actions">
+            <button type="button" class="btn-ghost" @click="handleSso('google')" :disabled="loading">Google Workspace</button>
+            <button type="button" class="btn-ghost" @click="handleSso('microsoft')" :disabled="loading">Microsoft</button>
+          </div>
+        </div>
 
         <div class="login-card__links">
           <a href="#" @click.prevent="step = 'forgot'">¿Olvidaste tu contraseña?</a>
@@ -741,13 +748,14 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { authApi } from '../api/auth'
 import AppLogo from '../components/AppLogo.vue'
 
 const router = useRouter()
+const route = useRoute()
 const auth   = useAuthStore()
 
 const step    = ref('credentials')
@@ -810,6 +818,23 @@ async function handleForgot() {
     loading.value = false
   }
 }
+
+function handleSso(provider) {
+  error.value = ''
+  authApi.ssoRedirect(provider, {
+    email: form.email || '',
+    redirectTo: `${window.location.origin}/`,
+  })
+}
+
+onMounted(() => {
+  if (route.query.sso_error) {
+    error.value = `SSO: ${String(route.query.sso_error)}`
+  }
+  if (route.query.sso === 'success') {
+    success.value = 'Inicio de sesión corporativo completado.'
+  }
+})
 </script>
 
 <style scoped>
@@ -952,6 +977,24 @@ async function handleForgot() {
   text-align: center;
   margin-top: 16px;
   font-size: 0.84rem;
+}
+
+.sso-block {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.sso-block__label {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.sso-block__actions {
+  display: grid;
+  gap: 10px;
 }
 
 /* ── 2FA header ─────────────────────────────────── */

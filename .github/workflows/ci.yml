@@ -111,6 +111,9 @@ jobs:
       - name: Run tests
         run: npm test -- --forceExit --runInBand --coverage
 
+      - name: Run contract tests
+        run: npm run test:contract -- --runInBand
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -214,6 +217,37 @@ jobs:
       - name: Run frontend E2E
         working-directory: andromeda-front
         run: npm run e2e
+
+  mutation:
+    name: Mutation testing
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --prefer-offline
+      - run: npm run test:mutation
+
+  sandbox-integrations:
+    name: Sandbox integrations
+    runs-on: ubuntu-latest
+    if: ${{ secrets.STRIPE_TEST_WEBHOOK_SECRET != '' || secrets.MP_WEBHOOK_SECRET != '' || secrets.AFIP_CUIT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --prefer-offline
+      - name: Run sandbox integration probes
+        env:
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}
+          MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
+          AFIP_CUIT: ${{ secrets.AFIP_CUIT }}
+        run: npm test -- --runInBand tests/unit/mercadopago.test.js tests/unit/afip.test.js
 
   # ── Deploy to staging (only on push to staging branch) ──────────────────────
   deploy-staging:

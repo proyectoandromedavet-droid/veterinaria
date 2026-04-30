@@ -315,12 +315,32 @@ function startService(app, serviceName, port, { drainMs = 10_000 } = {}) {
   const http   = require('http');
   const log    = createLogger(serviceName);
   const server = http.createServer(app);
+  const registryIntervalMs = Math.max(15000, parseInt(process.env.SERVICE_REGISTRY_HEARTBEAT_MS || '20000', 10));
+  let registryTimer = null;
 
   server.listen(port, () =>
     log.info(`${serviceName} running on port ${port}`, { env: process.env.NODE_ENV })
   );
 
+  async function heartbeat() {
+    try {
+      const { registerService } = require('./serviceRegistry');
+      const serviceUrl = process.env.SERVICE_PUBLIC_URL || `http://localhost:${port}`;
+      await registerService(serviceName, {
+        url: serviceUrl,
+        pid: process.pid,
+        env: process.env.NODE_ENV || 'development',
+      });
+    } catch (_) {}
+  }
+
+  heartbeat().catch(() => {});
+  registryTimer = setInterval(() => {
+    heartbeat().catch(() => {});
+  }, registryIntervalMs);
+
   function shutdown(signal) {
+    if (registryTimer) clearInterval(registryTimer);
     log.info(`${signal} received — starting graceful shutdown`);
 
     // Stop accepting new connections

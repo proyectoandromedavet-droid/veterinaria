@@ -53,6 +53,8 @@ router.post('/login',
 );
 
 router.post('/refresh', ctrl.refresh);
+router.get('/sso/:provider/connect', ctrl.ssoConnect);
+router.get('/sso/:provider/callback', ctrl.ssoCallback);
 
 router.post('/password-reset/request',
   captchaMiddleware,
@@ -138,8 +140,9 @@ const twoFaChallengeLimit = rateLimit({
 router.post('/2fa/challenge',
   requireInternalSig,
   twoFaChallengeLimit,
-  body('userId').notEmpty(),
-  body('token').isLength({ min: 6, max: 6 }).isNumeric(),
+  body('pendingToken').notEmpty(),
+  body('token').optional().isLength({ min: 6, max: 6 }).isNumeric(),
+  body('code').optional().isLength({ min: 6, max: 6 }).isNumeric(),
   validate,
   ctrl.challenge2fa
 );

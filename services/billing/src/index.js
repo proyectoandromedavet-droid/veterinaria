@@ -14,6 +14,7 @@ const mp   = require('../../../shared/mercadopago');
 const afip = require('../../../shared/afip');
 const { generateInvoicePdf } = require('../../../shared/pdf');
 const { enqueue }             = require('../../../shared/webhooks/dispatcher');
+const eventBus                = require('../../../shared/eventBus');
 const mb                      = require('../../../shared/multibranch');
 
 const validate = (req, res, next) => {
@@ -521,6 +522,7 @@ mpRouter.post('/webhook', async (req, res, next) => {
 
       // Disparar webhook interno
       enqueue({ event: 'payment.approved', payload: { invoiceId, mpPaymentId, amount: paymentData.transaction_amount } }).catch(() => {});
+      eventBus.publish('billing.payment.approved', { invoiceId, mpPaymentId, amount: paymentData.transaction_amount }).catch(() => {});
     }
 
     if (status === 'refunded') {
@@ -529,6 +531,7 @@ mpRouter.post('/webhook', async (req, res, next) => {
         { id: invoiceId }
       );
       enqueue({ event: 'payment.refunded', payload: { invoiceId, mpPaymentId } }).catch(() => {});
+      eventBus.publish('billing.payment.refunded', { invoiceId, mpPaymentId }).catch(() => {});
     }
 
     return res.status(200).json({ received: true });

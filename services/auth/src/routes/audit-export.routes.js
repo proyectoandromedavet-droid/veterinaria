@@ -19,6 +19,8 @@
 
 const { Router } = require('express');
 const { exportAuditLogs, rowsToCsv, rowsToNdjson } = require('../../../../shared/audit');
+const { scanSuspiciousAccessPatterns } = require('../../../../shared/securityAlerts');
+const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
 
 const router = Router();
@@ -83,6 +85,27 @@ router.get('/export', fromHeaders, requireAdminRole, async (req, res, next) => {
     }
 
     return R.ok(res, { total: rows.length, rows });
+  } catch (e) { next(e); }
+});
+
+router.get('/alerts', fromHeaders, requireAdminRole, async (req, res, next) => {
+  try {
+    const rows = await db.query(
+      `SELECT id, alert_type, severity, description, metadata, created_at
+       FROM security_alerts
+       WHERE organization_id = :orgId
+       ORDER BY created_at DESC
+       LIMIT 200`,
+      { orgId: req.user.orgId }
+    );
+    return R.ok(res, rows);
+  } catch (e) { next(e); }
+});
+
+router.post('/alerts/scan', fromHeaders, requireAdminRole, async (req, res, next) => {
+  try {
+    const generated = await scanSuspiciousAccessPatterns(parseInt(req.body?.windowMinutes || '1', 10));
+    return R.ok(res, { generated });
   } catch (e) { next(e); }
 });
 
