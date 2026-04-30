@@ -84,7 +84,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>🐾 Nuevo turno</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-grid">

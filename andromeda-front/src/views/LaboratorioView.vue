@@ -133,7 +133,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>🧪 Nueva orden de laboratorio</h3>
-            <button class="modal__close" @click="showNewOrder = false">✕</button>
+            <button type="button" class="modal__close" @click="showNewOrder = false">✕</button>
           </div>
 
           <form @submit.prevent="handleCreateOrder" novalidate>
@@ -244,7 +244,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>🔬 Ingresar resultados — {{ selectedOrder?.patient_name }}</h3>
-            <button class="modal__close" @click="showResults = false">✕</button>
+            <button type="button" class="modal__close" @click="showResults = false">✕</button>
           </div>
 
           <div v-if="detailLoading" class="loading-state" style="min-height:200px">
@@ -321,6 +321,52 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
 
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeOrder(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.order_id ?? row.orderId ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    vet_name: row.vet_name ?? row.vet?.name ?? row.vetName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+    priority: row.priority ?? 'routine',
+    status: row.status ?? 'pending',
+    requested_at: row.requested_at ?? row.requestedAt ?? null,
+    clinical_notes: row.clinical_notes ?? row.clinicalNotes ?? '',
+    test_count: row.test_count ?? row.testCount ?? row.tests?.length ?? 0,
+  }
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+  }
+}
+
+function normalizeTest(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.test_id ?? row.testId ?? null,
+    name: row.name ?? row.test_name ?? row.testName ?? '',
+    category: row.category ?? row.group ?? 'General',
+    units: row.units ?? '',
+    normal_range: row.normal_range ?? row.normalRange ?? '',
+    turnaround_hours: row.turnaround_hours ?? row.turnaroundHours ?? null,
+  }
+}
+
 // ── Lista de órdenes ────────────────────────────────────────────────────────
 const items       = ref([])
 const loading     = ref(false)
@@ -338,7 +384,7 @@ async function load(page = 1) {
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/lab/orders', { params })
-    const rows = data.data || data.orders || data || []
+    const rows = asArray(data?.data || data?.orders || data).map(normalizeOrder).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     const filtered = needle
       ? rows.filter((row) => [row.order_number, row.patient_name, row.ordered_by, row.clinical_notes]
@@ -358,8 +404,8 @@ async function load(page = 1) {
 async function loadStats() {
   try {
     const { data } = await http.get('/lab/orders/pending')
-    const pending = data.data || data || []
-    stats.pending = Array.isArray(pending) ? pending.length : (pending.count || 0)
+    const pending = asArray(data?.data || data?.orders || data).map(normalizeOrder).filter(Boolean)
+    stats.pending = pending.length
   } catch { /* silencioso */ }
 
   // Calcular stats desde la lista completa si no hay endpoint dedicado
@@ -436,7 +482,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }
@@ -466,7 +512,7 @@ async function loadTests() {
   testsLoading.value = true
   try {
     const { data } = await http.get('/lab/tests')
-    allTests.value = data.data || data || []
+    allTests.value = asArray(data?.data || data?.tests || data).map(normalizeTest).filter(Boolean)
   } catch { allTests.value = [] }
   finally { testsLoading.value = false }
 }
