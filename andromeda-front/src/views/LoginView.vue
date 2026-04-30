@@ -667,7 +667,7 @@
         </div>
 
         <div class="login-card__links">
-          <a href="#" @click.prevent="step = 'forgot'">¿Olvidaste tu contraseña?</a>
+          <button type="button" class="login-card__link" @click="step = 'forgot'">¿Olvidaste tu contraseña?</button>
         </div>
       </form>
 
@@ -978,6 +978,18 @@ onMounted(() => {
   margin-top: 16px;
   font-size: 0.84rem;
 }
+
+.login-card__link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--primary-dark);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.login-card__link:hover { color: var(--primary); }
 
 .sso-block {
   margin-top: 16px;

@@ -91,7 +91,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>{{ petEmoji(detailPatient?.species) }} {{ detailPatient?.name }}</h3>
-            <button class="modal__close" @click="showDetail = false">✕</button>
+            <button type="button" class="modal__close" @click="showDetail = false">✕</button>
           </div>
           <div class="form-body" v-if="detailPatient">
             <div class="detail-row"><b>Especie:</b> {{ detailPatient.species }}</div>
@@ -117,7 +117,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>{{ editingId ? '✏️ Editar paciente' : '🐾 Nuevo paciente' }}</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleSave" novalidate>
             <div class="form-body">

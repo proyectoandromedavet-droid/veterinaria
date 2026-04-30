@@ -225,7 +225,7 @@
           <tbody>
             <tr v-for="o in orders" :key="o.id">
               <td><strong>#{{ o.id }}</strong></td>
-              <td>{{ supplierName(o.supplier_id) }}</td>
+              <td>{{ supplierNameStable(o.supplier_id) }}</td>
               <td><span class="badge" :class="orderStatusClass(o.status)">{{ orderStatusLabel(o.status) }}</span></td>
               <td>{{ formatDate(o.ordered_date) }}</td>
               <td>{{ formatDate(o.expected_date) }}</td>
@@ -266,7 +266,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>📦 Nuevo producto</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -341,7 +341,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>🚚 {{ editingSupplier ? 'Editar proveedor' : 'Nuevo proveedor' }}</h3>
-            <button class="modal__close" @click="closeSupplierModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeSupplierModal()">✕</button>
           </div>
           <form @submit.prevent="handleSupplierSave" novalidate>
             <div class="form-body">
@@ -402,7 +402,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>🛒 Nueva orden de compra</h3>
-            <button class="modal__close" @click="closeOrderModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeOrderModal()">✕</button>
           </div>
           <form @submit.prevent="handleOrderCreate" novalidate>
             <div class="form-body">
@@ -482,6 +482,71 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeInventoryItem(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.item_id ?? row.itemId ?? null,
+    name: row.name ?? row.item_name ?? row.itemName ?? '',
+    sku: row.sku ?? row.code ?? '',
+    item_type: row.item_type ?? row.itemType ?? row.type ?? '',
+    quantity_available: row.quantity_available ?? row.quantityAvailable ?? row.quantity ?? row.stock ?? 0,
+    minimum_stock: row.minimum_stock ?? row.minimumStock ?? row.min_stock ?? 0,
+    sale_price: row.sale_price ?? row.salePrice ?? null,
+    expiry_date: row.expiry_date ?? row.expiryDate ?? null,
+  }
+}
+
+function normalizeAlert(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.alert_id ?? row.alertId ?? null,
+    item_name: row.item_name ?? row.itemName ?? row.name ?? '',
+    sku: row.sku ?? row.code ?? '',
+    alert_type: row.alert_type ?? row.alertType ?? '',
+    current_stock: row.current_stock ?? row.currentStock ?? row.stock ?? null,
+    threshold: row.threshold ?? row.limit ?? null,
+    expiry_date: row.expiry_date ?? row.expiryDate ?? null,
+    created_at: row.created_at ?? row.createdAt ?? null,
+  }
+}
+
+function normalizeSupplier(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.supplier_id ?? row.supplierId ?? null,
+    name: row.name ?? row.company_name ?? row.companyName ?? '',
+    tax_id: row.tax_id ?? row.taxId ?? '',
+    contact_name: row.contact_name ?? row.contactName ?? '',
+    email: row.email ?? '',
+    phone: row.phone ?? '',
+    payment_terms: row.payment_terms ?? row.paymentTerms ?? 30,
+    address: row.address ?? '',
+    notes: row.notes ?? '',
+  }
+}
+
+function normalizeOrder(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.order_id ?? row.orderId ?? null,
+    supplier_id: row.supplier_id ?? row.supplierId ?? null,
+    status: row.status ?? '',
+    ordered_date: row.ordered_date ?? row.orderedDate ?? null,
+    expected_date: row.expected_date ?? row.expectedDate ?? null,
+    total: row.total ?? row.amount ?? null,
+  }
+}
 
 // ---------------------------------------------------------------
 // TABS
@@ -571,7 +636,7 @@ async function load(page = 1) {
     if (categoryFilter.value) params.itemType    = categoryFilter.value
     if (stockFilter.value)    params.stockStatus = stockFilter.value
     const { data } = await http.get('/inventory', { params })
-    items.value = data.data || data.items || data || []
+    items.value = asArray(data?.data || data?.items || data).map(normalizeInventoryItem).filter(Boolean)
     const m = data.meta || {}
     pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
   } catch (e) {
@@ -660,7 +725,7 @@ async function loadAlerts() {
   alertsLoading.value = true; alertsError.value = ''
   try {
     const { data } = await http.get('/inventory/alerts')
-    alerts.value = data.data || data || []
+    alerts.value = asArray(data?.data || data?.alerts || data).map(normalizeAlert).filter(Boolean)
   } catch (e) {
     alertsError.value = e.response?.data?.message || 'No se pudieron cargar las alertas'
   } finally { alertsLoading.value = false }
@@ -670,7 +735,7 @@ async function resolveAlert(id) {
   resolvingAlert.value = id
   try {
     await http.patch(`/inventory/alerts/${id}/resolve`)
-    alerts.value = alerts.value.filter(a => a.id !== id)
+    alerts.value = alerts.value.filter(a => String(a.id) !== String(id))
   } catch (e) {
     alertsError.value = e.response?.data?.message || 'No se pudo resolver la alerta'
   } finally { resolvingAlert.value = null }
@@ -695,7 +760,7 @@ async function loadSuppliers() {
   suppliersLoading.value = true; suppliersError.value = ''
   try {
     const { data } = await http.get('/suppliers')
-    suppliers.value = data.data || data || []
+    suppliers.value = asArray(data?.data || data?.suppliers || data).map(normalizeSupplier).filter(Boolean)
   } catch (e) {
     suppliersError.value = e.response?.data?.message || 'No se pudieron cargar los proveedores'
   } finally { suppliersLoading.value = false }
@@ -703,6 +768,10 @@ async function loadSuppliers() {
 
 function supplierName(id) {
   return suppliers.value.find(s => s.id === id)?.name || '—'
+}
+
+function supplierNameStable(id) {
+  return suppliers.value.find(s => String(s.id) === String(id))?.name || '—'
 }
 
 function openSupplierModal(supplier = null) {
@@ -766,7 +835,7 @@ async function deleteSupplier(id) {
   deletingSupplier.value = id
   try {
     await http.delete(`/suppliers/${id}`)
-    suppliers.value = suppliers.value.filter(s => s.id !== id)
+    suppliers.value = suppliers.value.filter(s => String(s.id) !== String(id))
   } catch (e) {
     suppliersError.value = e.response?.data?.message || 'No se pudo eliminar el proveedor'
   } finally { deletingSupplier.value = null }
@@ -810,7 +879,7 @@ async function loadOrders() {
   ordersLoading.value = true; ordersError.value = ''
   try {
     const { data } = await http.get('/purchase-orders')
-    orders.value = data.data || data || []
+    orders.value = asArray(data?.data || data?.orders || data).map(normalizeOrder).filter(Boolean)
   } catch (e) {
     ordersError.value = e.response?.data?.message || 'No se pudieron cargar las órdenes de compra'
   } finally { ordersLoading.value = false }
