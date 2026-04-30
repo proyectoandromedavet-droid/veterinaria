@@ -2,7 +2,8 @@
   <button
     :type="type"
     class="base-button"
-    :class="[`base-button--${variant}`, { 'base-button--block': block }]"
+    :class="[`base-button--${variant}`, `base-button--${size}`, { 'base-button--block': block }]"
+    :disabled="disabled"
     v-bind="$attrs"
   >
     <slot />
@@ -14,6 +15,8 @@ defineProps({
   type: { type: String, default: 'button' },
   variant: { type: String, default: 'primary' },
   block: { type: Boolean, default: false },
+  size: { type: String, default: 'md' },
+  disabled: { type: Boolean, default: false },
 })
 </script>
 
@@ -24,6 +27,7 @@ defineProps({
   border: none;
   cursor: pointer;
   font-weight: 600;
+  transition: opacity var(--transition), transform var(--transition), background var(--transition);
 }
 
 .base-button--primary {
@@ -31,7 +35,8 @@ defineProps({
   color: var(--white);
 }
 
-.base-button--secondary {
+.base-button--secondary,
+.base-button--ghost {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
@@ -42,7 +47,32 @@ defineProps({
   color: var(--white);
 }
 
+.base-button--sm {
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+
+.base-button--md {
+  padding: 12px 18px;
+  font-size: 0.9rem;
+}
+
+.base-button--lg {
+  padding: 14px 22px;
+  font-size: 1rem;
+}
+
 .base-button--block {
   width: 100%;
+}
+
+.base-button:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.base-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

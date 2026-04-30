@@ -1,6 +1,15 @@
 <template>
-  <div v-if="modelValue" class="base-modal__backdrop" @click.self="$emit('update:modelValue', false)">
-    <div ref="dialog" class="base-modal" role="dialog" aria-modal="true" :aria-label="label" tabindex="-1">
+  <div v-if="modelValue" class="base-modal__backdrop" @click.self="close">
+    <div
+      ref="dialog"
+      class="base-modal"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="label"
+      :aria-labelledby="labelledby || undefined"
+      tabindex="-1"
+      @keydown.esc.prevent="close"
+    >
       <slot />
     </div>
   </div>
@@ -12,11 +21,17 @@ import { nextTick, ref, watch } from 'vue'
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   label: { type: String, default: 'Modal' },
+  labelledby: { type: String, default: '' },
+  width: { type: String, default: '560px' },
 })
 
-defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue'])
 
 const dialog = ref(null)
+
+function close() {
+  emit('update:modelValue', false)
+}
 
 watch(() => props.modelValue, async (value) => {
   if (!value) return
@@ -37,7 +52,9 @@ watch(() => props.modelValue, async (value) => {
 }
 
 .base-modal {
-  width: min(100%, 560px);
+  width: min(100%, v-bind(width));
+  max-height: min(90vh, 960px);
+  overflow-y: auto;
   background: var(--white);
   border-radius: var(--radius-xl);
   padding: 24px;

@@ -1,14 +1,16 @@
 <template>
   <div class="base-table" role="region" :aria-label="label">
-    <table>
+    <p v-if="caption" class="base-table__caption">{{ caption }}</p>
+    <div class="base-table__content">
       <slot />
-    </table>
+    </div>
   </div>
 </template>
 
 <script setup>
 defineProps({
   label: { type: String, default: 'Tabla de datos' },
+  caption: { type: String, default: '' },
 })
 </script>
 
@@ -19,8 +21,15 @@ defineProps({
   background: var(--white);
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
+.base-table__content {
+  min-width: 100%;
 }
+
+.base-table__caption {
+  margin: 0;
+  padding: 12px 16px 0;
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+
 </style>
