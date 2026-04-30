@@ -114,17 +114,37 @@ async function refundPayment(mpPaymentId, amount) {
  * @param {string} dataId       — query param ?data.id o body.data.id
  * @returns {boolean}
  */
-function validateWebhookSignature(xSignature, xRequestId, dataId) {
+function parseSignatureHeader(xSignature) {
+  return Object.fromEntries(
+    String(xSignature || '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const [key, ...rest] = part.split('=');
+        return [key, rest.join('=')];
+      })
+  );
+}
+
+function validateWebhookSignature(xSignature, xRequestId, dataId, opts = {}) {
   const secret = process.env.MP_WEBHOOK_SECRET;
   if (!secret) return true; // Si no hay secret configurado, no validar (dev)
 
   try {
-    const parts    = Object.fromEntries(xSignature.split(',').map(p => p.split('=')));
-    const ts       = parts['ts'];
-    const received = parts['v1'];
+    const toleranceSec = parseInt(opts.toleranceSec || process.env.MP_WEBHOOK_TOLERANCE_SEC || '300');
+    const parts    = parseSignatureHeader(xSignature);
+    const ts       = parts.ts;
+    const received = parts.v1;
+    if (!ts || !received || !xRequestId || !dataId) return false;
+
+    const now = Math.floor(Date.now() / 1000);
+    if (Math.abs(now - Number(ts)) > toleranceSec) return false;
+
     const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
     const expected = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
+    if (expected.length !== received.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(received, 'utf8'));
   } catch (_) {
     return false;
   }

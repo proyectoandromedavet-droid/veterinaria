@@ -1,5 +1,5 @@
 <template>
-  <div class="login-page">
+  <div class="login-page" data-testid="login-page">
 
     <!-- Fondo ilustrado veterinario -->
     <svg class="vet-bg" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice">
@@ -623,6 +623,7 @@
           <label for="email">Correo electrónico</label>
           <input
             id="email"
+            data-testid="login-email"
             v-model.trim="form.email"
             type="email"
             placeholder="usuario@veterinaria.com"
@@ -637,6 +638,7 @@
           <div class="field__pwd">
             <input
               id="password"
+              data-testid="login-password"
               v-model="form.password"
               :type="showPwd ? 'text' : 'password'"
               placeholder="••••••••••"
@@ -652,7 +654,7 @@
 
         <div v-if="error" class="alert alert--error">{{ error }}</div>
 
-        <button type="submit" class="btn-primary" :disabled="loading">
+        <button type="submit" class="btn-primary" data-testid="login-submit" :disabled="loading">
           <span v-if="loading" class="spinner"/>
           <span v-else>Ingresar</span>
         </button>

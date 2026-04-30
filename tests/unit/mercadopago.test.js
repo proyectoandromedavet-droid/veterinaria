@@ -23,7 +23,7 @@ describe('MercadoPago helpers', () => {
 
     test('valida firma correcta', () => {
       process.env.MP_WEBHOOK_SECRET = 'test-secret';
-      const ts       = '1711234567';
+      const ts       = String(Math.floor(Date.now() / 1000));
       const xReqId   = 'req-abc';
       const dataId   = '12345';
       const manifest = `id:${dataId};request-id:${xReqId};ts:${ts};`;
@@ -37,6 +37,15 @@ describe('MercadoPago helpers', () => {
     test('rechaza firma incorrecta', () => {
       process.env.MP_WEBHOOK_SECRET = 'test-secret';
       expect(validateWebhookSignature('ts=123,v1=firmainvalida', 'req-1', 'data-1')).toBe(false);
+      delete process.env.MP_WEBHOOK_SECRET;
+    });
+
+    test('rechaza webhook con timestamp vencido', () => {
+      process.env.MP_WEBHOOK_SECRET = 'test-secret';
+      const ts = String(Math.floor(Date.now() / 1000) - 3600);
+      const manifest = `id:data-1;request-id:req-1;ts:${ts};`;
+      const hash = crypto.createHmac('sha256', 'test-secret').update(manifest).digest('hex');
+      expect(validateWebhookSignature(`ts=${ts},v1=${hash}`, 'req-1', 'data-1')).toBe(false);
       delete process.env.MP_WEBHOOK_SECRET;
     });
   });

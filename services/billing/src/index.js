@@ -461,8 +461,8 @@ mpRouter.post('/:mpPaymentId/refund',
 mpRouter.post('/webhook', async (req, res, next) => {
   try {
     // Validar firma
-    const xSig  = req.headers['x-signature']   || '';
-    const xReqId = req.headers['x-request-id']  || '';
+    const xSig  = req.headers['x-signature'] || '';
+    const xReqId = req.headers['x-request-id'] || req.headers['x-idempotency-key'] || '';
     const dataId = req.query['data.id'] || req.body?.data?.id || '';
 
     if (!mp.validateWebhookSignature(xSig, xReqId, dataId)) {

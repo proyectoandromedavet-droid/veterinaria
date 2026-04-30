@@ -16,19 +16,46 @@ const db          = require('./db');
 
 // ── Helmet (HTTP security headers) ───────────────────────────────────────────
 // Incluye Permissions-Policy para controlar acceso a cámara, micrófono y geoloc.
+function csvEnv(name, fallback = []) {
+  const value = process.env[name];
+  if (!value) return fallback;
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function buildCspDirectives() {
+  const connectSrc = ["'self'", ...csvEnv('CSP_CONNECT_SRC')];
+  const scriptSrc = ["'self'", ...csvEnv('CSP_SCRIPT_SRC')];
+  const styleSrc = ["'self'", ...csvEnv('CSP_STYLE_SRC')];
+  const imgSrc = ["'self'", 'data:', 'https:', ...csvEnv('CSP_IMG_SRC')];
+  const fontSrc = ["'self'", 'data:', 'https:', ...csvEnv('CSP_FONT_SRC')];
+
+  if (process.env.NODE_ENV !== 'production') {
+    connectSrc.push('ws:', 'wss:', 'http://localhost:*', 'http://127.0.0.1:*');
+    scriptSrc.push("'unsafe-eval'");
+    styleSrc.push("'unsafe-inline'");
+  }
+
+  return {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    scriptSrc,
+    styleSrc,
+    imgSrc,
+    connectSrc,
+    fontSrc,
+    objectSrc: ["'none'"],
+    frameSrc: ["'none'"],
+    frameAncestors: ["'none'"],
+    formAction: ["'self'"],
+    manifestSrc: ["'self'"],
+    workerSrc: ["'self'", 'blob:'],
+    upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+  };
+}
+
 const helmetMiddleware = helmet({
   contentSecurityPolicy: {
-    directives: {
-      defaultSrc:     ["'self'"],
-      scriptSrc:      ["'self'"],
-      styleSrc:       ["'self'"],
-      imgSrc:         ["'self'", 'data:', 'https:'],
-      connectSrc:     ["'self'"],
-      frameSrc:       ["'none'"],
-      frameAncestors: ["'none'"],
-      objectSrc:      ["'none'"],
-      upgradeInsecureRequests: [],
-    },
+    directives: buildCspDirectives(),
   },
   crossOriginEmbedderPolicy: false,  // allow Swagger UI assets
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },

@@ -126,31 +126,94 @@ jobs:
     if: github.event_name == 'push'
     strategy:
       matrix:
-        service: [gateway, auth, patients, medical, lab-imaging, billing, grooming, reports]
+        include:
+          - image: gateway
+            context: .
+            file: gateway/Dockerfile
+          - image: auth
+            context: .
+            file: services/auth/Dockerfile
+          - image: patients
+            context: .
+            file: services/patients/Dockerfile
+          - image: medical
+            context: .
+            file: services/medical/Dockerfile
+          - image: lab-imaging
+            context: .
+            file: services/lab-imaging/Dockerfile
+          - image: billing
+            context: .
+            file: services/billing/Dockerfile
+          - image: grooming
+            context: .
+            file: services/grooming/Dockerfile
+          - image: reports
+            context: .
+            file: services/reports/Dockerfile
+          - image: notifications
+            context: .
+            file: services/notifications/Dockerfile
+          - image: portal
+            context: .
+            file: services/portal/Dockerfile
+          - image: telemedicine
+            context: .
+            file: services/telemedicine/Dockerfile
+          - image: ai
+            context: .
+            file: services/ai/Dockerfile
+          - image: frontend
+            context: andromeda-front
+            file: andromeda-front/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build ${{ matrix.service }}
+      - name: Build ${{ matrix.image }}
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: services/${{ matrix.service }}/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: false
-          tags: vetmanager/${{ matrix.service }}:ci
+          tags: vetmanager/${{ matrix.image }}:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Scan ${{ matrix.service }} image with Trivy
+      - name: Scan ${{ matrix.image }} image with Trivy
         uses: aquasecurity/trivy-action@0.24.0
         with:
-          image-ref: vetmanager/${{ matrix.service }}:ci
+          image-ref: vetmanager/${{ matrix.image }}:ci
           format: table
           exit-code: '1'
           ignore-unfixed: true
           severity: CRITICAL,HIGH
+
+  frontend-e2e:
+    name: Frontend E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: andromeda-front/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: andromeda-front
+        run: npm ci --prefer-offline
+
+      - name: Install Playwright Chromium
+        working-directory: andromeda-front
+        run: npx playwright install --with-deps chromium
+
+      - name: Run frontend E2E
+        working-directory: andromeda-front
+        run: npm run e2e
 
   # ── Deploy to staging (only on push to staging branch) ──────────────────────
   deploy-staging:
