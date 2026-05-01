@@ -20,9 +20,12 @@ const {
   notificationOrderExpr,
   buildNotificationInsert,
 } = require('../../../shared/notificationLogSchema');
-const { withOpenApiValidation } = require('../../../shared/serviceBase');
+const { withOpenApiValidation, fromHeaders } = require('../../../shared/serviceBase');
+const { appErrorHandler } = require('../../../shared/errors');
+const { createLogger }    = require('../../../shared/logger');
 const { enqueueJob, processPendingJobs } = require('../../../shared/notificationRetry');
 const eventBus = require('../../../shared/eventBus');
+const log = createLogger('notifications');
 
 const app    = express();
 const server = http.createServer(app);
@@ -38,15 +41,7 @@ app.use((req, res, next) => {
 withOpenApiValidation(app, path.join(__dirname, 'openapi.yaml'));
 
 // ── User context from gateway headers ────────────────────────────────────────
-app.use((req, _res, next) => {
-  req.user = {
-    userId:   req.headers['x-user-id'],
-    orgId:    req.headers['x-org-id'],
-    branchId: req.headers['x-branch-id'],
-    roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
-  };
-  next();
-});
+app.use(fromHeaders);
 
 // ── Redis pub/sub ─────────────────────────────────────────────────────────────
 let redisPub, redisSub;
@@ -833,31 +828,36 @@ app.get('/notifications/retries', async (req, res, next) => {
 });
 
 // ── Error handler ─────────────────────────────────────────────────────────────
-app.use((err, _req, res, _next) => {
-  console.error('[notifications]', err.message);
-  res.status(500).json({ success: false, error: { message: err.message } });
+app.use(appErrorHandler);
+app.use((err, req, res, _next) => {
+  log.error(err.message, { stack: err.stack, traceId: req.headers['x-trace-id'] });
+  const isProd = process.env.NODE_ENV === 'production';
+  res.status(500).json({ success: false, error: { message: isProd ? 'Internal server error' : err.message } });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, async () => {
-    await getRedis().catch(e => console.warn('[notifications] Redis not available:', e.message));
+    await getRedis().catch(e => log.warn('Redis not available at startup', { err: e.message }));
     stopEventBus = await eventBus.subscribe('notifications-service', async (event) => {
-      console.info('[notifications][event-bus]', { topic: event.topic, ts: event.ts });
+      log.info('event-bus message', { topic: event.topic, ts: event.ts });
     }, ['notifications.push']).catch(() => null);
     retryInterval = setInterval(() => {
-      processPendingJobs().catch((e) => console.warn('[notifications] retry worker:', e.message));
+      processPendingJobs().catch((e) => log.warn('retry worker error', { err: e.message }));
     }, parseInt(process.env.NOTIFICATION_RETRY_INTERVAL_MS || '30000'));
-    console.log(`[notifications] running on port ${PORT}`);
+    log.info(`notifications running on port ${PORT}`, { env: process.env.NODE_ENV });
   });
 }
 
-function shutdown() {
+function shutdown(signal) {
+  log.info(`${signal} received — shutting down notifications`);
   if (retryInterval) clearInterval(retryInterval);
   if (stopEventBus) stopEventBus().catch(() => {});
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10_000).unref();
 }
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
 
 module.exports = app;

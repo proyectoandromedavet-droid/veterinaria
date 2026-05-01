@@ -16,7 +16,10 @@ const {
   requestId,
 } = require('../../../shared/security');
 const { requireInternalSig } = require('../../../shared/internalAuth');
-const { withOpenApiValidation } = require('../../../shared/serviceBase');
+const { withOpenApiValidation, startService } = require('../../../shared/serviceBase');
+const { appErrorHandler } = require('../../../shared/errors');
+const { createLogger }    = require('../../../shared/logger');
+const log = createLogger('auth');
 const app  = express();
 const PORT = parseInt(process.env.PORT || '3001');
 let alertScanInterval = null;
@@ -121,23 +124,22 @@ app.get('/health/ready', async (_req, res) => {
 
 app.use('/schema', require('./routes/schema.routes'));
 
-// Error handler — never leak internals
-app.use((err, _req, res, _next) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  console.error('[auth-error]', err.stack || err.message);
+// Error handler
+app.use(appErrorHandler);
+app.use((err, req, res, _next) => {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ success: false, error: { message: 'Invalid JSON body' } });
   }
+  log.error(err.message, { stack: err.stack, traceId: req.headers['x-trace-id'] });
+  const isProd = process.env.NODE_ENV === 'production';
   res.status(500).json({ success: false, error: { message: isProd ? 'Internal server error' : err.message } });
 });
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    alertScanInterval = setInterval(() => {
-      scanSuspiciousAccessPatterns(parseInt(process.env.SECURITY_ALERT_SCAN_WINDOW_MINUTES || '1', 10)).catch(() => {});
-    }, Math.max(30000, parseInt(process.env.SECURITY_ALERT_SCAN_INTERVAL_MS || '60000', 10)));
-    console.log(`[auth] running on port ${PORT}`);
-  });
+  startService(app, 'auth', PORT, { drainMs: 10_000 });
+  alertScanInterval = setInterval(() => {
+    scanSuspiciousAccessPatterns(parseInt(process.env.SECURITY_ALERT_SCAN_WINDOW_MINUTES || '1', 10)).catch(() => {});
+  }, Math.max(30000, parseInt(process.env.SECURITY_ALERT_SCAN_INTERVAL_MS || '60000', 10)));
 }
 
 module.exports = app;

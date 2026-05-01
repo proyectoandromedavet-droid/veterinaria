@@ -1,7 +1,9 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4050'
+// Sin VITE_API_URL (Railway single-service) usa URL relativa — el browser la resuelve al mismo origen.
+// En dev local con Vite, el proxy de vite.config.js reescribe /api/v1 → gateway:4050.
+const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 const DEFAULT_ORIGIN = 'http://localhost:4050'
 
 function getGatewayOrigin() {
@@ -20,20 +22,22 @@ const SAFE_METHODS = new Set(['get', 'head', 'options'])
 
 let csrfTokenPromise = null
 let csrfTokenCache = null
+let csrfTokenExpiresAt = 0
+const CSRF_TTL_MS = 55 * 60 * 1000 // 55 min (gateway TTL es 1h)
 
 async function fetchCsrfToken() {
   const res = await axios.get(`${getGatewayOrigin()}/csrf-token`, { withCredentials: true })
   const token = res.data?.data?.csrfToken
   if (token) {
     csrfTokenCache = token
+    csrfTokenExpiresAt = Date.now() + CSRF_TTL_MS
     return token
   }
   throw new Error('CSRF token missing from gateway response')
 }
 
 async function ensureCsrfToken() {
-  const cached = csrfTokenCache
-  if (cached) return cached
+  if (csrfTokenCache && Date.now() < csrfTokenExpiresAt) return csrfTokenCache
 
   if (!csrfTokenPromise) {
     csrfTokenPromise = fetchCsrfToken().finally(() => {
@@ -123,6 +127,7 @@ http.interceptors.response.use(
 
 export function clearCsrfToken() {
   csrfTokenCache = null
+  csrfTokenExpiresAt = 0
 }
 
 export { ensureCsrfToken }

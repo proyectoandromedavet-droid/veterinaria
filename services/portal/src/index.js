@@ -34,7 +34,10 @@ const {
   notificationMarkReadSet,
   notificationOrderExpr,
 } = require('../../../shared/notificationLogSchema');
-const { withOpenApiValidation } = require('../../../shared/serviceBase');
+const { withOpenApiValidation, startService } = require('../../../shared/serviceBase');
+const { appErrorHandler } = require('../../../shared/errors');
+const { createLogger }    = require('../../../shared/logger');
+const log = createLogger('portal');
 
 // Rate limiter for auth endpoints — 10 attempts per 15 min per IP
 const authLimiter = rateLimit({
@@ -822,9 +825,13 @@ app.get('/health/ready', async (_req, res) => {
   res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', service: 'portal', checks });
 });
 
-app.use((err, _req, res, _next) => {
-  console.error('[portal]', err.message);
-  res.status(500).json({ success: false, error: { message: 'Error interno del servidor' } });
+app.use(appErrorHandler);
+app.use((err, req, res, _next) => {
+  log.error(err.message, { stack: err.stack, traceId: req.headers['x-trace-id'] });
+  const isProd = process.env.NODE_ENV === 'production';
+  res.status(500).json({ success: false, error: { message: isProd ? 'Error interno del servidor' : err.message } });
 });
 
-app.listen(PORT, () => console.log(`[portal] running on port ${PORT}`));
+if (process.env.NODE_ENV !== 'test') {
+  startService(app, 'portal', PORT, { drainMs: 10_000 });
+}

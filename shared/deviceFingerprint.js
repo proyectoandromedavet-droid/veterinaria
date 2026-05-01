@@ -2,7 +2,7 @@
 /**
  * Device Fingerprint — detecta cambio de dispositivo en sesiones activas.
  * El cliente envía X-Device-Fingerprint en cada request.
- * Al login, se guarda el fingerprint en user_sessions.
+ * Al login, se guarda el fingerprint en sessions.
  * En requests posteriores, si cambia → security event.
  *
  * Flag-gated: DEVICE_FINGERPRINT_ENABLED=true en env
@@ -38,7 +38,7 @@ async function recordDeviceFingerprint(sessionId, rawFingerprint) {
 
   try {
     await db.query(
-      'UPDATE user_sessions SET device_fingerprint = :fp WHERE id = :sessionId',
+      'UPDATE sessions SET device_fingerprint = :fp WHERE id = :sessionId',
       { fp, sessionId },
     );
   } catch (err) {

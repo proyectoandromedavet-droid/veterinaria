@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const express    = require('express');
+const fs         = require('fs');
 const http       = require('http');
 const path       = require('path');
 const swaggerUi  = require('swagger-ui-express');
@@ -297,6 +298,24 @@ app.use(dlpMiddleware);
 
 // ── Proxy routes to microservices ─────────────────────────────────────────────
 registerProxies(app);
+
+// ── Frontend SPA — sirve el dist del frontend con fallback a index.html ───────
+// Solo activo cuando el directorio dist existe (producción/Railway sin Docker).
+// En Docker, nginx sirve el frontend directamente. En dev, usa el Vite dev server.
+const frontendDist = path.join(__dirname, '../../andromeda-front/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist, { index: false }));
+  app.get('*', (req, res, next) => {
+    if (
+      req.originalUrl.startsWith('/api/') ||
+      req.originalUrl.startsWith('/health') ||
+      req.originalUrl.startsWith('/metrics') ||
+      req.originalUrl.startsWith('/csrf-token') ||
+      req.originalUrl.startsWith('/.well-known')
+    ) return next();
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // ── 404 catch-all ─────────────────────────────────────────────────────────────
 app.use((req, res) => {
