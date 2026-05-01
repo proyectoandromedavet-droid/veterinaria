@@ -205,7 +205,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>💰 Nueva factura</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -280,7 +280,7 @@
         <div class="modal modal--detail">
           <div class="modal__header">
             <h3>📄 Detalle de factura</h3>
-            <button class="modal__close" @click="closeViewModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeViewModal()">✕</button>
           </div>
 
           <div v-if="detailLoading" class="detail-loading">
@@ -379,7 +379,7 @@
         <div class="modal modal--sm">
           <div class="modal__header">
             <h3>💳 Registrar pago</h3>
-            <button class="modal__close" @click="closePayModal()">✕</button>
+            <button type="button" class="modal__close" @click="closePayModal()">✕</button>
           </div>
           <div class="form-body">
             <p class="pay-invoice-ref">
@@ -447,6 +447,60 @@ function dueDateClass(dt) {
   return ''
 }
 
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeInvoice(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.invoice_id ?? row.invoiceId ?? null,
+    invoice_number: row.invoice_number ?? row.number ?? row.invoiceNumber ?? '',
+    client_name: row.client_name ?? row.client?.name ?? row.clientName ?? '',
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    email: row.email ?? row.client?.email ?? '',
+    status: row.status ?? 'draft',
+    issued_date: row.issued_date ?? row.issuedDate ?? null,
+    due_date: row.due_date ?? row.dueDate ?? null,
+    total_amount: row.total_amount ?? row.totalAmount ?? 0,
+  }
+}
+
+function normalizeConsolRow(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    branch_name: row.branch_name ?? row.branchName ?? '',
+    overdue_invoices: row.overdue_invoices ?? row.overdueInvoices ?? 0,
+    outstanding_amount: row.outstanding_amount ?? row.outstandingAmount ?? 0,
+    avg_days_overdue: row.avg_days_overdue ?? row.avgDaysOverdue ?? null,
+  }
+}
+
+function normalizeInvoiceDetail(detail) {
+  if (!detail || typeof detail !== 'object') return null
+  return {
+    ...detail,
+    id: detail.id ?? detail.invoice_id ?? detail.invoiceId ?? null,
+    invoice_number: detail.invoice_number ?? detail.number ?? detail.invoiceNumber ?? '',
+    status: detail.status ?? 'draft',
+    client_name: detail.client_name ?? detail.client?.name ?? detail.clientName ?? '',
+    patient_name: detail.patient_name ?? detail.patient?.name ?? detail.patientName ?? '',
+    total_amount: detail.total_amount ?? detail.totalAmount ?? 0,
+    paid_amount: detail.paid_amount ?? detail.paidAmount ?? null,
+    items: asArray(detail.items ?? detail.invoice_items ?? detail.invoiceItems).map((it) => ({
+      ...it,
+      description: it.description ?? it.name ?? '',
+      quantity: it.quantity ?? 0,
+      unit_price: it.unit_price ?? it.unitPrice ?? 0,
+      total: it.total ?? it.line_total ?? it.lineTotal ?? 0,
+    })),
+  }
+}
+
 // ── Facturas list ─────────────────────────────────────────────────────────────
 const items = ref([])
 const loading = ref(false)
@@ -466,7 +520,7 @@ async function load(page = 1) {
     if (dateFrom.value)     params.from   = dateFrom.value
     if (dateTo.value)       params.to     = dateTo.value
     const { data } = await http.get('/invoices', { params })
-    let rows = data.data || data.invoices || data || []
+    let rows = asArray(data?.data || data?.invoices || data).map(normalizeInvoice).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     if (needle) {
       rows = rows.filter((row) => [row.invoice_number, row.client_name, row.patient_name, row.email]
@@ -569,7 +623,7 @@ async function viewInvoice(inv) {
   detailLoading.value = true
   try {
     const { data } = await http.get(`/invoices/${inv.id}`)
-    detailInvoice.value = data
+    detailInvoice.value = normalizeInvoiceDetail(data?.data || data)
   } catch (e) {
     detailError.value = e.response?.data?.message || 'No se pudo cargar el detalle'
   } finally {
@@ -592,7 +646,7 @@ async function cancelInvoice(inv) {
     const { data } = await http.patch(`/invoices/${inv.id}/cancel`)
     detailInvoice.value = { ...detailInvoice.value, status: data?.status || 'cancelled' }
     // Update the row in the list without reloading
-    const row = items.value.find(i => i.id === inv.id)
+    const row = items.value.find(i => String(i.id) === String(inv.id))
     if (row) row.status = 'cancelled'
     computeSummary()
   } catch (e) {
@@ -629,7 +683,7 @@ async function confirmMarkPaid() {
   payingSaving.value = true; payError.value = ''
   try {
     await http.patch(`/invoices/${payTarget.value.id}/pay`, { payment_method: payMethod.value })
-    const row = items.value.find(i => i.id === payTarget.value.id)
+    const row = items.value.find(i => String(i.id) === String(payTarget.value.id))
     if (row) row.status = 'paid'
     computeSummary()
     closePayModal()
@@ -690,7 +744,7 @@ async function loadConsolidated() {
       http.get('/billing/consolidated/outstanding'),
     ])
     consolSummary.value     = summaryRes.data?.data || summaryRes.data || {}
-    consolOutstanding.value = outstandingRes.data?.data || outstandingRes.data || []
+    consolOutstanding.value = asArray(outstandingRes.data?.data || outstandingRes.data).map(normalizeConsolRow).filter(Boolean)
   } catch (e) {
     consolError.value = e.response?.data?.message || 'No se pudo cargar el consolidado'
   } finally {

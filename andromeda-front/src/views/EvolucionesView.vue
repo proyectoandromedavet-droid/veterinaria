@@ -66,7 +66,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>📋 Nueva evolución clínica</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
 
           <!-- Tabs -->
@@ -585,6 +585,40 @@
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
 
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeMedicalRecord(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.record_id ?? row.recordId ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    vet_name: row.vet_name ?? row.vet?.name ?? row.vetName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+    chief_complaint: row.chief_complaint ?? row.chiefComplaint ?? '',
+    visit_date: row.visit_date ?? row.visitDate ?? null,
+    opened_at: row.opened_at ?? row.openedAt ?? null,
+    status: row.status ?? '',
+    weight_kg: row.weight_kg ?? row.weightKg ?? null,
+    temperature_celsius: row.temperature_celsius ?? row.temperatureCelsius ?? null,
+  }
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+  }
+}
+
 const items      = ref([])
 const loading    = ref(false)
 const error      = ref('')
@@ -629,7 +663,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }
@@ -651,7 +685,7 @@ async function load(page = 1) {
   try {
     const params = { page, limit: 15 }
     const { data } = await http.get('/medical-records', { params })
-    let rows = data.data || data.records || data || []
+    let rows = asArray(data?.data || data?.records || data).map(normalizeMedicalRecord).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     if (needle) {
       rows = rows.filter((row) => [row.patient_name, row.chief_complaint, row.vet_name]
