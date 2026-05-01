@@ -4,17 +4,17 @@
     <div class="page-header">
       <div class="page-header__left">
         <span class="page-emoji">🐾</span>
-        <div>
-          <h2 class="page-title">Pacientes</h2>
-          <p class="page-sub">Historial de mascotas y sus dueños</p>
+      <div>
+          <h2 class="page-title">{{ t('patients.title') }}</h2>
+          <p class="page-sub">{{ t('patients.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openModal()">🐱 Nuevo paciente</button>
+      <button type="button" class="btn-primary" @click="openModal()">{{ t('patients.newPatient') }}</button>
     </div>
 
     <!-- Búsqueda -->
     <div class="filters">
-      <input v-model.trim="search" type="search" placeholder="🔍 Buscar por nombre, especie o dueño…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <input v-model.trim="search" type="search" :placeholder="t('patients.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
       <select v-model="speciesFilter" class="filter-select" @change="load()">
         <option value="">Todas las especies</option>
         <option v-for="sp in speciesList" :key="sp.id" :value="sp.common_name">
@@ -25,15 +25,15 @@
 
     <!-- Carga -->
     <div v-if="loading" class="loading-state">
-      <span class="spin spin--dark" /> Cargando pacientes…
+      <span class="spin spin--dark" /> {{ t('patients.loading') }}
     </div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
 
     <!-- Grid de pacientes -->
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐾</span>
-      <p>No se encontraron pacientes</p>
-      <button type="button" class="btn-ghost" @click="openModal()">Registrar primer paciente</button>
+      <p>{{ t('patients.empty') }}</p>
+      <button type="button" class="btn-ghost" @click="openModal()">{{ t('patients.registerFirst') }}</button>
     </div>
 
     <div v-else class="patient-grid">
@@ -82,7 +82,7 @@
     <div v-if="pagination.totalPages > 1" class="pagination">
       <button type="button" :disabled="pagination.page <= 1" @click="loadPage(pagination.page - 1)">← Ant.</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-      <button :disabled="pagination.page >= pagination.totalPages" @click="loadPage(pagination.page + 1)">Sig. →</button>
+      <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="loadPage(pagination.page + 1)">{{ t('patients.next') }} →</button>
     </div>
 
     <!-- Modal detalle -->
@@ -94,18 +94,18 @@
             <button type="button" class="modal__close" @click="showDetail = false">✕</button>
           </div>
           <div class="form-body" v-if="detailPatient">
-            <div class="detail-row"><b>Especie:</b> {{ detailPatient.species }}</div>
-            <div class="detail-row"><b>Raza:</b> {{ detailPatient.breed_name || detailPatient.breed || '—' }}</div>
-            <div class="detail-row"><b>Sexo:</b> {{ sexLabel(detailPatient.sex) }}</div>
-            <div class="detail-row"><b>Nacimiento:</b> {{ detailPatient.birthdate ? formatDate(detailPatient.birthdate) : '—' }}</div>
-            <div class="detail-row"><b>Peso:</b> {{ detailPatient.weight_kg ? detailPatient.weight_kg + ' kg' : '—' }}</div>
-            <div class="detail-row"><b>Chip:</b> {{ detailPatient.chip_number || '—' }}</div>
-            <div class="detail-row"><b>Dueño:</b> {{ detailPatient.primary_owner || '—' }}</div>
-            <div class="detail-row"><b>Tel. dueño:</b> {{ detailPatient.owner_phone || '—' }}</div>
+            <div class="detail-row"><b>{{ t('patients.species') }}:</b> {{ detailPatient.species }}</div>
+            <div class="detail-row"><b>{{ t('patients.breed') }}:</b> {{ detailPatient.breed_name || detailPatient.breed || t('patients.noBreed') }}</div>
+            <div class="detail-row"><b>{{ t('patients.sex') }}:</b> {{ sexLabel(detailPatient.sex) }}</div>
+            <div class="detail-row"><b>{{ t('patients.birthdate') }}:</b> {{ detailPatient.birthdate ? formatDate(detailPatient.birthdate) : '—' }}</div>
+            <div class="detail-row"><b>{{ t('patients.weight') }}:</b> {{ detailPatient.weight_kg ? detailPatient.weight_kg + ' kg' : '—' }}</div>
+            <div class="detail-row"><b>{{ t('patients.chip') }}:</b> {{ detailPatient.chip_number || '—' }}</div>
+            <div class="detail-row"><b>{{ t('patients.owner') }}:</b> {{ detailPatient.primary_owner || '—' }}</div>
+            <div class="detail-row"><b>{{ t('patients.ownerPhone') }}:</b> {{ detailPatient.owner_phone || '—' }}</div>
           </div>
           <div class="modal__actions">
             <button type="button" class="btn-ghost" @click="showDetail = false">Cerrar</button>
-            <button type="button" class="btn-primary" @click="openEdit(detailPatient); showDetail = false">✏️ Editar</button>
+            <button type="button" class="btn-primary" @click="openEdit(detailPatient); showDetail = false">{{ t('patients.edit') }}</button>
           </div>
         </div>
       </div>
@@ -116,7 +116,7 @@
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>{{ editingId ? '✏️ Editar paciente' : '🐾 Nuevo paciente' }}</h3>
+            <h3>{{ editingId ? t('patients.editPatient') : t('patients.newPatientModal') }}</h3>
             <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleSave" novalidate>
@@ -191,7 +191,7 @@
 
             <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+      <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="saving">
                 <span v-if="saving" class="spin spin--sm" />
                 <span v-else>{{ editingId ? 'Guardar cambios' : 'Registrar paciente' }}</span>
@@ -207,6 +207,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
 
 const items        = ref([])
 const loading      = ref(false)

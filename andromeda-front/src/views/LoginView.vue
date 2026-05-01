@@ -614,7 +614,7 @@
       <!-- Logo -->
       <div class="login-card__logo">
         <AppLogo size="lg" />
-        <p class="login-card__subtitle">Sistema de Gestión Veterinaria</p>
+        <p class="login-card__subtitle">{{ t('login.subtitle') }}</p>
       </div>
 
       <!-- PASO 1: Email + Contraseña -->
@@ -646,7 +646,7 @@
               :disabled="loading"
               required
             />
-            <button type="button" class="field__eye" @click="showPwd = !showPwd" :aria-label="showPwd ? 'Ocultar' : 'Mostrar'">
+            <button type="button" class="field__eye" @click="showPwd = !showPwd" :aria-label="showPwd ? t('login.hidePassword') : t('login.showPassword')">
               {{ showPwd ? '🙈' : '👁️' }}
             </button>
           </div>
@@ -656,18 +656,18 @@
 
         <button type="submit" class="btn-primary" data-testid="login-submit" :disabled="loading">
           <span v-if="loading" class="spinner"/>
-          <span v-else>Ingresar</span>
+          <span v-else>{{ t('login.signIn') }}</span>
         </button>
         <div class="sso-block">
-          <p class="sso-block__label">o ingresá con tu directorio corporativo</p>
+          <p class="sso-block__label">{{ t('login.corpLoginHint') }}</p>
           <div class="sso-block__actions">
-            <button type="button" class="btn-ghost" @click="handleSso('google')" :disabled="loading">Google Workspace</button>
-            <button type="button" class="btn-ghost" @click="handleSso('microsoft')" :disabled="loading">Microsoft</button>
+            <button type="button" class="btn-ghost" @click="handleSso('google')" :disabled="loading">{{ t('login.ssoGoogle') }}</button>
+            <button type="button" class="btn-ghost" @click="handleSso('microsoft')" :disabled="loading">{{ t('login.ssoMicrosoft') }}</button>
           </div>
         </div>
 
         <div class="login-card__links">
-          <button type="button" class="login-card__link" @click="step = 'forgot'">¿Olvidaste tu contraseña?</button>
+          <button type="button" class="login-card__link" @click="step = 'forgot'">{{ t('login.forgotPassword') }}</button>
         </div>
       </form>
 
@@ -675,12 +675,12 @@
       <form v-else-if="step === 'twofa'" @submit.prevent="handleTwoFa" novalidate>
         <div class="twofa-header">
           <span class="twofa-icon">🔐</span>
-          <h3>Verificación en dos pasos</h3>
-          <p>Ingresá el código de tu app autenticadora</p>
+          <h3>{{ t('login.twoFaTitle') }}</h3>
+          <p>{{ t('login.twoFaHelp') }}</p>
         </div>
 
         <div class="field">
-          <label for="code">Código de 6 dígitos</label>
+          <label for="code">{{ t('login.twoFaCodeLabel') }}</label>
           <input
             id="code"
             v-model.trim="form.code"
@@ -700,11 +700,11 @@
 
         <button type="submit" class="btn-primary" :disabled="loading || form.code.length < 6">
           <span v-if="loading" class="spinner"/>
-          <span v-else>Verificar</span>
+          <span v-else>{{ t('login.verify') }}</span>
         </button>
 
         <button type="button" class="btn-ghost" @click="step = 'credentials'; error = ''">
-          ← Volver
+          ← {{ t('login.back') }}
         </button>
       </form>
 
@@ -712,8 +712,8 @@
       <form v-else-if="step === 'forgot'" @submit.prevent="handleForgot" novalidate>
         <div class="twofa-header">
           <span class="twofa-icon">✉️</span>
-          <h3>Recuperar contraseña</h3>
-          <p>Te enviamos un enlace a tu correo</p>
+          <h3>{{ t('login.recoverTitle') }}</h3>
+          <p>{{ t('login.recoverHelp') }}</p>
         </div>
 
         <div class="field">
@@ -733,11 +733,11 @@
 
         <button type="submit" class="btn-primary" :disabled="loading">
           <span v-if="loading" class="spinner"/>
-          <span v-else>Enviar enlace</span>
+          <span v-else>{{ t('login.sendLink') }}</span>
         </button>
 
         <button type="button" class="btn-ghost" @click="step = 'credentials'; error = ''; success = ''">
-          ← Volver al login
+          ← {{ t('login.backToLogin') }}
         </button>
       </form>
 
@@ -753,6 +753,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { authApi } from '../api/auth'
 import AppLogo from '../components/AppLogo.vue'
+import { t } from '../i18n'
 
 const router = useRouter()
 const route = useRoute()
