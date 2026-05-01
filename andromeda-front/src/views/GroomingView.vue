@@ -154,7 +154,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
 
 function asArray(value) {
@@ -227,6 +227,8 @@ async function loadServiceTypes() {
     serviceTypesList.value = asArray(data?.data || data?.serviceTypes || data).map(normalizeServiceType).filter(Boolean)
   } catch { serviceTypesList.value = [] }
 }
+
+const SERVICES_LIST = computed(() => serviceTypesList.value.map((svc) => svc.name).filter(Boolean))
 
 function petEmoji(s) {
   const m = { dog:'🐶', cat:'🐱', rabbit:'🐰', bird:'🐦' }
