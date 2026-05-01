@@ -9,7 +9,7 @@
           <p class="page-sub">Consultas veterinarias a distancia</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openModal()">🐾 Nueva teleconsulta</button>
+      <button type="button" class="btn-primary" @click="openModal()">🐾 Nueva teleconsulta</button>
     </div>
 
     <!-- KPI Stats bar -->
@@ -72,7 +72,7 @@
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐱</span>
       <p>No hay teleconsultas para esta fecha</p>
-      <button class="btn-ghost" @click="openModal()">Programar consulta</button>
+      <button type="button" class="btn-ghost" @click="openModal()">Programar consulta</button>
     </div>
 
     <div v-else class="tele-list">
@@ -95,6 +95,7 @@
         <div class="tele-card__right">
           <button
             v-if="t.status === 'scheduled'"
+            type="button"
             class="btn-join"
             @click="joinCall(t)"
           >
@@ -102,11 +103,13 @@
           </button>
           <button
             v-if="t.status === 'in_progress'"
+            type="button"
             class="btn-xs btn-xs--green"
             @click="changeStatus(t, 'completed')"
           >Finalizar</button>
           <button
             v-if="t.status !== 'completed' && t.status !== 'cancelled'"
+            type="button"
             class="btn-xs btn-xs--red"
             @click="changeStatus(t, 'cancelled')"
           >Cancelar</button>
@@ -120,7 +123,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>💻 Nueva teleconsulta</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -203,6 +206,68 @@ import { useAuthStore } from '../stores/auth'
 import http from '../api/client'
 import { adminUsersApi } from '../api/adminUsers'
 
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeRoles(value) {
+  return asArray(value)
+    .map((role) => {
+      if (typeof role === 'string') return role
+      return role?.name || role?.code || role?.slug || role?.role || ''
+    })
+    .filter(Boolean)
+}
+
+function normalizeTeleSession(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.session_id ?? row.sessionId ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    client_name: row.client_name ?? row.client?.name ?? row.clientName ?? '',
+    vet_name: row.vet_name ?? row.vet?.name ?? row.vetName ?? '',
+    platform_name: row.platform_name ?? row.platform?.name ?? row.platformName ?? '',
+    status: row.status ?? '',
+    scheduled_date: row.scheduled_date ?? row.scheduledAt ?? row.start_time ?? null,
+    start_time: row.start_time ?? row.scheduled_date ?? null,
+    meeting_url: row.meeting_url ?? row.meetingUrl ?? '',
+  }
+}
+
+function normalizeVet(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.user_id ?? row.userId ?? null,
+    first_name: row.first_name ?? row.firstName ?? row.name ?? row.email ?? '',
+    last_name: row.last_name ?? row.lastName ?? '',
+    roles: normalizeRoles(row.roles),
+  }
+}
+
+function normalizePlatform(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.platform_id ?? row.platformId ?? null,
+    name: row.name ?? row.platform_name ?? row.platformName ?? '',
+  }
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+    owner_id: row.owner_id ?? row.ownerId ?? '',
+  }
+}
+
 const items = ref([])
 const loading = ref(false)
 const error   = ref('')
@@ -229,7 +294,7 @@ async function load() {
     if (dateFilter.value)   params.date   = dateFilter.value
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/tele/sessions', { params })
-    const rows = data.data || data.consultations || data || []
+    const rows = asArray(data?.data || data?.consultations || data).map(normalizeTeleSession).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     items.value = needle
       ? rows.filter((row) => [row.patient_name, row.client_name, row.vet_name, row.platform_name]
@@ -267,7 +332,7 @@ const auth = useAuthStore()
 async function loadStats() {
   try {
     const { data } = await http.get('/tele/stats')
-    const rows = data.data || data || []
+    const rows = asArray(data?.data || data).filter(Boolean)
     const todayStr = new Date().toISOString().split('T')[0]
     let totalSessions = 0
     let completedSessions = 0
@@ -298,13 +363,15 @@ const vetList = ref([])
 async function loadVets() {
   try {
     const VET_ROLES = ['veterinarian','surgeon','vet_technician','tele_vet']
-    const currentRoles = auth.roles || []
+    const currentRoles = normalizeRoles(auth.roles)
     const currentUser = auth.user || {}
     const isAdmin = currentRoles.includes('superadmin') || currentRoles.includes('org_admin')
 
     if (isAdmin) {
       const { data } = await adminUsersApi.list({ limit: 100 })
-      vetList.value = (data.data || []).filter(u => u.roles && VET_ROLES.some(r => u.roles.includes(r)))
+      vetList.value = asArray(data?.data || data)
+        .map(normalizeVet)
+        .filter((u) => u && VET_ROLES.some((r) => u.roles.includes(r)))
       return
     }
 
@@ -327,7 +394,7 @@ const platformList = ref([])
 async function loadPlatforms() {
   try {
     const { data } = await http.get('/tele/platforms')
-    platformList.value = data.data || []
+    platformList.value = asArray(data?.data || data).map(normalizePlatform).filter(Boolean)
   } catch { platformList.value = [] }
 }
 
@@ -344,7 +411,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }

@@ -9,7 +9,7 @@
           <p class="page-sub">Control y registro del plan sanitario</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openModal()">
+      <button type="button" class="btn-primary" @click="openModal()">
         {{ mainTab === 'vacunas' ? '💉 Registrar vacuna' : '🐛 Registrar desparasitación' }}
       </button>
     </div>
@@ -119,7 +119,7 @@
 
       <!-- Paginación vacunas -->
       <div v-if="pagination.totalPages > 1" class="pagination">
-        <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
         <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
       </div>
@@ -189,7 +189,7 @@
 
       <!-- Paginación deworming -->
       <div v-if="dewPagination.totalPages > 1" class="pagination">
-        <button :disabled="dewPagination.page <= 1" @click="loadDew(dewPagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="dewPagination.page <= 1" @click="loadDew(dewPagination.page - 1)">← Ant.</button>
         <span>{{ dewPagination.page }} / {{ dewPagination.totalPages }}</span>
         <button :disabled="dewPagination.page >= dewPagination.totalPages" @click="loadDew(dewPagination.page + 1)">Sig. →</button>
       </div>

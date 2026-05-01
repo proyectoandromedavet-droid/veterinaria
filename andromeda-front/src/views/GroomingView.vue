@@ -9,7 +9,7 @@
           <p class="page-sub">Servicios de estética y cuidado</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openModal()">✂️ Nueva sesión</button>
+      <button type="button" class="btn-primary" @click="openModal()">✂️ Nueva sesión</button>
     </div>
 
     <!-- KPIs -->
@@ -77,9 +77,9 @@
           </div>
         </div>
         <div class="groom-card__actions">
-          <button v-if="g.status === 'scheduled'" class="btn-xs btn-xs--yellow" @click="changeStatus(g, 'in_progress')">Iniciar</button>
-          <button v-if="g.status === 'in_progress'" class="btn-xs btn-xs--green" @click="changeStatus(g, 'completed')">Finalizar</button>
-          <button v-if="g.status !== 'completed' && g.status !== 'cancelled'" class="btn-xs btn-xs--red" @click="changeStatus(g, 'cancelled')">Cancelar</button>
+          <button v-if="g.status === 'scheduled'" type="button" class="btn-xs btn-xs--yellow" @click="changeStatus(g, 'in_progress')">Iniciar</button>
+          <button v-if="g.status === 'in_progress'" type="button" class="btn-xs btn-xs--green" @click="changeStatus(g, 'completed')">Finalizar</button>
+          <button v-if="g.status !== 'completed' && g.status !== 'cancelled'" type="button" class="btn-xs btn-xs--red" @click="changeStatus(g, 'cancelled')">Cancelar</button>
         </div>
       </div>
     </div>
@@ -90,7 +90,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>✂️ Nueva sesión de grooming</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -157,6 +157,58 @@
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
 
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeGrooming(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.appointment_id ?? row.appointmentId ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    client_name: row.client_name ?? row.client?.name ?? row.clientName ?? '',
+    groomer_name: row.groomer_name ?? row.groomer?.name ?? row.groomerName ?? '',
+    services: row.services ?? row.service_names ?? row.serviceNames ?? [],
+    status: row.status ?? '',
+    scheduled_date: row.scheduled_date ?? row.scheduledAt ?? row.start_time ?? null,
+    start_time: row.start_time ?? row.scheduled_date ?? null,
+    price: row.price ?? row.estimated_price ?? row.estimatedPrice ?? null,
+    patient: row.patient ?? null,
+  }
+}
+
+function normalizeGroomer(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.groomer_id ?? row.groomerId ?? null,
+    name: row.name ?? `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+  }
+}
+
+function normalizeServiceType(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.service_type_id ?? row.serviceTypeId ?? null,
+    name: row.name ?? row.service_name ?? row.serviceName ?? '',
+  }
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+    owner_id: row.owner_id ?? row.ownerId ?? '',
+  }
+}
+
 const items = ref([])
 const loading = ref(false)
 const error   = ref('')
@@ -172,7 +224,7 @@ const serviceTypesList = ref([])
 async function loadServiceTypes() {
   try {
     const { data } = await http.get('/grooming/service-types')
-    serviceTypesList.value = data.data || []
+    serviceTypesList.value = asArray(data?.data || data?.serviceTypes || data).map(normalizeServiceType).filter(Boolean)
   } catch { serviceTypesList.value = [] }
 }
 
@@ -199,7 +251,7 @@ async function load() {
     if (dateFilter.value)   params.date   = dateFilter.value
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/grooming/appointments', { params })
-    const rows = data.data || data.sessions || data || []
+    const rows = asArray(data?.data || data?.sessions || data).map(normalizeGrooming).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     items.value = needle
       ? rows.filter((row) => [row.patient_name, row.client_name, row.groomer_name, row.services]
@@ -236,7 +288,7 @@ const groomerList = ref([])
 async function loadGroomers() {
   try {
     const { data } = await http.get('/grooming/groomers')
-    groomerList.value = (data.data || []).map(g => ({ id: g.id, name: g.name || `${g.first_name} ${g.last_name}` }))
+    groomerList.value = asArray(data?.data || data?.groomers || data).map(normalizeGroomer).filter(Boolean)
   } catch { groomerList.value = [] }
 }
 
@@ -253,7 +305,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }

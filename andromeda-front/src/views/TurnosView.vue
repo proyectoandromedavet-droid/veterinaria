@@ -10,7 +10,7 @@
           <p class="page-sub">Gestión de citas y agenda diaria</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openModal()">🐾 Nuevo turno</button>
+      <button type="button" class="btn-primary" @click="openModal()">🐾 Nuevo turno</button>
     </div>
 
     <!-- Filtros -->
@@ -33,7 +33,7 @@
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐱</span>
       <p>No hay turnos para este día</p>
-      <button class="btn-ghost" @click="openModal()">Agendar primer turno</button>
+      <button type="button" class="btn-ghost" @click="openModal()">Agendar primer turno</button>
     </div>
 
     <div v-else class="appt-grid">

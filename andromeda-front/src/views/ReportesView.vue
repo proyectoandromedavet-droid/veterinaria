@@ -9,7 +9,7 @@
           <p class="page-sub">Estadísticas y análisis del sistema</p>
         </div>
       </div>
-      <button class="btn-primary" @click="exportReport()">⬇️ Exportar</button>
+      <button type="button" class="btn-primary" @click="exportReport()">⬇️ Exportar</button>
     </div>
 
     <!-- Período -->

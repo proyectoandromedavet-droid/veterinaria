@@ -9,7 +9,7 @@
           <p class="page-sub">Gestión de pacientes hospitalizados</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openAdmit()">+ Admitir paciente</button>
+      <button type="button" class="btn-primary" @click="openAdmit()">+ Admitir paciente</button>
     </div>
 
     <!-- Stats -->
@@ -39,10 +39,10 @@
 
     <!-- Toggle de vista -->
     <div class="view-toggle">
-      <button :class="['toggle-btn', { 'toggle-btn--active': viewMode === 'list' }]" @click="viewMode = 'list'">
+      <button type="button" :class="['toggle-btn', { 'toggle-btn--active': viewMode === 'list' }]" @click="viewMode = 'list'">
         ☰ Lista
       </button>
-      <button :class="['toggle-btn', { 'toggle-btn--active': viewMode === 'board' }]" @click="switchToBoard()">
+      <button type="button" :class="['toggle-btn', { 'toggle-btn--active': viewMode === 'board' }]" @click="switchToBoard()">
         🏠 Tablero por sala
       </button>
     </div>
@@ -135,7 +135,7 @@
       </div>
 
       <div v-if="pagination.totalPages > 1" class="pagination">
-        <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
         <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
       </div>
@@ -323,10 +323,10 @@
 
             <!-- Tabs -->
             <div class="tabs">
-              <button :class="['tab', { 'tab--active': detailTab === 'monitoring' }]" @click="detailTab = 'monitoring'">
+              <button type="button" :class="['tab', { 'tab--active': detailTab === 'monitoring' }]" @click="detailTab = 'monitoring'">
                 📊 Monitoreo
               </button>
-              <button :class="['tab', { 'tab--active': detailTab === 'medications' }]" @click="detailTab = 'medications'">
+              <button type="button" :class="['tab', { 'tab--active': detailTab === 'medications' }]" @click="detailTab = 'medications'">
                 💊 Medicamentos
               </button>
             </div>
@@ -398,7 +398,7 @@
                 </div>
                 <div v-if="monError" class="alert alert--error" style="margin-top:8px">{{ monError }}</div>
                 <div style="margin-top:10px;display:flex;justify-content:flex-end">
-                  <button class="btn-primary" style="padding:8px 18px;font-size:0.85rem" @click="handleMonitoring" :disabled="monSaving">
+                  <button type="button" class="btn-primary" style="padding:8px 18px;font-size:0.85rem" @click="handleMonitoring" :disabled="monSaving">
                     <span v-if="monSaving" class="spin spin--sm" />
                     <span v-else>💾 Guardar monitoreo</span>
                   </button>
@@ -474,7 +474,7 @@
                 </div>
                 <div v-if="medError" class="alert alert--error" style="margin-top:8px">{{ medError }}</div>
                 <div style="margin-top:10px;display:flex;justify-content:flex-end">
-                  <button class="btn-primary" style="padding:8px 18px;font-size:0.85rem" @click="handleMedication" :disabled="medSaving">
+                  <button type="button" class="btn-primary" style="padding:8px 18px;font-size:0.85rem" @click="handleMedication" :disabled="medSaving">
                     <span v-if="medSaving" class="spin spin--sm" />
                     <span v-else>💊 Prescribir</span>
                   </button>
@@ -491,7 +491,7 @@
             >
               🚪 Dar alta
             </button>
-            <button class="btn-ghost" @click="showDetail = false">Cerrar</button>
+            <button type="button" class="btn-ghost" @click="showDetail = false">Cerrar</button>
           </div>
         </div>
       </div>

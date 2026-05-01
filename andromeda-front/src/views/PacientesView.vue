@@ -9,7 +9,7 @@
           <p class="page-sub">Historial de mascotas y sus dueños</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openModal()">🐱 Nuevo paciente</button>
+      <button type="button" class="btn-primary" @click="openModal()">🐱 Nuevo paciente</button>
     </div>
 
     <!-- Búsqueda -->
@@ -33,7 +33,7 @@
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐾</span>
       <p>No se encontraron pacientes</p>
-      <button class="btn-ghost" @click="openModal()">Registrar primer paciente</button>
+      <button type="button" class="btn-ghost" @click="openModal()">Registrar primer paciente</button>
     </div>
 
     <div v-else class="patient-grid">
@@ -71,8 +71,8 @@
             {{ p.is_active !== false ? 'Activo' : 'Inactivo' }}
           </span>
           <div class="patient-card__actions">
-            <button class="btn-card" title="Ver historial" @click="openDetail(p)">📋</button>
-            <button class="btn-card" title="Editar" @click="openEdit(p)">✏️</button>
+            <button type="button" class="btn-card" title="Ver historial" @click="openDetail(p)">📋</button>
+            <button type="button" class="btn-card" title="Editar" @click="openEdit(p)">✏️</button>
           </div>
         </div>
       </div>
@@ -80,7 +80,7 @@
 
     <!-- Paginación -->
     <div v-if="pagination.totalPages > 1" class="pagination">
-      <button :disabled="pagination.page <= 1" @click="loadPage(pagination.page - 1)">← Ant.</button>
+      <button type="button" :disabled="pagination.page <= 1" @click="loadPage(pagination.page - 1)">← Ant.</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
       <button :disabled="pagination.page >= pagination.totalPages" @click="loadPage(pagination.page + 1)">Sig. →</button>
     </div>
@@ -104,8 +104,8 @@
             <div class="detail-row"><b>Tel. dueño:</b> {{ detailPatient.owner_phone || '—' }}</div>
           </div>
           <div class="modal__actions">
-            <button class="btn-ghost" @click="showDetail = false">Cerrar</button>
-            <button class="btn-primary" @click="openEdit(detailPatient); showDetail = false">✏️ Editar</button>
+            <button type="button" class="btn-ghost" @click="showDetail = false">Cerrar</button>
+            <button type="button" class="btn-primary" @click="openEdit(detailPatient); showDetail = false">✏️ Editar</button>
           </div>
         </div>
       </div>

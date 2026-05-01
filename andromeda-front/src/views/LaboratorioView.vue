@@ -9,7 +9,7 @@
           <p class="page-sub">Órdenes y resultados de análisis clínicos</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openNewOrder()">+ Nueva orden</button>
+      <button type="button" class="btn-primary" @click="openNewOrder()">+ Nueva orden</button>
     </div>
 
     <!-- Stats -->
@@ -122,7 +122,7 @@
     </div>
 
     <div v-if="pagination.totalPages > 1" class="pagination">
-      <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
       <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
     </div>

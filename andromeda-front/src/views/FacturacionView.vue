@@ -9,7 +9,7 @@
           <p class="page-sub">Comprobantes y pagos de servicios</p>
         </div>
       </div>
-      <button v-if="activeTab === 'facturas'" class="btn-primary" @click="openModal()">+ Nueva factura</button>
+      <button type="button" v-if="activeTab === 'facturas'" class="btn-primary" @click="openModal()">+ Nueva factura</button>
     </div>
 
     <!-- Tab Navigation -->
@@ -111,8 +111,8 @@
               <td><span class="badge" :class="`inv-${inv.status}`">{{ INV_STATUS[inv.status] || inv.status }}</span></td>
               <td>
                 <div class="row-actions">
-                  <button v-if="inv.status === 'pending' || inv.status === 'draft'" class="btn-xs btn-xs--green" @click="openPayModal(inv)">Marcar pago</button>
-                  <button class="btn-xs btn-xs--blue" @click="viewInvoice(inv)" title="Ver detalle">👁</button>
+                  <button type="button" v-if="inv.status === 'pending' || inv.status === 'draft'" class="btn-xs btn-xs--green" @click="openPayModal(inv)">Marcar pago</button>
+                  <button type="button" class="btn-xs btn-xs--blue" @click="viewInvoice(inv)" title="Ver detalle">👁</button>
                 </div>
               </td>
             </tr>
@@ -121,7 +121,7 @@
       </div>
 
       <div v-if="pagination.totalPages > 1" class="pagination">
-        <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
         <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
       </div>
@@ -140,7 +140,7 @@
             <label>Hasta</label>
             <input v-model="consolTo" type="date" class="filter-input" />
           </div>
-          <button class="btn-primary" @click="loadConsolidated()" :disabled="consolLoading">
+          <button type="button" class="btn-primary" @click="loadConsolidated()" :disabled="consolLoading">
             <span v-if="consolLoading" class="spin spin--sm" />
             <span v-else>Buscar</span>
           </button>

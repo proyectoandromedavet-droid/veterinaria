@@ -9,7 +9,7 @@
           <p class="page-sub">Historial médico completo</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openModal()">✏️ Nueva evolución</button>
+      <button type="button" class="btn-primary" @click="openModal()">✏️ Nueva evolución</button>
     </div>
 
     <div class="filters">
@@ -55,7 +55,7 @@
     </div>
 
     <div v-if="pagination.totalPages > 1" class="pagination">
-      <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
       <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
     </div>

@@ -9,7 +9,7 @@
           <p class="page-sub">Órdenes de estudios y gestión de informes</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openNewOrder()">+ Nueva orden</button>
+      <button type="button" class="btn-primary" @click="openNewOrder()">+ Nueva orden</button>
     </div>
 
     <!-- Stats -->
@@ -109,6 +109,7 @@
               <div class="action-btns">
                 <button
                   v-if="!order.has_report && order.status !== 'cancelled'"
+                  type="button"
                   class="btn-action btn-action--primary"
                   @click="openReport(order)"
                   title="Ingresar informe"
@@ -117,6 +118,7 @@
                 </button>
                 <button
                   v-if="order.has_report"
+                  type="button"
                   class="btn-action"
                   @click="openReport(order)"
                   title="Ver informe"
@@ -131,9 +133,9 @@
     </div>
 
     <div v-if="pagination.totalPages > 1" class="pagination">
-      <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-      <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+      <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
     </div>
 
     <!-- Modal nueva orden -->
@@ -142,7 +144,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>🩻 Nueva orden de imágenes</h3>
-            <button class="modal__close" @click="showNewOrder = false">✕</button>
+            <button type="button" class="modal__close" @click="showNewOrder = false">✕</button>
           </div>
 
           <form @submit.prevent="handleCreateOrder" novalidate>
@@ -160,15 +162,16 @@
                   autocomplete="off"
                 />
                 <div v-if="patientResults.length" class="autocomplete">
-                  <div
-                    v-for="pt in patientResults"
-                    :key="pt.id"
-                    class="autocomplete__item"
-                    @click="selectPatient(pt)"
-                  >
-                    {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                    <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
-                  </div>
+                    <button
+                      v-for="pt in patientResults"
+                      :key="pt.id"
+                      type="button"
+                      class="autocomplete__item"
+                      @click="selectPatient(pt)"
+                    >
+                      {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
+                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                    </button>
                 </div>
                 <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
                 <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
@@ -243,7 +246,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>📋 Informe de imágenes — {{ selectedOrder?.patient_name }}</h3>
-            <button class="modal__close" @click="showReport = false">✕</button>
+            <button type="button" class="modal__close" @click="showReport = false">✕</button>
           </div>
 
           <div v-if="detailLoading" class="loading-state" style="min-height:200px">
@@ -342,6 +345,51 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
 
 // ── Lista de órdenes ────────────────────────────────────────────────────────
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeImagingOrder(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.order_id ?? row.orderId ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    vet_name: row.vet_name ?? row.vet?.name ?? row.vetName ?? '',
+    imaging_type: row.imaging_type ?? row.type_name ?? row.typeName ?? '',
+    modality: row.modality ?? row.imaging_modality ?? '',
+    status: row.status ?? '',
+    requested_at: row.requested_at ?? row.created_at ?? row.createdAt ?? null,
+    has_report: Boolean(row.has_report ?? row.report ?? row.report_id ?? row.reportId),
+    study_count: Number(row.study_count ?? row.studyCount ?? 0) || 0,
+    species: row.species ?? row.patient?.species ?? '',
+  }
+}
+
+function normalizeImagingType(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.type_id ?? row.typeId ?? null,
+    name: row.name ?? row.type_name ?? row.typeName ?? '',
+    modality: row.modality ?? row.modality_code ?? row.modalityCode ?? '',
+  }
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+    owner_id: row.owner_id ?? row.ownerId ?? '',
+    species: row.species ?? row.pet_species ?? row.petSpecies ?? '',
+  }
+}
+
 const items        = ref([])
 const loading      = ref(false)
 const error        = ref('')
@@ -358,7 +406,7 @@ async function load(page = 1) {
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/imaging/orders', { params })
-    const rows = data.data || data.orders || data || []
+    const rows = asArray(data?.data || data?.orders || data).map(normalizeImagingOrder).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     const filtered = needle
       ? rows.filter((row) => [row.order_number, row.patient_name, row.imaging_type, row.ordered_by]
@@ -432,7 +480,7 @@ async function loadImagingTypes() {
   typesLoading.value = true
   try {
     const { data } = await http.get('/imaging/types')
-    imagingTypes.value = data.data || data || []
+    imagingTypes.value = asArray(data?.data || data).map(normalizeImagingType).filter(Boolean)
   } catch { imagingTypes.value = [] }
   finally { typesLoading.value = false }
 }
@@ -470,7 +518,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }
@@ -540,8 +588,8 @@ async function openReport(order) {
   Object.keys(rfe).forEach(k => delete rfe[k])
   try {
     const { data } = await http.get(`/imaging/orders/${order.id}`)
-    const detail = data.data || data
-    existingReport.value = detail.report || null
+    const detail = data?.data || data
+    existingReport.value = detail?.report || null
     // Pre-rellenar si ya tiene informe para edición futura (solo lectura en este caso)
   } catch (e) {
     reportError.value = e.response?.data?.message || 'No se pudo cargar el detalle'
