@@ -5,11 +5,11 @@
       <div class="page-header__left">
         <span class="page-emoji">🔪</span>
         <div>
-          <h2 class="page-title">Cirugías</h2>
-          <p class="page-sub">Programación y seguimiento de procedimientos quirúrgicos</p>
+          <h2 class="page-title">{{ t('surgery.title') }}</h2>
+          <p class="page-sub">{{ t('surgery.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openNewSurgery()">+ Programar cirugía</button>
+      <button type="button" class="btn-primary" @click="openNewSurgery()">+ {{ t('surgery.newSurgery') }}</button>
     </div>
 
     <!-- Stats -->
@@ -18,21 +18,21 @@
         <span class="stat-card__icon">📅</span>
         <div>
           <strong>{{ stats.scheduled }}</strong>
-          <span>Programadas</span>
+          <span>{{ t('surgery.scheduled') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
         <span class="stat-card__icon">⚡</span>
         <div>
           <strong>{{ stats.inProgress }}</strong>
-          <span>En curso</span>
+          <span>{{ t('surgery.inProgress') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
         <span class="stat-card__icon">✅</span>
         <div>
           <strong>{{ stats.completedToday }}</strong>
-          <span>Completadas hoy</span>
+          <span>{{ t('surgery.completedToday') }}</span>
         </div>
       </div>
     </div>
@@ -42,17 +42,17 @@
       <input
         v-model.trim="search"
         type="search"
-        placeholder="🔍 Buscar por paciente o cirujano…"
+        :placeholder="t('surgery.searchPlaceholder')"
         class="filter-input filter-input--grow"
         @input="debouncedLoad()"
       />
       <select v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">Todos los estados</option>
-        <option value="scheduled">Programada</option>
-        <option value="in_progress">En curso</option>
-        <option value="completed">Completada</option>
-        <option value="cancelled">Cancelada</option>
-        <option value="postponed">Postergada</option>
+        <option value="scheduled">{{ t('surgery.statusScheduled') }}</option>
+        <option value="in_progress">{{ t('surgery.inProgress') }}</option>
+        <option value="completed">{{ t('surgery.statusCompleted') }}</option>
+        <option value="cancelled">{{ t('surgery.statusCancelled') }}</option>
+        <option value="postponed">{{ t('surgery.statusPostponed') }}</option>
       </select>
     </div>
 
@@ -69,13 +69,13 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Paciente</th>
-            <th>Tipo de cirugía</th>
-            <th>Cirujano</th>
-            <th>Estado</th>
-            <th>Fecha programada</th>
-            <th>Duración</th>
-            <th>Acciones</th>
+            <th>{{ t('surgery.tablePatient') }}</th>
+            <th>{{ t('surgery.tableType') }}</th>
+            <th>{{ t('surgery.tableSurgeon') }}</th>
+            <th>{{ t('surgery.tableStatus') }}</th>
+            <th>{{ t('surgery.tableScheduled') }}</th>
+            <th>{{ t('surgery.tableDuration') }}</th>
+            <th>{{ t('surgery.tableActions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -98,7 +98,7 @@
             <td class="sub">{{ s.surgeon_name || '—' }}</td>
             <td>
               <span class="badge" :class="surgeryStatusClass(s.status)">{{ surgeryStatusLabel(s.status) }}</span>
-              <span v-if="s.complications" class="badge badge--red" style="margin-left:4px" title="Hubo complicaciones">⚠</span>
+              <span v-if="s.complications" class="badge badge--red" style="margin-left:4px" :title="t('surgery.complicationsLabel')">⚠</span>
             </td>
             <td class="sub">{{ formatDate(s.scheduled_date) }}</td>
             <td class="sub">{{ s.duration_minutes ? s.duration_minutes + ' min' : '—' }}</td>
@@ -108,7 +108,7 @@
                   v-if="s.status === 'in_progress' || s.status === 'completed'"
                   class="btn-action btn-action--primary"
                   @click="openAnesthesia(s)"
-                  title="Registrar anestesia"
+                  :title="t('surgery.registerAnesthesia')"
                 >
                   Anestesia
                 </button>
@@ -116,14 +116,14 @@
                   v-if="s.status === 'scheduled' || s.status === 'in_progress'"
                   class="btn-action"
                   @click="openChangeStatus(s)"
-                  title="Cambiar estado"
+                  :title="t('surgery.changeStatus')"
                 >
                   Estado
                 </button>
                 <button
                   class="btn-action"
                   @click="viewDetail(s)"
-                  title="Ver detalle"
+                  :title="t('surgery.viewDetail')"
                 >
                   Ver
                 </button>
@@ -486,6 +486,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
 
 function asArray(value) {
   if (Array.isArray(value)) return value

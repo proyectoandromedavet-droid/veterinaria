@@ -5,11 +5,11 @@
       <div class="page-header__left">
         <span class="page-emoji">🧪</span>
         <div>
-          <h2 class="page-title">Laboratorio</h2>
-          <p class="page-sub">Órdenes y resultados de análisis clínicos</p>
+          <h2 class="page-title">{{ t('laboratory.title') }}</h2>
+          <p class="page-sub">{{ t('laboratory.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openNewOrder()">+ Nueva orden</button>
+      <button type="button" class="btn-primary" @click="openNewOrder()">+ {{ t('laboratory.newOrder') }}</button>
     </div>
 
     <!-- Stats -->
@@ -18,21 +18,21 @@
         <span class="stat-card__icon">⏳</span>
         <div>
           <strong>{{ stats.pending }}</strong>
-          <span>Pendientes</span>
+          <span>{{ t('laboratory.pending') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
         <span class="stat-card__icon">🔬</span>
         <div>
           <strong>{{ stats.inProgress }}</strong>
-          <span>En proceso</span>
+          <span>{{ t('laboratory.inProgress') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
         <span class="stat-card__icon">✅</span>
         <div>
           <strong>{{ stats.completedToday }}</strong>
-          <span>Completadas hoy</span>
+          <span>{{ t('laboratory.completedToday') }}</span>
         </div>
       </div>
     </div>
@@ -42,16 +42,16 @@
       <input
         v-model.trim="search"
         type="search"
-        placeholder="🔍 Buscar por paciente…"
+        :placeholder="t('laboratory.searchPlaceholder')"
         class="filter-input filter-input--grow"
         @input="debouncedLoad()"
       />
       <select v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">Todos los estados</option>
-        <option value="pending">Pendiente</option>
-        <option value="in_progress">En proceso</option>
-        <option value="completed">Completada</option>
-        <option value="cancelled">Cancelada</option>
+        <option value="pending">{{ t('laboratory.pending') }}</option>
+        <option value="in_progress">{{ t('laboratory.inProgress') }}</option>
+        <option value="completed">{{ t('laboratory.statusCompleted') || 'Completada' }}</option>
+        <option value="cancelled">{{ t('laboratory.statusCancelled') || 'Cancelada' }}</option>
       </select>
     </div>
 
@@ -68,12 +68,12 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Paciente</th>
-            <th>Pruebas</th>
-            <th>Prioridad</th>
-            <th>Estado</th>
-            <th>Fecha</th>
-            <th>Acciones</th>
+            <th>{{ t('laboratory.tablePatient') }}</th>
+            <th>{{ t('laboratory.tableTests') }}</th>
+            <th>{{ t('laboratory.tablePriority') }}</th>
+            <th>{{ t('laboratory.tableStatus') }}</th>
+            <th>{{ t('laboratory.tableDate') }}</th>
+            <th>{{ t('laboratory.tableActions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -103,7 +103,7 @@
                   v-if="order.status === 'pending' || order.status === 'in_progress'"
                   class="btn-action btn-action--primary"
                   @click="openResults(order)"
-                  title="Ingresar resultados"
+                  :title="t('laboratory.resultsTitle')"
                 >
                   Resultados
                 </button>
@@ -124,7 +124,7 @@
     <div v-if="pagination.totalPages > 1" class="pagination">
       <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-      <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+      <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('common.next') }}</button>
     </div>
 
     <!-- Modal nueva orden -->
@@ -132,7 +132,7 @@
       <div v-if="showNewOrder" class="modal-backdrop" @click.self="showNewOrder = false">
         <div class="modal">
           <div class="modal__header">
-            <h3>🧪 Nueva orden de laboratorio</h3>
+            <h3>?? {{ t('laboratory.newModalTitle') }}</h3>
             <button type="button" class="modal__close" @click="showNewOrder = false">✕</button>
           </div>
 
@@ -246,7 +246,7 @@
       <div v-if="showResults" class="modal-backdrop" @click.self="showResults = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>🔬 Ingresar resultados — {{ selectedOrder?.patient_name }}</h3>
+            <h3>?? {{ t('laboratory.resultsTitle') }} ? {{ selectedOrder?.patient_name }}</h3>
             <button type="button" class="modal__close" @click="showResults = false">✕</button>
           </div>
 
@@ -323,6 +323,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
 
 function asArray(value) {
   if (Array.isArray(value)) return value

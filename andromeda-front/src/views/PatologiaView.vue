@@ -5,23 +5,23 @@
       <div class="page-header__left">
         <span class="page-emoji">🔬</span>
         <div>
-          <h2 class="page-title">Patología</h2>
-          <p class="page-sub">Anatomía patológica e histopatología</p>
+          <h2 class="page-title">{{ t('pathology.title') }}</h2>
+          <p class="page-sub">{{ t('pathology.subtitle') }}</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openOrderModal()">🔬 Nueva orden</button>
+      <button class="btn-primary" @click="openOrderModal()">?? {{ t('pathology.newOrder') }}</button>
     </div>
 
     <!-- KPIs -->
     <div class="kpi-row">
       <div class="kpi" style="--c:#FFF3CC;--ct:#8A6200">
-        <span>⏳</span><div><strong>{{ kpis.pending }}</strong><span>Pendientes</span></div>
+        <span>⏳</span><div><strong>{{ kpis.pending }}</strong><span>{{ t('pathology.pending') }}</span></div>
       </div>
       <div class="kpi" style="--c:#E8D6FF;--ct:#6A1AAA">
-        <span>🔬</span><div><strong>{{ kpis.processing }}</strong><span>En proceso</span></div>
+        <span>🔬</span><div><strong>{{ kpis.processing }}</strong><span>{{ t('pathology.processing') }}</span></div>
       </div>
       <div class="kpi" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span>📄</span><div><strong>{{ kpis.reported }}</strong><span>Informados</span></div>
+        <span>📄</span><div><strong>{{ kpis.reported }}</strong><span>{{ t('pathology.reported') }}</span></div>
       </div>
     </div>
 
@@ -30,10 +30,10 @@
       <select v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">Todos los estados</option>
         <option value="pending">Pendiente</option>
-        <option value="processing">En proceso</option>
+        <option value="processing">{{ t('pathology.processing') }}</option>
         <option value="reported">Informado</option>
       </select>
-      <input v-model.trim="search" type="search" placeholder="🔍 Buscar paciente…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <input v-model.trim="search" type="search" :placeholder="t('pathology.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
     <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando órdenes…</div>
@@ -48,12 +48,12 @@
         <thead>
           <tr>
             <th>N° Orden</th>
-            <th>Paciente</th>
-            <th>Tipo de estudio</th>
-            <th>Muestras</th>
-            <th>Fecha</th>
-            <th>Estado</th>
-            <th>Acciones</th>
+            <th>{{ t('pathology.tablePatient') }}</th>
+            <th>{{ t('pathology.tableType') }}</th>
+            <th>{{ t('pathology.tableSamples') }}</th>
+            <th>{{ t('pathology.tableDate') }}</th>
+            <th>{{ t('pathology.tableStatus') }}</th>
+            <th>{{ t('pathology.tableActions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -85,15 +85,15 @@
       <div v-if="showOrderModal" class="modal-backdrop" @click.self="closeOrderModal()">
         <div class="modal modal--lg">
           <div class="modal__header">
-            <h3>🔬 Nueva orden de patología</h3>
+            <h3>?? {{ t('pathology.newModalTitle') }}</h3>
             <button type="button" class="modal__close" @click="closeOrderModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>Paciente <span class="req">*</span></label>
-                  <input v-model.trim="patientSearch" type="search" placeholder="Buscar paciente…" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <label>{{ t('pathology.patientLabel') }} <span class="req">*</span></label>
+                  <input v-model.trim="patientSearch" type="search" :placeholder="t('pathology.patientPlaceholder')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                   <div v-if="patientResults.length" class="autocomplete">
                     <div v-for="pt in patientResults" :key="pt.id" class="autocomplete__item" @click="selectPatient(pt)">
                       🐾 <b>{{ pt.name }}</b>
@@ -104,34 +104,34 @@
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Tipo de estudio <span class="req">*</span></label>
+                  <label>{{ t('pathology.typeLabel') }} <span class="req">*</span></label>
                   <select v-model="orderForm.pathologyTypeId" :disabled="saving" required>
-                    <option value="">Seleccioná un tipo…</option>
+                    <option value="">{{ t('pathology.typePlaceholder') }}</option>
                     <option v-for="t in pathologyTypes" :key="t.id" :value="t.id">{{ t.name }}</option>
                   </select>
                   <span v-if="fe.pathologyTypeId" class="field-error">{{ fe.pathologyTypeId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Historia clínica / contexto</label>
-                  <textarea v-model.trim="orderForm.clinicalHistory" rows="3" placeholder="Descripción clínica relevante, diagnósticos previos…" :disabled="saving" />
+                  <label>{{ t('pathology.historyLabel') }}</label>
+                  <textarea v-model.trim="orderForm.clinicalHistory" rows="3" :placeholder="t('pathology.historyPlaceholder')" :disabled="saving" />
                 </div>
 
                 <!-- Muestras -->
                 <div class="field field--full">
                   <div class="section-header">
-                    <label>Muestras</label>
-                    <button type="button" class="btn-xs btn-xs--blue" @click="addSample()">+ Agregar muestra</button>
+                    <label>{{ t('pathology.samplesLabel') }}</label>
+                    <button type="button" class="btn-xs btn-xs--blue" @click="addSample()">+ {{ t('pathology.addSample') }}</button>
                   </div>
                   <div v-for="(s, i) in orderForm.samples" :key="i" class="sample-row">
                     <div class="sample-row__header">
-                      <span class="sample-num">Muestra {{ i + 1 }}</span>
+                      <span class="sample-num">{{ t('pathology.samplesLabel') }} {{ i + 1 }}</span>
                       <button type="button" class="btn-xs btn-xs--red" @click="removeSample(i)" :disabled="saving">✕</button>
                     </div>
                     <div class="sample-grid">
                       <div class="field">
                         <label>Tipo de muestra</label>
                         <select v-model="s.sampleType" :disabled="saving">
-                          <option value="">Sin especificar</option>
+                          <option value="">{{ t('common.none') }}</option>
                           <option value="biopsy">Biopsia</option>
                           <option value="cytology">Citología</option>
                           <option value="fine_needle">Punción con aguja fina</option>
@@ -337,6 +337,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
