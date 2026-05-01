@@ -203,7 +203,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>💉 Registrar vacuna</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -267,7 +267,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>🐛 Registrar desparasitación</h3>
-            <button class="modal__close" @click="closeModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreateDew" novalidate>
             <div class="form-body">
@@ -360,6 +360,56 @@
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
 
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+  }
+}
+
+function normalizeVaccine(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.vaccine_id ?? row.vaccineId ?? null,
+    name: row.name ?? row.vaccine_name ?? row.vaccineName ?? '',
+    manufacturer: row.manufacturer ?? row.brand ?? '',
+    next_dose_due: row.next_dose_due ?? row.nextDoseDue ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+  }
+}
+
+function normalizeDewProduct(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.product_id ?? row.productId ?? null,
+    name: row.name ?? row.product_name ?? row.productName ?? '',
+  }
+}
+
+function normalizeDewRecord(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.deworming_id ?? row.dewormingId ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    product_name: row.product_name ?? row.product?.name ?? row.productName ?? '',
+    active_ingredient: row.active_ingredient ?? row.activeIngredient ?? '',
+    parasite_type: row.parasite_type ?? row.parasiteType ?? '',
+  }
+}
+
 // ── Tab principal ──────────────────────────────────────────────
 const mainTab = ref('vacunas')
 
@@ -419,7 +469,7 @@ const vaccineList = ref([])
 async function loadVaccines() {
   try {
     const { data } = await http.get('/vaccinations/vaccines')
-    vaccineList.value = data.data || []
+    vaccineList.value = asArray(data?.data || data?.vaccines || data).map(normalizeVaccine).filter(Boolean)
   } catch { vaccineList.value = [] }
 }
 
@@ -453,7 +503,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }
@@ -469,7 +519,7 @@ async function load(page = 1) {
   try {
     const pageSize = 20
     const { data } = await http.get('/vaccinations')
-    let rows = data.data || data.vaccinations || data || []
+    let rows = asArray(data?.data || data?.vaccinations || data).map(normalizeVaccine).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     if (needle) {
       rows = rows.filter((row) => [row.patient_name, row.vaccine_name, row.manufacturer]
@@ -554,7 +604,7 @@ const dewProductList = ref([])
 async function loadDewProducts() {
   try {
     const { data } = await http.get('/vaccinations/deworming/products')
-    dewProductList.value = data.data || data || []
+    dewProductList.value = asArray(data?.data || data?.products || data).map(normalizeDewProduct).filter(Boolean)
   } catch { dewProductList.value = [] }
 }
 
@@ -563,7 +613,7 @@ async function loadDew(page = 1) {
   try {
     const pageSize = 20
     const { data } = await http.get('/vaccinations/deworming')
-    const rows = data.data || data || []
+    const rows = asArray(data?.data || data?.deworming || data).map(normalizeDewRecord).filter(Boolean)
     const needle = dewSearch.value.trim().toLowerCase()
     const filtered = needle
       ? rows.filter((row) => [row.patient_name, row.product_name, row.active_ingredient, row.parasite_type]
@@ -596,7 +646,7 @@ async function searchDewPatients() {
   dewPatientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: dewPatientSearch.value, limit: 8 } })
-      dewPatientResults.value = data.data || []
+      dewPatientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { dewPatientResults.value = [] }
   }, 300)
 }
