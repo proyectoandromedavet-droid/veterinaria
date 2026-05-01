@@ -86,7 +86,7 @@
         <div class="modal modal--lg">
           <div class="modal__header">
             <h3>🔬 Nueva orden de patología</h3>
-            <button class="modal__close" @click="closeOrderModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeOrderModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -186,7 +186,7 @@
         <div class="modal modal--lg">
           <div class="modal__header">
             <h3>🔬 {{ detailOrder.order_number }} — {{ detailOrder.patient_name }}</h3>
-            <button class="modal__close" @click="showDetailModal = false">✕</button>
+            <button type="button" class="modal__close" @click="showDetailModal = false">✕</button>
           </div>
           <div class="form-body detail-body">
             <div class="detail-section">
@@ -241,8 +241,8 @@
             <div v-else class="no-result-note">Sin informe aún</div>
           </div>
           <div class="modal__actions">
-            <button class="btn-ghost" @click="showDetailModal = false">Cerrar</button>
-            <button v-if="detailOrder.status !== 'reported'" class="btn-primary" @click="showDetailModal = false; openResultModal(detailOrder)">📄 Cargar informe</button>
+            <button type="button" class="btn-ghost" @click="showDetailModal = false">Cerrar</button>
+            <button v-if="detailOrder.status !== 'reported'" type="button" class="btn-primary" @click="showDetailModal = false; openResultModal(detailOrder)">📄 Cargar informe</button>
           </div>
         </div>
       </div>
@@ -254,7 +254,7 @@
         <div class="modal modal--lg">
           <div class="modal__header">
             <h3>📄 Informe patológico — {{ resultOrderNum }}</h3>
-            <button class="modal__close" @click="closeResultModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeResultModal()">✕</button>
           </div>
           <form @submit.prevent="handleResult" novalidate>
             <div class="form-body">
@@ -338,6 +338,47 @@
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
 
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+  }
+}
+
+function normalizePathologyOrder(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.order_id ?? row.orderId ?? null,
+    order_number: row.order_number ?? row.orderNumber ?? '',
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    pathology_type: row.pathology_type ?? row.pathologyType ?? '',
+    ordered_by: row.ordered_by ?? row.orderedBy ?? '',
+    status: row.status ?? '',
+    samples: asArray(row.samples),
+    result: row.result ?? null,
+  }
+}
+
+function normalizePathologyType(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.type_id ?? row.typeId ?? null,
+    name: row.name ?? row.type_name ?? row.typeName ?? '',
+    category_name: row.category_name ?? row.categoryName ?? 'General',
+  }
+}
+
 const items = ref([])
 const loading = ref(false)
 const error   = ref('')
@@ -363,7 +404,7 @@ async function load() {
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/pathology/orders', { params })
-    const rows = data.data || data || []
+    const rows = asArray(data?.data || data).map(normalizePathologyOrder).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     items.value = needle
       ? rows.filter((row) => [row.order_number, row.patient_name, row.pathology_type, row.ordered_by]
@@ -386,7 +427,7 @@ const pathologyTypes = ref([])
 async function loadTypes() {
   try {
     const { data } = await http.get('/pathology/types')
-    pathologyTypes.value = data.data || data || []
+    pathologyTypes.value = asArray(data?.data || data).map(normalizePathologyType).filter(Boolean)
   } catch { pathologyTypes.value = [] }
 }
 
@@ -403,7 +444,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }

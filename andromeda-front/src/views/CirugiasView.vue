@@ -146,7 +146,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>🔪 Programar cirugía</h3>
-            <button class="modal__close" @click="showNew = false">✕</button>
+            <button type="button" class="modal__close" @click="showNew = false">✕</button>
           </div>
 
           <form @submit.prevent="handleCreate" novalidate>
@@ -248,7 +248,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>💉 Registrar anestesia — {{ selectedSurgery?.patient_name }}</h3>
-            <button class="modal__close" @click="showAnesthesia = false">✕</button>
+            <button type="button" class="modal__close" @click="showAnesthesia = false">✕</button>
           </div>
 
           <form @submit.prevent="handleAnesthesia" novalidate>
@@ -344,7 +344,7 @@
         <div class="modal modal--sm">
           <div class="modal__header">
             <h3>🔄 Cambiar estado</h3>
-            <button class="modal__close" @click="showStatus = false">✕</button>
+            <button type="button" class="modal__close" @click="showStatus = false">✕</button>
           </div>
           <div class="form-body">
             <p class="sub" style="margin-bottom:8px">
@@ -353,6 +353,7 @@
             <div class="status-options">
               <button
                 v-if="selectedSurgery?.status === 'scheduled'"
+                type="button"
                 class="status-opt status-opt--yellow"
                 @click="changeStatus('in_progress')"
                 :disabled="statusSaving"
@@ -361,6 +362,7 @@
               </button>
               <button
                 v-if="selectedSurgery?.status === 'scheduled' || selectedSurgery?.status === 'in_progress'"
+                type="button"
                 class="status-opt status-opt--green"
                 @click="changeStatus('completed')"
                 :disabled="statusSaving"
@@ -369,6 +371,7 @@
               </button>
               <button
                 v-if="selectedSurgery?.status === 'scheduled'"
+                type="button"
                 class="status-opt status-opt--gray"
                 @click="changeStatus('postponed')"
                 :disabled="statusSaving"
@@ -377,6 +380,7 @@
               </button>
               <button
                 v-if="selectedSurgery?.status !== 'cancelled' && selectedSurgery?.status !== 'completed'"
+                type="button"
                 class="status-opt status-opt--red"
                 @click="changeStatus('cancelled')"
                 :disabled="statusSaving"
@@ -387,7 +391,7 @@
           </div>
           <div v-if="statusError" class="alert alert--error mx">{{ statusError }}</div>
           <div class="modal__actions" style="border-top:none;padding-top:4px">
-            <button class="btn-ghost" @click="showStatus = false" :disabled="statusSaving">Cerrar</button>
+            <button type="button" class="btn-ghost" @click="showStatus = false" :disabled="statusSaving">Cerrar</button>
           </div>
         </div>
       </div>
@@ -399,7 +403,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>🔪 Detalle cirugía — {{ detailData?.patient_name }}</h3>
-            <button class="modal__close" @click="showDetail = false">✕</button>
+            <button type="button" class="modal__close" @click="showDetail = false">✕</button>
           </div>
           <div v-if="detailLoading" class="loading-state" style="min-height:200px">
             <span class="spin spin--dark" /> Cargando…
@@ -467,7 +471,7 @@
             </div>
           </div>
           <div class="modal__actions">
-            <button class="btn-ghost" @click="showDetail = false">Cerrar</button>
+            <button type="button" class="btn-ghost" @click="showDetail = false">Cerrar</button>
           </div>
         </div>
       </div>
@@ -479,6 +483,50 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeSurgery(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.surgery_id ?? row.surgeryId ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+    surgery_type_name: row.surgery_type_name ?? row.surgeryTypeName ?? '',
+    surgery_category: row.surgery_category ?? row.category_name ?? row.categoryName ?? '',
+    lead_surgeon: row.lead_surgeon ?? row.surgeon_name ?? row.surgeonName ?? '',
+    scheduled_date: row.scheduled_date ?? row.scheduledDate ?? null,
+    status: row.status ?? '',
+  }
+}
+
+function normalizeSurgeryType(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.type_id ?? row.typeId ?? null,
+    name: row.name ?? row.type_name ?? row.typeName ?? '',
+    category_name: row.category_name ?? row.categoryName ?? 'General',
+    risk_level: row.risk_level ?? row.riskLevel ?? '',
+    estimated_duration_minutes: row.estimated_duration_minutes ?? row.estimatedDurationMinutes ?? null,
+  }
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+  }
+}
 
 // ── Lista ────────────────────────────────────────────────────────────────────
 const items        = ref([])
@@ -497,7 +545,7 @@ async function load(page = 1) {
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/surgeries', { params })
-    const rows = data.data || data.surgeries || data || []
+    const rows = asArray(data?.data || data?.surgeries || data).map(normalizeSurgery).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     const filtered = needle
       ? rows.filter((row) => [row.patient_name, row.surgery_type, row.surgery_category, row.lead_surgeon]
@@ -585,7 +633,7 @@ async function loadTypes() {
   typesLoading.value = true
   try {
     const { data } = await http.get('/surgeries/types/all')
-    allTypes.value = data.data || data || []
+    allTypes.value = asArray(data?.data || data?.types || data).map(normalizeSurgeryType).filter(Boolean)
   } catch { allTypes.value = [] }
   finally { typesLoading.value = false }
 }
@@ -604,7 +652,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }
