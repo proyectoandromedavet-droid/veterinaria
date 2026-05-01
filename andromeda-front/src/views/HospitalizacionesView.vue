@@ -184,7 +184,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>🏥 Admitir paciente</h3>
-            <button class="modal__close" @click="showAdmit = false">✕</button>
+            <button type="button" class="modal__close" @click="showAdmit = false">✕</button>
           </div>
 
           <form @submit.prevent="handleAdmit" novalidate>
@@ -288,7 +288,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>🏥 Internación — {{ detailData?.patient_name }}</h3>
-            <button class="modal__close" @click="showDetail = false">✕</button>
+            <button type="button" class="modal__close" @click="showDetail = false">✕</button>
           </div>
 
           <div v-if="detailLoading" class="loading-state" style="min-height:200px">
@@ -503,7 +503,7 @@
         <div class="modal modal--sm">
           <div class="modal__header">
             <h3>🚪 Dar alta — {{ dischargeTarget?.patient_name }}</h3>
-            <button class="modal__close" @click="showDischarge = false">✕</button>
+            <button type="button" class="modal__close" @click="showDischarge = false">✕</button>
           </div>
           <form @submit.prevent="handleDischarge" novalidate>
             <div class="form-body">
@@ -544,6 +544,56 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
 
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value == null) return []
+  return [value]
+}
+
+function normalizeHospitalization(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.hospitalization_id ?? row.hospitalizationId ?? null,
+    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+    responsible_vet: row.responsible_vet ?? row.attending_vet_name ?? row.attendingVetName ?? '',
+    ward_name: row.ward_name ?? row.ward?.name ?? row.wardName ?? '',
+    kennel_number: row.kennel_number ?? row.kennel?.number ?? row.kennelNumber ?? '',
+    status: row.status ?? '',
+    discharge_date: row.discharge_date ?? row.dischargeDate ?? null,
+    days_hospitalized: row.days_hospitalized ?? row.daysHospitalized ?? null,
+  }
+}
+
+function normalizeWard(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.ward_id ?? row.wardId ?? null,
+    name: row.name ?? row.ward_name ?? row.wardName ?? '',
+    available_kennels: row.available_kennels ?? row.availableKennels ?? 0,
+    kennels: asArray(row.kennels).map((k) => ({
+      ...k,
+      id: k.id ?? k.kennel_id ?? k.kennelId ?? null,
+      number: k.number ?? k.kennel_number ?? k.kennelNumber ?? '',
+      status: k.status ?? '',
+      kennel_type: k.kennel_type ?? k.kennelType ?? '',
+    })),
+  }
+}
+
+function normalizePatient(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? row.patient_id ?? row.patientId ?? null,
+    name: row.name ?? row.full_name ?? row.fullName ?? '',
+    species: row.species ?? row.species_name ?? row.speciesName ?? '',
+    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+  }
+}
+
 // ── Vista ────────────────────────────────────────────────────────────────────
 const viewMode = ref('list')
 
@@ -564,7 +614,7 @@ async function load(page = 1) {
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await http.get('/hospitalizations', { params })
-    const rows = data.data || data.hospitalizations || data || []
+    const rows = asArray(data?.data || data?.hospitalizations || data).map(normalizeHospitalization).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     const filtered = needle
       ? rows.filter((row) => [row.patient_name, row.species, row.responsible_vet, row.ward_name, row.kennel_number]
@@ -606,7 +656,7 @@ async function loadBoard() {
   boardLoading.value = true; boardError.value = ''
   try {
     const { data } = await http.get('/hospitalizations/board')
-    boardData.value = data.data || data || []
+    boardData.value = asArray(data?.data || data?.board || data).map(normalizeHospitalization).filter(Boolean)
   } catch (e) {
     boardError.value = e.response?.data?.message || 'No se pudo cargar el tablero'
   } finally { boardLoading.value = false }
@@ -625,7 +675,7 @@ async function loadWards() {
   wardsLoading.value = true
   try {
     const { data } = await http.get('/hospitalizations/wards/availability')
-    availableWards.value = data.data || data || []
+    availableWards.value = asArray(data?.data || data?.wards || data).map(normalizeWard).filter(Boolean)
   } catch { availableWards.value = [] }
   finally { wardsLoading.value = false }
 }
@@ -679,7 +729,7 @@ async function searchPatients() {
   patientTimer = setTimeout(async () => {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = data.data || []
+      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch { patientResults.value = [] }
   }, 300)
 }
