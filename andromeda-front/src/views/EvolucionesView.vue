@@ -5,27 +5,27 @@
       <div class="page-header__left">
         <span class="page-emoji">📋</span>
         <div>
-          <h2 class="page-title">Evoluciones clínicas</h2>
-          <p class="page-sub">Historial médico completo</p>
+          <h2 class="page-title">{{ t('evolutions.title') }}</h2>
+          <p class="page-sub">{{ t('evolutions.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openModal()">✏️ Nueva evolución</button>
+      <button type="button" class="btn-primary" @click="openModal()">✏️ {{ t('evolutions.newEvolution') }}</button>
     </div>
 
     <div class="filters">
-      <input v-model.trim="search" type="search" placeholder="🔍 Buscar por paciente o diagnóstico…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <input v-model.trim="search" type="search" :placeholder="t('evolutions.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
       <input v-model="dateFrom" type="date" class="filter-input" @change="load()" />
       <input v-model="dateTo"   type="date" class="filter-input" @change="load()" />
     </div>
 
     <div v-if="loading" class="loading-state">
-      <span class="spin spin--dark" /> Cargando evoluciones…
+      <span class="spin spin--dark" /> {{ t('evolutions.loading') }}
     </div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
 
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐱</span>
-      <p>No hay evoluciones registradas</p>
+      <p>{{ t('evolutions.empty') }}</p>
     </div>
 
     <div v-else class="evol-list">
@@ -39,7 +39,7 @@
         </div>
         <div class="evol-card__body">
           <div class="evol-card__section" v-if="ev.chief_complaint">
-            <span class="evol-tag evol-tag--blue">Motivo</span>
+            <span class="evol-tag evol-tag--blue">{{ t('evolutions.chiefComplaint') }}</span>
             <p>{{ ev.chief_complaint }}</p>
           </div>
           <div class="evol-card__vitals" v-if="ev.weight_kg || ev.temperature_celsius">
@@ -65,7 +65,7 @@
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>📋 Nueva evolución clínica</h3>
+            <h3>📋 {{ t('evolutions.newModalTitle') }}</h3>
             <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
 
@@ -81,12 +81,12 @@
 
               <!-- TAB 0: General + Signos vitales -->
               <div v-show="activeTab === 0">
-                <div class="section-title">Datos del paciente</div>
+                <div class="section-title">{{ t('evolutions.generalData') }}</div>
                 <div class="form-grid">
                   <div class="field field--full" style="position:relative">
-                    <label>Paciente <span class="req">*</span></label>
-                    <input v-model.trim="patientSearch" type="search" placeholder="Buscar por nombre…" :disabled="saving" @input="searchPatients" autocomplete="off" />
-                    <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
+                    <label>{{ t('evolutions.patientLabel') }} <span class="req">*</span></label>
+                    <input v-model.trim="patientSearch" type="search" :placeholder="t('evolutions.patientSearchPlaceholder')" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                    <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                       <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`Seleccionar ${pt.name}`" @click="selectPatient(pt)">
                         {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
                         <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
@@ -97,59 +97,59 @@
                   </div>
 
                   <div class="field field--full">
-                    <label>Motivo de consulta <span class="req">*</span></label>
-                    <textarea v-model.trim="form.chiefComplaint" rows="2" placeholder="Motivo principal de la visita…" :disabled="saving" />
+                    <label>{{ t('evolutions.chiefComplaint') }} <span class="req">*</span></label>
+                    <textarea v-model.trim="form.chiefComplaint" rows="2" :placeholder="t('evolutions.chiefComplaint')" :disabled="saving" />
                     <span v-if="fe.chiefComplaint" class="field-error">{{ fe.chiefComplaint }}</span>
                   </div>
 
                   <div class="field field--full">
-                    <label>Razón de visita (detalle adicional)</label>
-                    <input v-model.trim="form.reasonForVisit" type="text" placeholder="Descripción adicional de la razón…" :disabled="saving" />
+                    <label>{{ t('evolutions.reasonForVisit') }}</label>
+                    <input v-model.trim="form.reasonForVisit" type="text" :placeholder="t('evolutions.reasonForVisit')" :disabled="saving" />
                   </div>
 
                   <div class="field">
-                    <label>Fecha de visita</label>
+                    <label>{{ t('evolutions.visitDate') }}</label>
                     <input v-model="form.visitDate" type="date" :disabled="saving" />
                   </div>
 
                   <div class="field field--full">
-                    <label>Notas de la consulta</label>
-                    <textarea v-model.trim="form.notes" rows="2" placeholder="Observaciones generales de la consulta…" :disabled="saving" />
+                    <label>{{ t('evolutions.notes') }}</label>
+                    <textarea v-model.trim="form.notes" rows="2" :placeholder="t('evolutions.notes')" :disabled="saving" />
                   </div>
                 </div>
 
-                <div class="section-title" style="margin-top:18px">Signos vitales</div>
+                <div class="section-title" style="margin-top:18px">{{ t('evolutions.vitalSigns') }}</div>
                 <div class="form-grid">
                   <div class="field">
-                    <label>Peso en consulta (kg)</label>
+                    <label>{{ t('evolutions.weight') }}</label>
                     <input v-model.number="form.weightKg" type="number" step="0.01" min="0" placeholder="4.20" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Temperatura (°C)</label>
+                    <label>{{ t('evolutions.temperature') }}</label>
                     <input v-model.number="form.temperatureCelsius" type="number" step="0.1" placeholder="38.5" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Frecuencia cardíaca (lpm)</label>
+                    <label>{{ t('evolutions.heartRate') }}</label>
                     <input v-model.number="form.heartRate" type="number" min="0" placeholder="80" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Frecuencia respiratoria (rpm)</label>
+                    <label>{{ t('evolutions.respiratoryRate') }}</label>
                     <input v-model.number="form.respiratoryRate" type="number" min="0" placeholder="20" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Presión sistólica (mmHg)</label>
+                    <label>{{ t('evolutions.systolicBp') }}</label>
                     <input v-model.number="form.systolicBp" type="number" min="0" placeholder="120" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Presión diastólica (mmHg)</label>
+                    <label>{{ t('evolutions.diastolicBp') }}</label>
                     <input v-model.number="form.diastolicBp" type="number" min="0" placeholder="80" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>SpO₂ (%)</label>
+                    <label>{{ t('evolutions.spo2') }}</label>
                     <input v-model.number="form.spo2Percent" type="number" min="0" max="100" step="0.1" placeholder="98.0" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Condición corporal BCS (1–9)</label>
+                    <label>{{ t('evolutions.bodyConditionScore') }}</label>
                     <input v-model.number="form.bodyConditionScore" type="number" min="1" max="9" step="0.5" placeholder="5" :disabled="saving" />
                   </div>
                 </div>
@@ -157,22 +157,22 @@
 
               <!-- TAB 1: Anamnesis -->
               <div v-show="activeTab === 1">
-                <div class="section-title">Historia de la enfermedad actual</div>
+                <div class="section-title">{{ t('evolutions.history') }}</div>
                 <div class="form-grid">
                   <div class="field field--full">
-                    <label>Historia de la enfermedad actual</label>
-                    <textarea v-model.trim="form.currentIllnessHistory" rows="3" placeholder="Relato detallado de la historia clínica desde el inicio…" :disabled="saving" />
+                    <label>{{ t('evolutions.history') }}</label>
+                    <textarea v-model.trim="form.currentIllnessHistory" rows="3" :placeholder="t('evolutions.history')" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Duración del cuadro</label>
+                    <label>{{ t('evolutions.duration') }}</label>
                     <input v-model.trim="form.illnessDuration" type="text" placeholder="Ej: 3 días, 2 semanas" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Tipo de inicio</label>
+                    <label>{{ t('evolutions.onset') }}</label>
                     <input v-model.trim="form.illnessOnset" type="text" placeholder="Ej: brusco, progresivo, intermitente" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Apetito</label>
+                    <label>{{ t('evolutions.appetite') }}</label>
                     <select v-model="form.appetite" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal</option>
@@ -182,7 +182,7 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label>Sed</label>
+                    <label>{{ t('evolutions.thirst') }}</label>
                     <select v-model="form.thirst" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal</option>
@@ -192,7 +192,7 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label>Micción</label>
+                    <label>{{ t('evolutions.urination') }}</label>
                     <select v-model="form.urination" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal</option>
@@ -202,7 +202,7 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label>Defecación</label>
+                    <label>{{ t('evolutions.defecation') }}</label>
                     <select v-model="form.defecation" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal</option>
@@ -215,26 +215,26 @@
                   </div>
                 </div>
 
-                <div class="section-title" style="margin-top:16px">Síntomas presentes</div>
+                <div class="section-title" style="margin-top:16px">{{ t('evolutions.symptoms') }}</div>
                 <div class="checkbox-grid">
-                  <label class="checkbox-label"><input type="checkbox" v-model="form.vomiting" :disabled="saving" /> Vómitos</label>
-                  <label class="checkbox-label"><input type="checkbox" v-model="form.coughing" :disabled="saving" /> Tos</label>
-                  <label class="checkbox-label"><input type="checkbox" v-model="form.sneezing" :disabled="saving" /> Estornudos</label>
-                  <label class="checkbox-label"><input type="checkbox" v-model="form.pruritus" :disabled="saving" /> Prurito (picazón)</label>
-                  <label class="checkbox-label"><input type="checkbox" v-model="form.locomotionIssues" :disabled="saving" /> Problemas locomotores</label>
-                  <label class="checkbox-label"><input type="checkbox" v-model="form.contactWithAnimals" :disabled="saving" /> Contacto con otros animales</label>
+                  <label class="checkbox-label"><input type="checkbox" v-model="form.vomiting" :disabled="saving" /> {{ t('evolutions.vomiting') }}</label>
+                  <label class="checkbox-label"><input type="checkbox" v-model="form.coughing" :disabled="saving" /> {{ t('evolutions.coughing') }}</label>
+                  <label class="checkbox-label"><input type="checkbox" v-model="form.sneezing" :disabled="saving" /> {{ t('evolutions.sneezing') }}</label>
+                  <label class="checkbox-label"><input type="checkbox" v-model="form.pruritus" :disabled="saving" /> {{ t('evolutions.pruritus') }}</label>
+                  <label class="checkbox-label"><input type="checkbox" v-model="form.locomotionIssues" :disabled="saving" /> {{ t('evolutions.locomotionIssues') }}</label>
+                  <label class="checkbox-label"><input type="checkbox" v-model="form.contactWithAnimals" :disabled="saving" /> {{ t('evolutions.contactWithAnimals') }}</label>
                 </div>
                 <div class="form-grid" style="margin-top:10px">
                   <div class="field field--full">
-                    <label>Otros signos / síntomas</label>
-                    <textarea v-model.trim="form.otherSigns" rows="2" placeholder="Describir otros signos clínicos observados por el propietario…" :disabled="saving" />
+                    <label>{{ t('evolutions.otherSigns') }}</label>
+                    <textarea v-model.trim="form.otherSigns" rows="2" :placeholder="t('evolutions.otherSigns')" :disabled="saving" />
                   </div>
                 </div>
 
                 <div class="section-title" style="margin-top:16px">Antecedentes</div>
                 <div class="form-grid">
                   <div class="field">
-                    <label>Tipo de alimentación</label>
+                    <label>{{ t('evolutions.feedingType') }}</label>
                     <select v-model="form.feedingType" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="commercial">Balanceado comercial</option>
@@ -261,11 +261,11 @@
                     <input v-model.trim="form.recentTravel" type="text" placeholder="Destino y fecha aproximada…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Historia de vacunación</label>
+                    <label>{{ t('evolutions.vaccinationHistory') }}</label>
                     <textarea v-model.trim="form.vaccinationHistory" rows="2" placeholder="Vacunas aplicadas, fechas y laboratorio…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Historia de desparasitación</label>
+                    <label>{{ t('evolutions.dewormingHistory') }}</label>
                     <textarea v-model.trim="form.dewormingHistory" rows="2" placeholder="Antiparasitarios internos/externos, productos y fechas…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
@@ -292,7 +292,7 @@
                 <div class="section-title">Examen físico — valores medidos en consulta</div>
                 <div class="form-grid">
                   <div class="field">
-                    <label>Mucosas</label>
+                    <label>{{ t('evolutions.mucousMembranes') }}</label>
                     <select v-model="form.mucousMembranes" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="rosadas humidas">Rosadas y húmedas (normal)</option>
@@ -304,7 +304,7 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label>Estado de hidratación</label>
+                    <label>{{ t('evolutions.hydrationStatus') }}</label>
                     <select v-model="form.hydrationStatus" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="normal">Normal (&lt; 5%)</option>
@@ -318,8 +318,8 @@
                     <input v-model.trim="form.lymphNodes" type="text" placeholder="Tamaño, consistencia, sensibilidad…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Piel y pelaje</label>
-                    <input v-model.trim="form.skinCoat" type="text" placeholder="Estado general, lesiones, ectoparásitos…" :disabled="saving" />
+                    <label>{{ t('evolutions.skinCoat') }}</label>
+                    <input v-model.trim="form.skinCoat" type="text" :placeholder="t('evolutions.skinCoat')" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Ojos</label>
@@ -355,7 +355,7 @@
                   </div>
                   <div class="field field--full">
                     <label>Sistema neurológico</label>
-                    <input v-model.trim="form.neurological" type="text" placeholder="Estado mental, marcha, reflejos, sensibilidad…" :disabled="saving" />
+                    <input v-model.trim="form.neurological" type="text" :placeholder="t('evolutions.neurological')" :disabled="saving" />
                   </div>
                   <div class="field field--full">
                     <label>Sistema urogenital</label>
@@ -381,7 +381,7 @@
                     <input v-model.trim="form.diagnosisName" type="text" placeholder="Ej: Gastroenteritis aguda, Otitis externa bacteriana…" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Tipo de diagnóstico</label>
+                    <label>{{ t('evolutions.diagnosisType') }}</label>
                     <select v-model="form.diagnosisType" :disabled="saving">
                       <option value="presumptive">Presuntivo</option>
                       <option value="definitive">Definitivo</option>
@@ -412,7 +412,7 @@
                     </label>
                   </div>
                   <div class="field field--full">
-                    <label>Notas del diagnóstico</label>
+                    <label>{{ t('evolutions.diagnosisNotes') }}</label>
                     <textarea v-model.trim="form.diagnosisNotes" rows="3" placeholder="Justificación del diagnóstico, hallazgos complementarios…" :disabled="saving" />
                   </div>
                 </div>
@@ -423,7 +423,7 @@
                 <div class="section-title">Tratamiento</div>
                 <div class="form-grid">
                   <div class="field">
-                    <label>Tipo de tratamiento</label>
+                    <label>{{ t('evolutions.treatmentType') }}</label>
                     <select v-model="form.treatment.treatmentType" :disabled="saving">
                       <option value="">Seleccionar…</option>
                       <option value="medication">Medicación</option>
@@ -437,12 +437,12 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label>Fecha de inicio</label>
+                    <label>{{ t('evolutions.treatmentStart') }}</label>
                     <input v-model="form.treatment.startDate" type="date" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Descripción del tratamiento</label>
-                    <textarea v-model.trim="form.treatment.description" rows="2" placeholder="Descripción detallada del tratamiento indicado…" :disabled="saving" />
+                    <label>{{ t('evolutions.treatmentDescription') }}</label>
+                    <textarea v-model.trim="form.treatment.description" rows="2" :placeholder="t('evolutions.treatmentDescription')" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>Dosis</label>
@@ -473,11 +473,11 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label>Duración (días)</label>
+                    <label>{{ t('evolutions.durationDays') }}</label>
                     <input v-model.number="form.treatment.durationDays" type="number" min="1" placeholder="7" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Notas del tratamiento</label>
+                    <label>{{ t('evolutions.treatmentNotes') }}</label>
                     <textarea v-model.trim="form.treatment.notes" rows="2" placeholder="Indicaciones especiales, advertencias, seguimiento…" :disabled="saving" />
                   </div>
                 </div>
@@ -511,7 +511,7 @@
                       <input v-model.trim="newRxItem.route" type="text" placeholder="Ej: oral, tópica" :disabled="saving" />
                     </div>
                     <div class="field">
-                      <label>Duración (días)</label>
+                      <label>{{ t('evolutions.durationDays') }}</label>
                       <input v-model.number="newRxItem.durationDays" type="number" min="1" placeholder="7" :disabled="saving" />
                     </div>
                     <div class="field">
@@ -539,7 +539,7 @@
                         <span v-if="item.route" class="sub">Vía: {{ item.route }}</span>
                         <span v-if="item.durationDays" class="sub">{{ item.durationDays }} días</span>
                       </div>
-                      <button type="button" class="rx-item__remove" @click="removeRxItem(idx)" :disabled="saving" title="Eliminar ítem">✕</button>
+                      <button type="button" class="rx-item__remove" @click="removeRxItem(idx)" :disabled="saving" :title="t('evolutions.deleteItem')">✕</button>
                     </div>
                   </div>
                 </div>
@@ -551,8 +551,8 @@
                     <input v-model.number="form.prescriptionRefills" type="number" min="0" placeholder="0" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Notas de la receta</label>
-                    <textarea v-model.trim="form.prescriptionNotes" rows="2" placeholder="Instrucciones generales para el propietario…" :disabled="saving" />
+                    <label>{{ t('evolutions.prescriptionNotes') }}</label>
+                    <textarea v-model.trim="form.prescriptionNotes" rows="2" :placeholder="t('evolutions.prescriptionNotes')" :disabled="saving" />
                   </div>
                 </div>
               </div>
@@ -567,7 +567,7 @@
                 <button type="button" class="btn-ghost btn-sm" @click="activeTab = Math.min(tabs.length - 1, activeTab + 1)" :disabled="activeTab === tabs.length - 1">Siguiente →</button>
               </div>
               <div style="display:flex;gap:10px">
-                <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+                <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('evolutions.cancel') }}</button>
                 <button type="submit" class="btn-primary" :disabled="saving">
                   <span v-if="saving" class="spin spin--sm" />
                   <span v-else>💾 Guardar evolución</span>

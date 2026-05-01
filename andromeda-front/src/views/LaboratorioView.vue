@@ -9,7 +9,7 @@
           <p class="page-sub">{{ t('laboratory.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openNewOrder()">+ {{ t('laboratory.newOrder') }}</button>
+      <BaseButton type="button" @click="openNewOrder()">+ {{ t('laboratory.newOrder') }}</BaseButton>
     </div>
 
     <!-- Stats -->
@@ -47,21 +47,21 @@
         @input="debouncedLoad()"
       />
       <select v-model="statusFilter" class="filter-select" @change="load()">
-        <option value="">Todos los estados</option>
+        <option value="">{{ t('common.allStatuses') }}</option>
         <option value="pending">{{ t('laboratory.pending') }}</option>
         <option value="in_progress">{{ t('laboratory.inProgress') }}</option>
-        <option value="completed">{{ t('laboratory.statusCompleted') || 'Completada' }}</option>
-        <option value="cancelled">{{ t('laboratory.statusCancelled') || 'Cancelada' }}</option>
+        <option value="completed">{{ t('laboratory.statusCompleted') }}</option>
+        <option value="cancelled">{{ t('laboratory.statusCancelled') }}</option>
       </select>
     </div>
 
-    <div v-if="loading" class="loading-state">
-      <span class="spin spin--dark" /> Cargando órdenes…
+      <div v-if="loading" class="loading-state" role="status" aria-live="polite">
+      <span class="spin spin--dark" /> {{ t('laboratory.loading') }}
     </div>
-    <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+    <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🧪</span>
-      <p>No hay órdenes de laboratorio</p>
+      <p>{{ t('laboratory.empty') }}</p>
     </div>
 
     <div v-else class="card">
@@ -88,7 +88,7 @@
               </div>
             </td>
             <td>
-              <span class="test-count">{{ order.test_count || 0 }} prueba(s)</span>
+              <span class="test-count">{{ order.test_count || 0 }} {{ t('laboratory.testsTitle') }}</span>
             </td>
             <td>
               <span class="badge" :class="priorityClass(order.priority)">{{ priorityLabel(order.priority) }}</span>
@@ -99,21 +99,21 @@
             <td class="sub">{{ formatDate(order.requested_at) }}</td>
             <td>
               <div class="action-btns">
-                <button
+                  <BaseButton
                   v-if="order.status === 'pending' || order.status === 'in_progress'"
                   class="btn-action btn-action--primary"
                   @click="openResults(order)"
                   :title="t('laboratory.resultsTitle')"
                 >
-                  Resultados
-                </button>
-                <button
+                  {{ t('laboratory.resultsButton') }}
+                </BaseButton>
+                <BaseButton
                   class="btn-action"
                   @click="viewDetail(order)"
-                  title="Ver detalle"
+                  :title="t('laboratory.view')"
                 >
-                  Ver
-                </button>
+                  {{ t('laboratory.view') }}
+                </BaseButton>
               </div>
             </td>
           </tr>
@@ -122,7 +122,7 @@
     </div>
 
     <div v-if="pagination.totalPages > 1" class="pagination">
-      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">{{ t('common.previous') }}</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
       <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('common.next') }}</button>
     </div>
@@ -132,8 +132,8 @@
       <div v-if="showNewOrder" class="modal-backdrop" @click.self="showNewOrder = false">
         <div class="modal">
           <div class="modal__header">
-            <h3>?? {{ t('laboratory.newModalTitle') }}</h3>
-            <button type="button" class="modal__close" @click="showNewOrder = false">✕</button>
+            <h3>{{ t('laboratory.newModalTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showNewOrder = false">✕</BaseButton>
           </div>
 
           <form @submit.prevent="handleCreateOrder" novalidate>
@@ -141,16 +141,16 @@
 
               <!-- Paciente autocomplete -->
               <div class="field field--full" style="position:relative">
-                <label>Paciente <span class="req">*</span></label>
+                <label>{{ t('laboratory.patientLabel') }} <span class="req">*</span></label>
                 <input
                   v-model.trim="patientSearch"
                   type="search"
-                  placeholder="Buscar por nombre…"
+                  :placeholder="t('laboratory.patientPlaceholder')"
                   :disabled="saving"
                   @input="searchPatients"
                   autocomplete="off"
                 />
-                <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
+                <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                   <button
                     v-for="pt in patientResults"
                     :key="pt.id"
@@ -170,7 +170,7 @@
 
               <div class="form-grid">
                 <div class="field">
-                  <label>Prioridad</label>
+                  <label>{{ t('laboratory.priorityLabel') }}</label>
                   <select v-model="orderForm.priority" :disabled="saving">
                     <option value="routine">Rutina</option>
                     <option value="urgent">Urgente</option>
@@ -178,23 +178,23 @@
                   </select>
                 </div>
                 <div class="field field--full">
-                  <label>Notas clínicas</label>
+                  <label>{{ t('laboratory.notesLabel') }}</label>
                   <textarea
                     v-model.trim="orderForm.clinicalNotes"
                     rows="3"
-                    placeholder="Motivo de la solicitud, sospecha diagnóstica…"
+                    :placeholder="t('laboratory.notesPlaceholder')"
                     :disabled="saving"
                   />
                 </div>
               </div>
 
               <!-- Catálogo de pruebas -->
-              <div class="section-title" style="margin-top:16px">Pruebas solicitadas <span class="req">*</span></div>
+              <div class="section-title" style="margin-top:16px">{{ t('laboratory.testsTitle') }} <span class="req">*</span></div>
               <div v-if="testsLoading" class="loading-state-sm">
-                <span class="spin spin--dark spin--sm" /> Cargando catálogo…
+                <span class="spin spin--dark spin--sm" /> {{ t('laboratory.testsLoading') }}
               </div>
-              <div v-else-if="Object.keys(groupedTests).length === 0" class="sub" style="padding:8px">
-                No se pudo cargar el catálogo de pruebas.
+                <div v-else-if="Object.keys(groupedTests).length === 0" class="sub" style="padding:8px">
+                {{ t('laboratory.testsEmpty') }}
               </div>
               <div v-else class="tests-catalog">
                 <div
@@ -227,14 +227,14 @@
 
             </div>
 
-            <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
+              <div v-if="saveError" class="alert alert--error mx" role="alert">{{ saveError }}</div>
 
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="showNewOrder = false" :disabled="saving">Cancelar</button>
-              <button type="submit" class="btn-primary" :disabled="saving">
+              <BaseButton type="button" variant="ghost" @click="showNewOrder = false" :disabled="saving">{{ t('common.cancel') }}</BaseButton>
+              <BaseButton type="submit" :disabled="saving">
                 <span v-if="saving" class="spin spin--sm" />
-                <span v-else>💾 Crear orden</span>
-              </button>
+                <span v-else>{{ t('laboratory.createOrder') }}</span>
+              </BaseButton>
             </div>
           </form>
         </div>
@@ -246,12 +246,12 @@
       <div v-if="showResults" class="modal-backdrop" @click.self="showResults = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>?? {{ t('laboratory.resultsTitle') }} ? {{ selectedOrder?.patient_name }}</h3>
-            <button type="button" class="modal__close" @click="showResults = false">✕</button>
+            <h3>{{ t('laboratory.resultsTitle') }} — {{ selectedOrder?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showResults = false">✕</BaseButton>
           </div>
 
-          <div v-if="detailLoading" class="loading-state" style="min-height:200px">
-            <span class="spin spin--dark" /> Cargando orden…
+          <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
+            <span class="spin spin--dark" /> {{ t('laboratory.resultsLoading') }}
           </div>
           <form v-else @submit.prevent="handleSubmitResults" novalidate>
             <div class="form-body">
@@ -267,7 +267,7 @@
                   </div>
                   <div class="form-grid">
                     <div class="field">
-                      <label>Valor</label>
+                      <label>{{ t('laboratory.valueLabel') }}</label>
                       <input
                         v-model.trim="resultInputs[item.id].value"
                         type="text"
@@ -276,22 +276,22 @@
                       />
                     </div>
                     <div class="field">
-                      <label>Interpretación</label>
+                      <label>{{ t('laboratory.interpretationLabel') }}</label>
                       <select v-model="resultInputs[item.id].interpretation" :disabled="savingResults">
-                        <option value="">Sin interpretación</option>
-                        <option value="normal">Normal</option>
-                        <option value="low">Bajo</option>
-                        <option value="high">Alto</option>
-                        <option value="critical_low">Crítico bajo</option>
-                        <option value="critical_high">Crítico alto</option>
+                        <option value="">{{ t('laboratory.interpretationNone') }}</option>
+                        <option value="normal">{{ t('laboratory.normal') }}</option>
+                        <option value="low">{{ t('laboratory.low') }}</option>
+                        <option value="high">{{ t('laboratory.high') }}</option>
+                        <option value="critical_low">{{ t('laboratory.criticalLow') }}</option>
+                        <option value="critical_high">{{ t('laboratory.criticalHigh') }}</option>
                       </select>
                     </div>
                     <div class="field field--full">
-                      <label>Notas</label>
+                      <label>{{ t('laboratory.notesResultLabel') }}</label>
                       <input
                         v-model.trim="resultInputs[item.id].notes"
                         type="text"
-                        placeholder="Observaciones opcionales…"
+                        :placeholder="t('laboratory.notesResultLabel')"
                         :disabled="savingResults"
                       />
                     </div>
@@ -299,18 +299,18 @@
                 </div>
               </div>
               <div v-else class="empty-state" style="padding:30px">
-                <p>No hay items de prueba en esta orden.</p>
+                <p>{{ t('laboratory.noItems') }}</p>
               </div>
             </div>
 
-            <div v-if="resultsError" class="alert alert--error mx">{{ resultsError }}</div>
+            <div v-if="resultsError" class="alert alert--error mx" role="alert">{{ resultsError }}</div>
 
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="showResults = false" :disabled="savingResults">Cancelar</button>
-              <button type="submit" class="btn-primary" :disabled="savingResults">
+              <BaseButton type="button" variant="ghost" @click="showResults = false" :disabled="savingResults">{{ t('common.cancel') }}</BaseButton>
+              <BaseButton type="submit" :disabled="savingResults">
                 <span v-if="savingResults" class="spin spin--sm" />
-                <span v-else>💾 Guardar resultados</span>
-              </button>
+                <span v-else>{{ t('laboratory.saveResults') }}</span>
+              </BaseButton>
             </div>
           </form>
         </div>
@@ -322,6 +322,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import BaseButton from '../components/base/BaseButton.vue'
 import http from '../api/client'
 import { t } from '../i18n'
 
@@ -535,8 +536,8 @@ function openNewOrder() {
 
 function validateOrder() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!orderForm.patientId)         fe.patientId = 'Seleccioná un paciente'
-  if (selectedTestIds.value.length === 0) fe.tests = 'Seleccioná al menos una prueba'
+  if (!orderForm.patientId)         fe.patientId = t('laboratory.selectPatient')
+  if (selectedTestIds.value.length === 0) fe.tests = t('laboratory.testsRequired')
   return Object.keys(fe).length === 0
 }
 
@@ -599,7 +600,7 @@ async function handleSubmitResults() {
         return entry
       })
     if (results.length === 0) {
-      resultsError.value = 'Ingresá al menos un resultado'
+      resultsError.value = t('laboratory.atLeastOneResult')
       return
     }
     await http.post(`/lab/orders/${selectedOrder.value.id}/results`, { results })

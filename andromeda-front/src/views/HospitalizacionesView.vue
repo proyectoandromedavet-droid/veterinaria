@@ -1,38 +1,38 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">🏥</span>
+        <span class="page-emoji">ðŸ¥</span>
         <div>
-          <h2 class="page-title">Internaciones</h2>
-          <p class="page-sub">Gestión de pacientes hospitalizados</p>
+          <h2 class="page-title">{{ t('hospitalizations.title') }}</h2>
+          <p class="page-sub">{{ t('hospitalizations.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openAdmit()">+ Admitir paciente</button>
+      <BaseButton type="button" @click="openAdmit()">{{ t('hospitalizations.newAdmission') }}</BaseButton>
     </div>
 
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span class="stat-card__icon">🛏️</span>
+        <span class="stat-card__icon">ðŸ›ï¸</span>
         <div>
           <strong>{{ stats.active }}</strong>
-          <span>Internados activos</span>
+          <span>{{ t('hospitalizations.activeHospitalized') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span class="stat-card__icon">🚪</span>
+        <span class="stat-card__icon">ðŸšª</span>
         <div>
           <strong>{{ stats.dischargedToday }}</strong>
-          <span>Altas hoy</span>
+          <span>{{ t('hospitalizations.dischargeToday') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-        <span class="stat-card__icon">📅</span>
+        <span class="stat-card__icon">ðŸ“…</span>
         <div>
           <strong>{{ stats.avgDays }}</strong>
-          <span>Días promedio</span>
+          <span>{{ t('hospitalizations.averageDays') }}</span>
         </div>
       </div>
     </div>
@@ -40,51 +40,50 @@
     <!-- Toggle de vista -->
     <div class="view-toggle">
       <button type="button" :class="['toggle-btn', { 'toggle-btn--active': viewMode === 'list' }]" @click="viewMode = 'list'">
-        ☰ Lista
+        â˜° {{ t('hospitalizations.listView') }}
       </button>
       <button type="button" :class="['toggle-btn', { 'toggle-btn--active': viewMode === 'board' }]" @click="switchToBoard()">
-        🏠 Tablero por sala
+        ðŸ  {{ t('hospitalizations.boardView') }}
       </button>
     </div>
 
-    <!-- ── VISTA LISTA ── -->
+    <!-- â”€â”€ VISTA LISTA â”€â”€ -->
     <template v-if="viewMode === 'list'">
       <div class="filters">
         <input
           v-model.trim="search"
           type="search"
-          placeholder="🔍 Buscar por paciente…"
+          :placeholder="t('hospitalizations.searchPlaceholder')"
           class="filter-input filter-input--grow"
           @input="debouncedLoad()"
         />
         <select v-model="statusFilter" class="filter-select" @change="load()">
-          <option value="">Todos los estados</option>
-          <option value="admitted">Internado</option>
-          <option value="discharged">Con alta</option>
-          <option value="transferred">Transferido</option>
+          <option value="">{{ t('common.allStatuses') }}</option>
+          <option value="admitted">{{ t('hospitalizations.admittedStatus') }}</option>
+          <option value="discharged">{{ t('hospitalizations.dischargedStatus') }}</option>
+          <option value="transferred">{{ t('hospitalizations.transferredStatus') }}</option>
         </select>
       </div>
 
-      <div v-if="loading" class="loading-state">
-        <span class="spin spin--dark" /> Cargando internaciones…
-      </div>
-      <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+      <div v-if="loading" class="loading-state" role="status" aria-live="polite">
+        <span class="spin spin--dark" /> {{ t('hospitalizations.loading') }}</div>
+      <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
-        <span class="empty-state__emoji">🏥</span>
-        <p>No hay internaciones registradas</p>
+        <span class="empty-state__emoji">ðŸ¥</span>
+        <p>{{ t('hospitalizations.empty') }}</p>
       </div>
 
       <div v-else class="card">
         <table class="table">
           <thead>
             <tr>
-              <th>Paciente</th>
-              <th>Sala / Jaula</th>
-              <th>Veterinario</th>
-              <th>Ingreso</th>
-              <th>Días</th>
-              <th>Estado</th>
-              <th>Acciones</th>
+              <th>{{ t('hospitalizations.patient') }}</th>
+              <th>{{ t('hospitalizations.wardKennel') }}</th>
+              <th>{{ t('hospitalizations.veterinarian') }}</th>
+              <th>{{ t('hospitalizations.admission') }}</th>
+              <th>{{ t('hospitalizations.days') }}</th>
+              <th>{{ t('hospitalizations.status') }}</th>
+              <th>{{ t('hospitalizations.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -93,19 +92,19 @@
                 <div class="pet-cell">
                   <span>{{ petEmoji(h.species) }}</span>
                   <div>
-                    <strong>{{ h.patient_name || '—' }}</strong>
+                    <strong>{{ h.patient_name || 'â€”' }}</strong>
                     <span class="sub">{{ h.admission_reason || '' }}</span>
                   </div>
                 </div>
               </td>
               <td>
-                <strong class="ward-name">{{ h.ward_name || '—' }}</strong>
-                <span v-if="h.kennel_number" class="sub">Jaula {{ h.kennel_number }}</span>
+                <strong class="ward-name">{{ h.ward_name || 'â€”' }}</strong>
+                <span v-if="h.kennel_number" class="sub">{{ t('hospitalizations.kennelLabel') }} {{ h.kennel_number }}</span>
               </td>
-              <td class="sub">{{ h.attending_vet_name || '—' }}</td>
+              <td class="sub">{{ h.attending_vet_name || 'â€”' }}</td>
               <td class="sub">{{ formatDate(h.admission_date) }}</td>
               <td>
-                <span class="days-badge">{{ h.days_hospitalized ?? '—' }} d</span>
+                <span class="days-badge">{{ h.days_hospitalized ?? 'â€”' }} d</span>
               </td>
               <td>
                 <span class="badge" :class="hospStatusClass(h.status)">{{ hospStatusLabel(h.status) }}</span>
@@ -115,17 +114,17 @@
                   <button
                     class="btn-action btn-action--primary"
                     @click="openHospDetail(h)"
-                    title="Ver internación"
+                    :title="t('hospitalizations.viewAdmission')"
                   >
-                    Ver
+                    {{ t('common.view') }}
                   </button>
                   <button
                     v-if="h.status === 'admitted'"
                     class="btn-action btn-action--danger"
                     @click="openDischarge(h)"
-                    title="Dar alta"
-                  >
-                    Alta
+                    :title="t('hospitalizations.discharge')"
+                    >
+                    {{ t('hospitalizations.discharge') }}
                   </button>
                 </div>
               </td>
@@ -135,21 +134,20 @@
       </div>
 
       <div v-if="pagination.totalPages > 1" class="pagination">
-        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">â† Ant.</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-        <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+        <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. â†’</button>
       </div>
     </template>
 
-    <!-- ── VISTA TABLERO ── -->
+    <!-- â”€â”€ VISTA TABLERO â”€â”€ -->
     <template v-else>
-      <div v-if="boardLoading" class="loading-state">
-        <span class="spin spin--dark" /> Cargando tablero…
-      </div>
-      <div v-else-if="boardError" class="alert alert--error">{{ boardError }}</div>
+      <div v-if="boardLoading" class="loading-state" role="status" aria-live="polite">
+        <span class="spin spin--dark" /> {{ t('hospitalizations.boardLoading') }}</div>
+      <div v-else-if="boardError" class="alert alert--error" role="alert">{{ boardError }}</div>
       <div v-else-if="boardData.length === 0" class="empty-state">
-        <span class="empty-state__emoji">🏠</span>
-        <p>No hay datos de salas disponibles</p>
+        <span class="empty-state__emoji">ðŸ </span>
+        <p>{{ t('hospitalizations.boardEmpty') }}</p>
       </div>
       <div v-else class="board">
         <div v-for="ward in boardData" :key="ward.id || ward.ward_name" class="ward-card">
@@ -159,8 +157,8 @@
               <span class="sub">{{ ward.ward_type || '' }}</span>
             </div>
             <div class="ward-card__summary">
-              <span class="badge badge--green">{{ ward.available_kennels ?? '?' }} libres</span>
-              <span class="badge badge--red">{{ (ward.total_kennels - ward.available_kennels) ?? '?' }} ocupadas</span>
+              <span class="badge badge--green">{{ ward.available_kennels ?? '?' }} {{ t('hospitalizations.free') }}</span>
+              <span class="badge badge--red">{{ (ward.total_kennels - ward.available_kennels) ?? '?' }} {{ t('hospitalizations.occupied') }}</span>
             </div>
           </div>
           <div class="kennel-grid">
@@ -168,7 +166,7 @@
               v-for="kennel in (ward.kennels || [])"
               :key="kennel.id"
               :class="['kennel-chip', kennel.status === 'occupied' ? 'kennel-chip--occupied' : 'kennel-chip--free']"
-              :title="kennel.status === 'occupied' ? 'Ocupada' : 'Libre'"
+              :title="kennel.status === 'occupied' ? t('hospitalizations.occupied') : t('hospitalizations.free')"
             >
               {{ kennel.number }}
               <span v-if="kennel.kennel_type" class="kennel-type">{{ kennel.kennel_type }}</span>
@@ -178,13 +176,13 @@
       </div>
     </template>
 
-    <!-- ══════════════════ MODAL ADMITIR ══════════════════ -->
+    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• MODAL ADMITIR â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <Transition name="modal">
       <div v-if="showAdmit" class="modal-backdrop" @click.self="showAdmit = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>🏥 Admitir paciente</h3>
-            <button type="button" class="modal__close" @click="showAdmit = false">✕</button>
+            <h3>🏥 {{ t('hospitalizations.admitTitle') }}</h3>
+            <button type="button" class="modal__close" @click="showAdmit = false">âœ•</button>
           </div>
 
           <form @submit.prevent="handleAdmit" novalidate>
@@ -192,31 +190,31 @@
 
               <!-- Paciente autocomplete -->
               <div class="field field--full" style="position:relative">
-                <label>Paciente <span class="req">*</span></label>
+                <label>{{ t('hospitalizations.patientLabel') }} <span class="req">*</span></label>
                 <input
                   v-model.trim="patientSearch"
                   type="search"
-                  placeholder="Buscar por nombre…"
+                  placeholder="Buscar por nombreâ€¦"
                   :disabled="admitSaving"
                   @input="searchPatients"
                   autocomplete="off"
                 />
-                <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
+                <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('hospitalizations.searchByName')">
                   <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`Seleccionar ${pt.name}`" @click="selectPatient(pt)">
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                    <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                    <span class="autocomplete__owner">â€” {{ pt.primary_owner || '' }}</span>
                   </button>
                 </div>
-                <div v-if="admitForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                <div v-if="admitForm.patientId" class="selected-patient">âœ… {{ selectedPatientLabel }}</div>
                 <span v-if="afe.patientId" class="field-error">{{ afe.patientId }}</span>
               </div>
 
               <!-- Sala y jaula -->
               <div class="form-grid">
                 <div class="field">
-                  <label>Sala <span class="req">*</span></label>
+                  <label>{{ t('hospitalizations.wardLabel') }} <span class="req">*</span></label>
                   <select v-model="admitForm.wardId" :disabled="admitSaving || wardsLoading" @change="admitForm.kennelId = ''">
-                    <option value="">{{ wardsLoading ? 'Cargando salas…' : 'Seleccioná una sala…' }}</option>
+                    <option value="">{{ wardsLoading ? t('hospitalizations.wardLoading') : t('hospitalizations.wardPlaceholder') }}</option>
                     <option v-for="w in availableWards" :key="w.id" :value="w.id">
                       {{ w.name }} ({{ w.available_kennels }} jaulas libres)
                     </option>
@@ -225,9 +223,9 @@
                 </div>
 
                 <div class="field">
-                  <label>Jaula</label>
+                  <label>{{ t('hospitalizations.kennelLabel') }}</label>
                   <select v-model="admitForm.kennelId" :disabled="admitSaving || !admitForm.wardId">
-                    <option value="">Sin jaula asignada</option>
+                    <option value="">{{ t('hospitalizations.noKennel') }}</option>
                     <option
                       v-for="k in freeKennelsForWard"
                       :key="k.id"
@@ -239,22 +237,22 @@
                 </div>
 
                 <div class="field field--full">
-                  <label>Veterinario a cargo <span class="req">*</span></label>
+                  <label>{{ t('hospitalizations.vetInCharge') }} <span class="req">*</span></label>
                   <input
                     v-model.trim="admitForm.attendingVetId"
                     type="text"
-                    placeholder="ID del veterinario responsable…"
+                    placeholder="ID del veterinario responsableâ€¦"
                     :disabled="admitSaving"
                   />
                   <span v-if="afe.attendingVetId" class="field-error">{{ afe.attendingVetId }}</span>
                 </div>
 
                 <div class="field field--full">
-                  <label>Motivo de internación <span class="req">*</span></label>
+                  <label>{{ t('hospitalizations.admissionReason') }} <span class="req">*</span></label>
                   <textarea
                     v-model.trim="admitForm.admissionReason"
                     rows="3"
-                    placeholder="Diagnóstico o motivo de ingreso, estado general…"
+                    :placeholder="t('hospitalizations.admissionReasonPlaceholder')"
                     :disabled="admitSaving"
                   />
                   <span v-if="afe.admissionReason" class="field-error">{{ afe.admissionReason }}</span>
@@ -266,10 +264,10 @@
             <div v-if="admitError" class="alert alert--error mx">{{ admitError }}</div>
 
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="showAdmit = false" :disabled="admitSaving">Cancelar</button>
+              <BaseButton type="button" variant="ghost" @click="showAdmit = false" :disabled="admitSaving">{{ t('common.cancel') }}</BaseButton>
               <button type="submit" class="btn-primary" :disabled="admitSaving">
                 <span v-if="admitSaving" class="spin spin--sm" />
-                <span v-else>🏥 Admitir</span>
+                <span v-else>ðŸ¥ Admitir</span>
               </button>
             </div>
           </form>
@@ -277,41 +275,41 @@
       </div>
     </Transition>
 
-    <!-- ══════════════════ MODAL VER INTERNACIÓN ══════════════════ -->
+    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• MODAL VER INTERNACIÃ“N â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <Transition name="modal">
       <div v-if="showDetail" class="modal-backdrop" @click.self="showDetail = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>🏥 Internación — {{ detailData?.patient_name }}</h3>
-            <button type="button" class="modal__close" @click="showDetail = false">✕</button>
+            <h3>ðŸ¥ {{ t('hospitalizations.detailTitle') }} â€” {{ detailData?.patient_name }}</h3>
+            <button type="button" class="modal__close" @click="showDetail = false">âœ•</button>
           </div>
 
-          <div v-if="detailLoading" class="loading-state" style="min-height:200px">
-            <span class="spin spin--dark" /> Cargando…
+          <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
+            <span class="spin spin--dark" /> {{ t('hospitalizations.loadingDetail') }}
           </div>
           <template v-else-if="detailData">
             <!-- Info general -->
             <div class="form-body" style="padding-bottom:0">
               <div class="detail-grid">
                 <div class="detail-item">
-                  <span class="detail-label">Sala / Jaula</span>
-                  <span>{{ detailData.ward_name || '—' }}{{ detailData.kennel_number ? ' · Jaula ' + detailData.kennel_number : '' }}</span>
+                  <span class="detail-label">{{ t('hospitalizations.wardKennelDetail') }}</span>
+                  <span>{{ detailData.ward_name || 'â€”' }}{{ detailData.kennel_number ? ' Â· Jaula ' + detailData.kennel_number : '' }}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">Veterinario</span>
-                  <span>{{ detailData.attending_vet_name || '—' }}</span>
+                  <span class="detail-label">{{ t('hospitalizations.vetLabel') }}</span>
+                  <span>{{ detailData.attending_vet_name || 'â€”' }}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">Ingreso</span>
+                  <span class="detail-label">{{ t('hospitalizations.admissionDate') }}</span>
                   <span>{{ formatDate(detailData.admission_date) }}</span>
                 </div>
                 <div class="detail-item">
-                  <span class="detail-label">Días internado</span>
-                  <span>{{ detailData.days_hospitalized ?? '—' }}</span>
+                  <span class="detail-label">{{ t('hospitalizations.daysHospitalized') }}</span>
+                  <span>{{ detailData.days_hospitalized ?? 'â€”' }}</span>
                 </div>
                 <div class="detail-item detail-item--full">
-                  <span class="detail-label">Motivo</span>
-                  <span>{{ detailData.admission_reason || '—' }}</span>
+                  <span class="detail-label">{{ t('hospitalizations.reason') }}</span>
+                  <span>{{ detailData.admission_reason || 'â€”' }}</span>
                 </div>
               </div>
             </div>
@@ -319,10 +317,10 @@
             <!-- Tabs -->
             <div class="tabs">
               <button type="button" :class="['tab', { 'tab--active': detailTab === 'monitoring' }]" @click="detailTab = 'monitoring'">
-                📊 Monitoreo
+                ðŸ“Š {{ t('hospitalizations.monitoringLabel') }}
               </button>
               <button type="button" :class="['tab', { 'tab--active': detailTab === 'medications' }]" @click="detailTab = 'medications'">
-                💊 Medicamentos
+                ðŸ’Š {{ t('hospitalizations.medicationsLabel') }}
               </button>
             </div>
 
@@ -333,12 +331,12 @@
                 <div v-for="(m, i) in detailData.monitoring" :key="i" class="monitoring-record">
                   <div class="monitoring-record__time sub">{{ formatDate(m.recorded_at || m.created_at) }}</div>
                   <div class="monitoring-chips">
-                    <span v-if="m.heart_rate" class="mon-chip">❤️ {{ m.heart_rate }} lpm</span>
-                    <span v-if="m.respiratory_rate" class="mon-chip">🫁 {{ m.respiratory_rate }} rpm</span>
-                    <span v-if="m.temperature" class="mon-chip">🌡️ {{ m.temperature }}°C</span>
-                    <span v-if="m.systolic_bp" class="mon-chip">🩺 {{ m.systolic_bp }} mmHg</span>
+                    <span v-if="m.heart_rate" class="mon-chip">â¤ï¸ {{ m.heart_rate }} lpm</span>
+                    <span v-if="m.respiratory_rate" class="mon-chip">ðŸ« {{ m.respiratory_rate }} rpm</span>
+                    <span v-if="m.temperature" class="mon-chip">ðŸŒ¡ï¸ {{ m.temperature }}Â°C</span>
+                    <span v-if="m.systolic_bp" class="mon-chip">ðŸ©º {{ m.systolic_bp }} mmHg</span>
                     <span v-if="m.mucous_membranes" class="mon-chip">{{ m.mucous_membranes }}</span>
-                    <span v-if="m.hydration_status" class="mon-chip">💧 {{ m.hydration_status }}</span>
+                    <span v-if="m.hydration_status" class="mon-chip">ðŸ’§ {{ m.hydration_status }}</span>
                     <span v-if="m.consciousness_level" class="mon-chip" :class="consciousnessClass(m.consciousness_level)">
                       {{ consciousnessLabel(m.consciousness_level) }}
                     </span>
@@ -346,57 +344,57 @@
                   <p v-if="m.notes" class="sub" style="margin-top:4px">{{ m.notes }}</p>
                 </div>
               </div>
-              <div v-else class="empty-inline">Sin registros de monitoreo todavía.</div>
+              <div v-else class="empty-inline">{{ t('hospitalizations.noMonitoringRecords') }}</div>
 
               <!-- Formulario nuevo monitoreo -->
               <div class="inline-form">
-                <div class="section-title" style="margin-bottom:12px">Registrar nuevo signo vital</div>
+                <div class="section-title" style="margin-bottom:12px">{{ t('hospitalizations.vitalSignsLabel') }}</div>
                 <div class="form-grid">
                   <div class="field">
-                    <label>Frec. cardíaca (lpm)</label>
+                    <label>{{ t('hospitalizations.heartRate') }}</label>
                     <input v-model.number="monForm.heartRate" type="number" min="0" max="400" placeholder="80" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>Frec. respiratoria (rpm)</label>
+                    <label>{{ t('hospitalizations.respiratoryRate') }}</label>
                     <input v-model.number="monForm.respiratoryRate" type="number" min="0" max="200" placeholder="20" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>Temperatura (°C)</label>
+                    <label>{{ t('hospitalizations.temperature') }}</label>
                     <input v-model.number="monForm.temperature" type="number" step="0.1" min="30" max="45" placeholder="38.5" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>PA sistólica (mmHg)</label>
+                    <label>{{ t('hospitalizations.systolicBp') }}</label>
                     <input v-model.number="monForm.systolicBp" type="number" min="0" max="300" placeholder="120" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>Mucosas</label>
-                    <input v-model.trim="monForm.mucousMembranes" type="text" placeholder="Rosadas, húmedas…" :disabled="monSaving" />
+                    <label>{{ t('hospitalizations.mucousMembranes') }}</label>
+                    <input v-model.trim="monForm.mucousMembranes" type="text" placeholder="Rosadas, hÃºmedasâ€¦" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>Estado de hidratación</label>
-                    <input v-model.trim="monForm.hydrationStatus" type="text" placeholder="Normotenso, deshidratado…" :disabled="monSaving" />
+                    <label>{{ t('hospitalizations.hydrationStatus') }}</label>
+                    <input v-model.trim="monForm.hydrationStatus" type="text" placeholder="Normotenso, deshidratadoâ€¦" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>Nivel de conciencia</label>
+                    <label>{{ t('hospitalizations.consciousnessLevel') }}</label>
                     <select v-model="monForm.consciousnessLevel" :disabled="monSaving">
-                      <option value="">— Sin registrar —</option>
-                      <option value="alert">Alerta</option>
-                      <option value="lethargic">Letárgico</option>
-                      <option value="stupor">Estupor</option>
-                      <option value="coma">Coma</option>
+                      <option value="">â€” {{ t('common.none') }} â€”</option>
+                      <option value="alert">{{ t('hospitalizations.consciousnessAlert') }}</option>
+                      <option value="lethargic">{{ t('hospitalizations.consciousnessLethargic') }}</option>
+                      <option value="stupor">{{ t('hospitalizations.consciousnessStupor') }}</option>
+                      <option value="coma">{{ t('hospitalizations.consciousnessComa') }}</option>
                     </select>
                   </div>
                   <div class="field field--full">
-                    <label>Notas</label>
-                    <textarea v-model.trim="monForm.notes" rows="2" placeholder="Observaciones…" :disabled="monSaving" />
+                    <label>{{ t('hospitalizations.notes') }}</label>
+                    <textarea v-model.trim="monForm.notes" rows="2" :placeholder="t('common.notes')" :disabled="monSaving" />
                   </div>
                 </div>
-                <div v-if="monError" class="alert alert--error" style="margin-top:8px">{{ monError }}</div>
+                <div v-if="monError" class="alert alert--error" style="margin-top:8px" role="alert">{{ monError }}</div>
                 <div style="margin-top:10px;display:flex;justify-content:flex-end">
-                  <button type="button" class="btn-primary" style="padding:8px 18px;font-size:0.85rem" @click="handleMonitoring" :disabled="monSaving">
+                  <BaseButton type="button" style="padding:8px 18px;font-size:0.85rem" @click="handleMonitoring" :disabled="monSaving">
                     <span v-if="monSaving" class="spin spin--sm" />
-                    <span v-else>💾 Guardar monitoreo</span>
-                  </button>
+                    <span v-else>ðŸ’¾ {{ t('hospitalizations.saveMonitoring') }}</span>
+                  </BaseButton>
                 </div>
               </div>
             </div>
@@ -411,121 +409,121 @@
                     <span class="badge badge--blue">{{ med.route }}</span>
                     <span class="sub">Cada {{ med.frequency }}</span>
                   </div>
-                  <div class="sub">{{ med.dose }} {{ med.dose_unit }}{{ med.duration_hours ? ' · ' + med.duration_hours + 'h' : '' }}</div>
+                  <div class="sub">{{ med.dose }} {{ med.dose_unit }}{{ med.duration_hours ? ' Â· ' + med.duration_hours + 'h' : '' }}</div>
                   <p v-if="med.notes" class="sub" style="margin-top:3px">{{ med.notes }}</p>
                 </div>
               </div>
-              <div v-else class="empty-inline">Sin medicamentos prescritos todavía.</div>
+              <div v-else class="empty-inline">{{ t('hospitalizations.noMedicationRecords') }}</div>
 
               <!-- Formulario nuevo medicamento -->
               <div class="inline-form">
-                <div class="section-title" style="margin-bottom:12px">Prescribir medicamento</div>
+                <div class="section-title" style="margin-bottom:12px">{{ t('hospitalizations.prescribeMedication') }}</div>
                 <div class="form-grid">
                   <div class="field field--full">
-                    <label>Medicamento <span class="req">*</span></label>
-                    <input v-model.trim="medForm.medicationName" type="text" placeholder="Amoxicilina, Metronidazol…" :disabled="medSaving" />
+                    <label>{{ t('hospitalizations.medication') }} <span class="req">*</span></label>
+                    <input v-model.trim="medForm.medicationName" type="text" :placeholder="t('common.name')" :disabled="medSaving" />
                     <span v-if="mfe.medicationName" class="field-error">{{ mfe.medicationName }}</span>
                   </div>
                   <div class="field">
-                    <label>Dosis <span class="req">*</span></label>
-                    <input v-model.trim="medForm.dose" type="text" placeholder="10" :disabled="medSaving" />
+                    <label>{{ t('hospitalizations.dose') }} <span class="req">*</span></label>
+                    <input v-model.trim="medForm.dose" type="text" :placeholder="t('hospitalizations.dose')" :disabled="medSaving" />
                     <span v-if="mfe.dose" class="field-error">{{ mfe.dose }}</span>
                   </div>
                   <div class="field">
-                    <label>Unidad</label>
-                    <input v-model.trim="medForm.doseUnit" type="text" placeholder="mg/kg, ml…" :disabled="medSaving" />
+                    <label>{{ t('hospitalizations.unit') }}</label>
+                    <input v-model.trim="medForm.doseUnit" type="text" :placeholder="t('hospitalizations.unit')" :disabled="medSaving" />
                   </div>
                   <div class="field">
-                    <label>Frecuencia <span class="req">*</span></label>
-                    <input v-model.trim="medForm.frequency" type="text" placeholder="cada 8h, 1x/día…" :disabled="medSaving" />
+                    <label>{{ t('hospitalizations.frequency') }} <span class="req">*</span></label>
+                    <input v-model.trim="medForm.frequency" type="text" :placeholder="t('hospitalizations.frequency')" :disabled="medSaving" />
                     <span v-if="mfe.frequency" class="field-error">{{ mfe.frequency }}</span>
                   </div>
                   <div class="field">
-                    <label>Vía <span class="req">*</span></label>
+                    <label>{{ t('hospitalizations.route') }} <span class="req">*</span></label>
                     <select v-model="medForm.route" :disabled="medSaving">
-                      <option value="">Seleccioná…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="oral">Oral</option>
                       <option value="iv">IV</option>
                       <option value="im">IM</option>
                       <option value="sc">SC</option>
-                      <option value="topical">Tópica</option>
-                      <option value="other">Otra</option>
+                      <option value="topical">TÃ³pica</option>
+                      <option value="other">{{ t('common.other') }}</option>
                     </select>
                     <span v-if="mfe.route" class="field-error">{{ mfe.route }}</span>
                   </div>
                   <div class="field">
-                    <label>Inicio <span class="req">*</span></label>
+                    <label>{{ t('hospitalizations.start') }} <span class="req">*</span></label>
                     <input v-model="medForm.startDatetime" type="datetime-local" :disabled="medSaving" />
                     <span v-if="mfe.startDatetime" class="field-error">{{ mfe.startDatetime }}</span>
                   </div>
                   <div class="field">
-                    <label>Duración (horas)</label>
-                    <input v-model.number="medForm.durationHours" type="number" min="1" placeholder="72" :disabled="medSaving" />
+                    <label>{{ t('hospitalizations.durationHours') }}</label>
+                    <input v-model.number="medForm.durationHours" type="number" min="1" :placeholder="t('hospitalizations.durationHours')" :disabled="medSaving" />
                   </div>
                   <div class="field field--full">
-                    <label>Notas</label>
-                    <textarea v-model.trim="medForm.notes" rows="2" placeholder="Dilución, precauciones…" :disabled="medSaving" />
+                    <label>{{ t('hospitalizations.notes') }}</label>
+                    <textarea v-model.trim="medForm.notes" rows="2" :placeholder="t('common.notes')" :disabled="medSaving" />
                   </div>
                 </div>
-                <div v-if="medError" class="alert alert--error" style="margin-top:8px">{{ medError }}</div>
+                <div v-if="medError" class="alert alert--error" style="margin-top:8px" role="alert">{{ medError }}</div>
                 <div style="margin-top:10px;display:flex;justify-content:flex-end">
-                  <button type="button" class="btn-primary" style="padding:8px 18px;font-size:0.85rem" @click="handleMedication" :disabled="medSaving">
+                  <BaseButton type="button" style="padding:8px 18px;font-size:0.85rem" @click="handleMedication" :disabled="medSaving">
                     <span v-if="medSaving" class="spin spin--sm" />
-                    <span v-else>💊 Prescribir</span>
-                  </button>
+                    <span v-else>ðŸ’Š {{ t('hospitalizations.prescribe') }}</span>
+                  </BaseButton>
                 </div>
               </div>
             </div>
           </template>
 
           <div class="modal__actions">
-            <button
-              v-if="detailData?.status === 'admitted'"
-              class="btn-danger"
-              @click="openDischarge(detailData); showDetail = false"
-            >
-              🚪 Dar alta
-            </button>
-            <button type="button" class="btn-ghost" @click="showDetail = false">Cerrar</button>
+              <BaseButton
+                v-if="detailData?.status === 'admitted'"
+                variant="danger"
+                @click="openDischarge(detailData); showDetail = false"
+              >
+                ðŸšª {{ t('hospitalizations.discharge') }}
+              </BaseButton>
+            <BaseButton type="button" variant="ghost" @click="showDetail = false">{{ t('common.close') }}</BaseButton>
           </div>
         </div>
       </div>
     </Transition>
 
-    <!-- ══════════════════ MODAL DAR ALTA ══════════════════ -->
+    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• MODAL DAR ALTA â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <Transition name="modal">
       <div v-if="showDischarge" class="modal-backdrop" @click.self="showDischarge = false">
         <div class="modal modal--sm">
           <div class="modal__header">
-            <h3>🚪 Dar alta — {{ dischargeTarget?.patient_name }}</h3>
-            <button type="button" class="modal__close" @click="showDischarge = false">✕</button>
+            <h3>ðŸšª {{ t('hospitalizations.dischargeTitle') }} â€” {{ dischargeTarget?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showDischarge = false">âœ•</BaseButton>
           </div>
           <form @submit.prevent="handleDischarge" novalidate>
             <div class="form-body">
               <div class="discharge-confirm">
-                <p>Vas a dar de alta a <strong>{{ dischargeTarget?.patient_name }}</strong>. Esta acción registrará la fecha y hora actual como fecha de alta.</p>
+                <p>{{ t('hospitalizations.dischargeConfirm', { patient: dischargeTarget?.patient_name || '' }) }}</p>
               </div>
               <div class="field field--full">
-                <label>Notas de alta</label>
+                <label>{{ t('hospitalizations.dischargeNotes') }}</label>
                 <textarea
                   v-model.trim="dischargeForm.dischargeNotes"
                   rows="3"
-                  placeholder="Indicaciones para casa, cuidados post internación…"
+                  :placeholder="t('common.notes')"
                   :disabled="dischargeSaving"
                 />
               </div>
               <div class="field field--full">
-                <label>Fecha de seguimiento</label>
+                <label>{{ t('hospitalizations.followUpDate') }}</label>
                 <input v-model="dischargeForm.followUpDate" type="date" :disabled="dischargeSaving" />
               </div>
             </div>
-            <div v-if="dischargeError" class="alert alert--error mx">{{ dischargeError }}</div>
+            <div v-if="dischargeError" class="alert alert--error mx" role="alert">{{ dischargeError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="showDischarge = false" :disabled="dischargeSaving">Cancelar</button>
-              <button type="submit" class="btn-danger" :disabled="dischargeSaving">
+              <BaseButton type="button" variant="ghost" @click="showDischarge = false" :disabled="dischargeSaving">{{ t('common.cancel') }}</BaseButton>
+              <BaseButton type="submit" variant="danger" :disabled="dischargeSaving">
                 <span v-if="dischargeSaving" class="spin spin--sm" />
-                <span v-else>🚪 Confirmar alta</span>
-              </button>
+                <span v-else>ðŸšª {{ t('hospitalizations.confirmDischarge') }}</span>
+              </BaseButton>
             </div>
           </form>
         </div>
@@ -538,6 +536,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
+import BaseButton from '../components/base/BaseButton.vue'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -589,10 +589,10 @@ function normalizePatient(row) {
   }
 }
 
-// ── Vista ────────────────────────────────────────────────────────────────────
+// â”€â”€ Vista â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const viewMode = ref('list')
 
-// ── Lista ────────────────────────────────────────────────────────────────────
+// â”€â”€ Lista â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const items        = ref([])
 const loading      = ref(false)
 const error        = ref('')
@@ -600,7 +600,7 @@ const search       = ref('')
 const statusFilter = ref('')
 const pagination   = ref({ page: 1, totalPages: 1 })
 
-const stats = reactive({ active: 0, dischargedToday: 0, avgDays: '—' })
+const stats = reactive({ active: 0, dischargedToday: 0, avgDays: 'â€”' })
 
 async function load(page = 1) {
   loading.value = true; error.value = ''
@@ -636,13 +636,13 @@ function computeStats() {
   })
   stats.active = active
   stats.dischargedToday = dischargedToday
-  stats.avgDays = countWithDays ? (totalDays / countWithDays).toFixed(1) : '—'
+  stats.avgDays = countWithDays ? (totalDays / countWithDays).toFixed(1) : 'â€”'
 }
 
 let loadTimer = null
 function debouncedLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(load, 350) }
 
-// ── Tablero ──────────────────────────────────────────────────────────────────
+// â”€â”€ Tablero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const boardData    = ref([])
 const boardLoading = ref(false)
 const boardError   = ref('')
@@ -662,7 +662,7 @@ function switchToBoard() {
   if (boardData.value.length === 0) loadBoard()
 }
 
-// ── Salas (para admisión) ────────────────────────────────────────────────────
+// â”€â”€ Salas (para admisiÃ³n) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const availableWards = ref([])
 const wardsLoading   = ref(false)
 
@@ -682,15 +682,15 @@ const freeKennelsForWard = computed(() => {
   return ward.kennels.filter(k => k.status === 'available' || k.status === 'free')
 })
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function petEmoji(s) {
-  if (!s) return '🐾'
-  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
-  return m[s.toLowerCase()] || '🐾'
+  if (!s) return 'ðŸ¾'
+  const m = { perro:'ðŸ¶', dog:'ðŸ¶', gato:'ðŸ±', cat:'ðŸ±', conejo:'ðŸ°', rabbit:'ðŸ°', loro:'ðŸ¦œ', bird:'ðŸ¦œ', pez:'ðŸŸ', fish:'ðŸŸ', tortuga:'ðŸ¢', reptile:'ðŸ¦Ž', hamster:'ðŸ¹' }
+  return m[s.toLowerCase()] || 'ðŸ¾'
 }
 
 function formatDate(iso) {
-  if (!iso) return '—'
+  if (!iso) return 'â€”'
   return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
@@ -699,7 +699,11 @@ function hospStatusClass(s) {
 }
 
 function hospStatusLabel(s) {
-  return { admitted: 'Internado', discharged: 'Con alta', transferred: 'Transferido' }[s] || s || '—'
+  return {
+    admitted: t('hospitalizations.admittedStatus'),
+    discharged: t('hospitalizations.dischargedStatus'),
+    transferred: t('hospitalizations.transferredStatus'),
+  }[s] || s || 'â€”'
 }
 
 function consciousnessClass(c) {
@@ -707,10 +711,15 @@ function consciousnessClass(c) {
 }
 
 function consciousnessLabel(c) {
-  return { alert: 'Alerta', lethargic: 'Letárgico', stupor: 'Estupor', coma: 'Coma' }[c] || c || ''
+  return {
+    alert: t('hospitalizations.consciousnessAlert'),
+    lethargic: t('hospitalizations.consciousnessLethargic'),
+    stupor: t('hospitalizations.consciousnessStupor'),
+    coma: t('hospitalizations.consciousnessComa'),
+  }[c] || c || ''
 }
 
-// ── Autocomplete paciente ────────────────────────────────────────────────────
+// â”€â”€ Autocomplete paciente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const patientSearch        = ref('')
 const patientResults       = ref([])
 const selectedPatientLabel = ref('')
@@ -731,12 +740,12 @@ async function searchPatients() {
 
 function selectPatient(pt) {
   admitForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' â€” ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 }
 
-// ── Modal admitir ────────────────────────────────────────────────────────────
+// â”€â”€ Modal admitir â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showAdmit   = ref(false)
 const admitSaving = ref(false)
 const admitError  = ref('')
@@ -763,10 +772,10 @@ function openAdmit() {
 
 function validateAdmit() {
   Object.keys(afe).forEach(k => delete afe[k])
-  if (!admitForm.patientId)      afe.patientId      = 'Seleccioná un paciente'
-  if (!admitForm.wardId)         afe.wardId         = 'Seleccioná una sala'
-  if (!admitForm.attendingVetId) afe.attendingVetId = 'Ingresá el veterinario a cargo'
-  if (!admitForm.admissionReason) afe.admissionReason = 'Ingresá el motivo de internación'
+  if (!admitForm.patientId)      afe.patientId      = 'SeleccionÃ¡ un paciente'
+  if (!admitForm.wardId)         afe.wardId         = 'SeleccionÃ¡ una sala'
+  if (!admitForm.attendingVetId) afe.attendingVetId = 'IngresÃ¡ el veterinario a cargo'
+  if (!admitForm.admissionReason) afe.admissionReason = 'IngresÃ¡ el motivo de internaciÃ³n'
   return Object.keys(afe).length === 0
 }
 
@@ -789,7 +798,7 @@ async function handleAdmit() {
   } finally { admitSaving.value = false }
 }
 
-// ── Modal detalle ────────────────────────────────────────────────────────────
+// â”€â”€ Modal detalle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showDetail   = ref(false)
 const detailLoading = ref(false)
 const detailData   = ref(null)
@@ -809,7 +818,7 @@ async function openHospDetail(hosp) {
   finally { detailLoading.value = false }
 }
 
-// ── Monitoreo ────────────────────────────────────────────────────────────────
+// â”€â”€ Monitoreo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const monSaving = ref(false)
 const monError  = ref('')
 const monForm   = reactive({
@@ -850,7 +859,7 @@ async function handleMonitoring() {
   } finally { monSaving.value = false }
 }
 
-// ── Medicamentos ─────────────────────────────────────────────────────────────
+// â”€â”€ Medicamentos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const medSaving = ref(false)
 const medError  = ref('')
 const mfe       = reactive({})
@@ -876,7 +885,7 @@ function validateMed() {
   if (!medForm.medicationName) mfe.medicationName = 'Requerido'
   if (!medForm.dose)           mfe.dose           = 'Requerido'
   if (!medForm.frequency)      mfe.frequency      = 'Requerido'
-  if (!medForm.route)          mfe.route          = 'Seleccioná la vía'
+  if (!medForm.route)          mfe.route          = 'SeleccionÃ¡ la vÃ­a'
   if (!medForm.startDatetime)  mfe.startDatetime  = 'Requerido'
   return Object.keys(mfe).length === 0
 }
@@ -904,7 +913,7 @@ async function handleMedication() {
   } finally { medSaving.value = false }
 }
 
-// ── Modal dar alta ───────────────────────────────────────────────────────────
+// â”€â”€ Modal dar alta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showDischarge    = ref(false)
 const dischargeTarget  = ref(null)
 const dischargeSaving  = ref(false)
@@ -998,7 +1007,7 @@ onMounted(load)
 .btn-action--danger { background: var(--danger); color: white; border-color: var(--danger); }
 .btn-action--danger:hover { opacity: 0.88; }
 
-/* Paginación */
+/* PaginaciÃ³n */
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
 .pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }
@@ -1115,7 +1124,7 @@ onMounted(load)
 .spin--dark { border-color: rgba(0,0,0,0.1); border-top-color: var(--primary); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Transición modal */
+/* TransiciÃ³n modal */
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
@@ -1130,3 +1139,5 @@ onMounted(load)
   .table thead th:nth-child(5), .table tbody td:nth-child(5) { display: none; }
 }
 </style>
+
+

@@ -9,7 +9,7 @@
           <p class="page-sub">{{ t('surgery.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openNewSurgery()">+ {{ t('surgery.newSurgery') }}</button>
+      <BaseButton type="button" @click="openNewSurgery()">+ {{ t('surgery.newSurgery') }}</BaseButton>
     </div>
 
     <!-- Stats -->
@@ -47,7 +47,7 @@
         @input="debouncedLoad()"
       />
       <select v-model="statusFilter" class="filter-select" @change="load()">
-        <option value="">Todos los estados</option>
+        <option value="">{{ t('common.allStatuses') }}</option>
         <option value="scheduled">{{ t('surgery.statusScheduled') }}</option>
         <option value="in_progress">{{ t('surgery.inProgress') }}</option>
         <option value="completed">{{ t('surgery.statusCompleted') }}</option>
@@ -56,13 +56,13 @@
       </select>
     </div>
 
-    <div v-if="loading" class="loading-state">
-      <span class="spin spin--dark" /> Cargando cirugías…
+    <div v-if="loading" class="loading-state" role="status" aria-live="polite">
+      <span class="spin spin--dark" /> {{ t('surgery.loading') }}
     </div>
-    <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+    <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🔪</span>
-      <p>No hay cirugías registradas</p>
+      <p>{{ t('surgery.empty') }}</p>
     </div>
 
     <div v-else class="card">
@@ -118,14 +118,14 @@
                   @click="openChangeStatus(s)"
                   :title="t('surgery.changeStatus')"
                 >
-                  Estado
+                  {{ t('surgery.tableStatus') }}
                 </button>
                 <button
                   class="btn-action"
                   @click="viewDetail(s)"
                   :title="t('surgery.viewDetail')"
                 >
-                  Ver
+                  {{ t('surgery.viewDetail') }}
                 </button>
               </div>
             </td>
@@ -145,8 +145,8 @@
       <div v-if="showNew" class="modal-backdrop" @click.self="showNew = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>🔪 Programar cirugía</h3>
-            <button type="button" class="modal__close" @click="showNew = false">✕</button>
+            <h3>🔪 {{ t('surgery.newModalTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showNew = false">✕</BaseButton>
           </div>
 
           <form @submit.prevent="handleCreate" novalidate>
@@ -154,16 +154,16 @@
 
               <!-- Paciente autocomplete -->
               <div class="field field--full" style="position:relative">
-                <label>Paciente <span class="req">*</span></label>
+                <label>{{ t('surgery.patientLabel') }} <span class="req">*</span></label>
                 <input
                   v-model.trim="patientSearch"
                   type="search"
-                  placeholder="Buscar por nombre…"
+                  :placeholder="t('surgery.patientPlaceholder')"
                   :disabled="saving"
                   @input="searchPatients"
                   autocomplete="off"
                 />
-                <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
+                <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                   <button
                     v-for="pt in patientResults"
                     :key="pt.id"
@@ -183,9 +183,9 @@
 
               <!-- Tipo de cirugía -->
               <div class="field field--full">
-                <label>Tipo de cirugía <span class="req">*</span></label>
+                <label>{{ t('surgery.typeLabel') }} <span class="req">*</span></label>
                 <select v-model="newForm.surgeryTypeId" :disabled="saving || typesLoading">
-                  <option value="">{{ typesLoading ? 'Cargando tipos…' : 'Seleccioná un tipo…' }}</option>
+                  <option value="">{{ typesLoading ? t('surgery.typeLoading') : t('surgery.typePlaceholder') }}</option>
                   <optgroup v-for="(types, cat) in groupedTypes" :key="cat" :label="cat">
                     <option v-for="t in types" :key="t.id" :value="t.id">
                       {{ t.name }}
@@ -198,8 +198,8 @@
                 <div v-if="selectedTypeInfo" class="type-info">
                   <span v-if="selectedTypeInfo.description" class="type-info__desc">{{ selectedTypeInfo.description }}</span>
                   <div class="type-info__badges">
-                    <span class="badge" :class="riskClass(selectedTypeInfo.risk_level)">Riesgo: {{ riskLabel(selectedTypeInfo.risk_level) }}</span>
-                    <span v-if="selectedTypeInfo.requires_specialist" class="badge badge--yellow">Requiere especialista</span>
+                    <span class="badge" :class="riskClass(selectedTypeInfo.risk_level)">{{ t('surgery.risk') }}: {{ riskLabel(selectedTypeInfo.risk_level) }}</span>
+                    <span v-if="selectedTypeInfo.requires_specialist" class="badge badge--yellow">{{ t('surgery.requiresSpecialist') }}</span>
                     <span v-if="selectedTypeInfo.estimated_duration_minutes" class="sub">{{ selectedTypeInfo.estimated_duration_minutes }} min estimados</span>
                   </div>
                 </div>
@@ -208,22 +208,22 @@
 
               <div class="form-grid">
                 <div class="field">
-                  <label>Fecha y hora programada <span class="req">*</span></label>
+                  <label>{{ t('surgery.scheduledLabel') }} <span class="req">*</span></label>
                   <input v-model="newForm.scheduledDate" type="datetime-local" :disabled="saving" />
                   <span v-if="fe.scheduledDate" class="field-error">{{ fe.scheduledDate }}</span>
                 </div>
 
                 <div class="field">
-                  <label>Duración estimada (min)</label>
+                  <label>{{ t('surgery.durationLabel') }}</label>
                   <input v-model.number="newForm.estimatedDurationMinutes" type="number" min="1" max="600" placeholder="ej: 90" :disabled="saving" />
                 </div>
 
                 <div class="field field--full">
-                  <label>Notas preoperatorias</label>
+                  <label>{{ t('surgery.notesLabel') }}</label>
                   <textarea
                     v-model.trim="newForm.preOpNotes"
                     rows="3"
-                    placeholder="Indicaciones previas, ayuno, preparación…"
+                    :placeholder="t('surgery.notesPlaceholder')"
                     :disabled="saving"
                   />
                 </div>
@@ -234,11 +234,11 @@
             <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
 
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="showNew = false" :disabled="saving">Cancelar</button>
-              <button type="submit" class="btn-primary" :disabled="saving">
+              <BaseButton type="button" variant="ghost" @click="showNew = false" :disabled="saving">{{ t('common.cancel') }}</BaseButton>
+              <BaseButton type="submit" :disabled="saving">
                 <span v-if="saving" class="spin spin--sm" />
-                <span v-else>💾 Programar</span>
-              </button>
+                <span v-else>{{ t('common.create') }}</span>
+              </BaseButton>
             </div>
           </form>
         </div>
@@ -250,8 +250,8 @@
       <div v-if="showAnesthesia" class="modal-backdrop" @click.self="showAnesthesia = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>💉 Registrar anestesia — {{ selectedSurgery?.patient_name }}</h3>
-            <button type="button" class="modal__close" @click="showAnesthesia = false">✕</button>
+            <h3>💉 {{ t('surgery.anesthesiaTitle') }} — {{ selectedSurgery?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showAnesthesia = false">✕</BaseButton>
           </div>
 
           <form @submit.prevent="handleAnesthesia" novalidate>
@@ -259,45 +259,45 @@
               <div class="form-grid">
 
                 <div class="field">
-                  <label>Tipo de anestesia <span class="req">*</span></label>
+                  <label>{{ t('surgery.anesthesiaTypeLabel') }} <span class="req">*</span></label>
                   <select v-model="aneForm.anesthesiaType" :disabled="aneSaving">
-                    <option value="">Seleccioná…</option>
-                    <option value="general">General</option>
-                    <option value="local">Local</option>
-                    <option value="regional">Regional</option>
-                    <option value="sedation">Sedación</option>
+                    <option value="">{{ t('surgery.anesthesiaTypePlaceholder') }}</option>
+                    <option value="general">{{ t('surgery.anesthesiaGeneral') }}</option>
+                    <option value="local">{{ t('surgery.anesthesiaLocal') }}</option>
+                    <option value="regional">{{ t('surgery.anesthesiaRegional') }}</option>
+                    <option value="sedation">{{ t('surgery.anesthesiaSedation') }}</option>
                   </select>
                   <span v-if="afe.anesthesiaType" class="field-error">{{ afe.anesthesiaType }}</span>
                 </div>
 
                 <div class="field">
-                  <label>Duración total (min)</label>
+                  <label>{{ t('surgery.totalDurationLabel') }}</label>
                   <input v-model.number="aneForm.totalDurationMinutes" type="number" min="1" max="600" placeholder="ej: 75" :disabled="aneSaving" />
                 </div>
 
                 <div class="field field--full">
-                  <label>Agentes anestésicos <span class="req">*</span></label>
+                  <label>{{ t('surgery.agentsLabel') }} <span class="req">*</span></label>
                   <textarea
                     v-model.trim="aneForm.anestheticAgents"
                     rows="2"
-                    placeholder="Propofol, isoflurano, ketamina…"
+                    :placeholder="t('surgery.agentsPlaceholder') || 'Propofol, isoflurano, ketamina…'"
                     :disabled="aneSaving"
                   />
                   <span v-if="afe.anestheticAgents" class="field-error">{{ afe.anestheticAgents }}</span>
                 </div>
 
                 <div class="field">
-                  <label>Hora de inducción</label>
+                  <label>{{ t('surgery.inductionLabel') }}</label>
                   <input v-model="aneForm.inductionTime" type="time" :disabled="aneSaving" />
                 </div>
 
                 <div class="field">
-                  <label>Hora de recuperación</label>
+                  <label>{{ t('surgery.recoveryLabel') }}</label>
                   <input v-model="aneForm.recoveryTime" type="time" :disabled="aneSaving" />
                 </div>
 
                 <div class="field field--full">
-                  <label>Notas de monitoreo</label>
+                  <label>{{ t('surgery.monitoringLabel') }}</label>
                   <textarea
                     v-model.trim="aneForm.monitoringNotes"
                     rows="2"
@@ -309,16 +309,16 @@
                 <div class="field field--full">
                   <label class="checkbox-label">
                     <input type="checkbox" v-model="aneForm.complications" :disabled="aneSaving" />
-                    Hubo complicaciones
+                    {{ t('surgery.complicationsLabel') }}
                   </label>
                 </div>
 
                 <div v-if="aneForm.complications" class="field field--full">
-                  <label>Notas de complicaciones <span class="req">*</span></label>
+                  <label>{{ t('surgery.complicationNotesLabel') }} <span class="req">*</span></label>
                   <textarea
                     v-model.trim="aneForm.complicationNotes"
                     rows="3"
-                    placeholder="Describí las complicaciones ocurridas…"
+                    :placeholder="t('surgery.complicationNotesPlaceholder')"
                     :disabled="aneSaving"
                   />
                   <span v-if="afe.complicationNotes" class="field-error">{{ afe.complicationNotes }}</span>
@@ -327,14 +327,14 @@
               </div>
             </div>
 
-            <div v-if="aneError" class="alert alert--error mx">{{ aneError }}</div>
+            <div v-if="aneError" class="alert alert--error mx" role="alert">{{ aneError }}</div>
 
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="showAnesthesia = false" :disabled="aneSaving">Cancelar</button>
-              <button type="submit" class="btn-primary" :disabled="aneSaving">
+              <BaseButton type="button" variant="ghost" @click="showAnesthesia = false" :disabled="aneSaving">{{ t('common.cancel') }}</BaseButton>
+              <BaseButton type="submit" :disabled="aneSaving">
                 <span v-if="aneSaving" class="spin spin--sm" />
-                <span v-else>💾 Registrar</span>
-              </button>
+                <span v-else>{{ t('common.save') }}</span>
+              </BaseButton>
             </div>
           </form>
         </div>
@@ -346,12 +346,12 @@
       <div v-if="showStatus" class="modal-backdrop" @click.self="showStatus = false">
         <div class="modal modal--sm">
           <div class="modal__header">
-            <h3>🔄 Cambiar estado</h3>
-            <button type="button" class="modal__close" @click="showStatus = false">✕</button>
+            <h3>🔄 {{ t('surgery.statusTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showStatus = false">✕</BaseButton>
           </div>
           <div class="form-body">
             <p class="sub" style="margin-bottom:8px">
-              Cirugía: <strong>{{ selectedSurgery?.surgery_type_name }}</strong> — {{ selectedSurgery?.patient_name }}
+              {{ t('surgery.generalData') }}: <strong>{{ selectedSurgery?.surgery_type_name }}</strong> — {{ selectedSurgery?.patient_name }}
             </p>
             <div class="status-options">
               <button
@@ -361,7 +361,7 @@
                 @click="changeStatus('in_progress')"
                 :disabled="statusSaving"
               >
-                ⚡ Iniciar cirugía
+                ⚡ {{ t('surgery.statusScheduled') }}
               </button>
               <button
                 v-if="selectedSurgery?.status === 'scheduled' || selectedSurgery?.status === 'in_progress'"
@@ -370,7 +370,7 @@
                 @click="changeStatus('completed')"
                 :disabled="statusSaving"
               >
-                ✅ Marcar como completada
+                ✅ {{ t('surgery.statusCompleted') }}
               </button>
               <button
                 v-if="selectedSurgery?.status === 'scheduled'"
@@ -379,7 +379,7 @@
                 @click="changeStatus('postponed')"
                 :disabled="statusSaving"
               >
-                📌 Postergar
+                📌 {{ t('surgery.statusPostponed') }}
               </button>
               <button
                 v-if="selectedSurgery?.status !== 'cancelled' && selectedSurgery?.status !== 'completed'"
@@ -388,13 +388,13 @@
                 @click="changeStatus('cancelled')"
                 :disabled="statusSaving"
               >
-                ✕ Cancelar
+                ✕ {{ t('surgery.statusCancelled') }}
               </button>
             </div>
           </div>
-          <div v-if="statusError" class="alert alert--error mx">{{ statusError }}</div>
+          <div v-if="statusError" class="alert alert--error mx" role="alert">{{ statusError }}</div>
           <div class="modal__actions" style="border-top:none;padding-top:4px">
-            <button type="button" class="btn-ghost" @click="showStatus = false" :disabled="statusSaving">Cerrar</button>
+            <BaseButton type="button" variant="ghost" @click="showStatus = false" :disabled="statusSaving">{{ t('common.close') }}</BaseButton>
           </div>
         </div>
       </div>
@@ -405,55 +405,55 @@
       <div v-if="showDetail" class="modal-backdrop" @click.self="showDetail = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>🔪 Detalle cirugía — {{ detailData?.patient_name }}</h3>
-            <button type="button" class="modal__close" @click="showDetail = false">✕</button>
+            <h3>🔪 {{ t('surgery.detailTitle') }} — {{ detailData?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showDetail = false">✕</BaseButton>
           </div>
-          <div v-if="detailLoading" class="loading-state" style="min-height:200px">
-            <span class="spin spin--dark" /> Cargando…
+          <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
+            <span class="spin spin--dark" /> {{ t('surgery.detailLoading') }}
           </div>
           <div v-else-if="detailData" class="form-body">
             <div class="detail-grid">
               <div class="detail-item">
-                <span class="detail-label">Paciente</span>
+                <span class="detail-label">{{ t('surgery.detailPatient') }}</span>
                 <span>{{ detailData.patient_name }} ({{ detailData.species }})</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Tipo</span>
+                <span class="detail-label">{{ t('surgery.detailType') }}</span>
                 <span>{{ detailData.surgery_type_name }}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Categoría</span>
+                <span class="detail-label">{{ t('surgery.detailCategory') }}</span>
                 <span>{{ detailData.category_name || '—' }}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Cirujano</span>
+                <span class="detail-label">{{ t('surgery.detailSurgeon') }}</span>
                 <span>{{ detailData.surgeon_name || '—' }}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Estado</span>
+                <span class="detail-label">{{ t('surgery.tableStatus') }}</span>
                 <span class="badge" :class="surgeryStatusClass(detailData.status)">{{ surgeryStatusLabel(detailData.status) }}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Fecha</span>
+                <span class="detail-label">{{ t('surgery.detailDate') }}</span>
                 <span>{{ formatDate(detailData.scheduled_date) }}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Duración</span>
+                <span class="detail-label">{{ t('surgery.detailDuration') }}</span>
                 <span>{{ detailData.duration_minutes ? detailData.duration_minutes + ' min' : '—' }}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Complicaciones</span>
+                <span class="detail-label">{{ t('surgery.detailComplications') }}</span>
                 <span>{{ detailData.complications ? '⚠ Sí' : 'No' }}</span>
               </div>
               <div v-if="detailData.notes" class="detail-item detail-item--full">
-                <span class="detail-label">Notas</span>
+                <span class="detail-label">{{ t('surgery.notesLabel') }}</span>
                 <span>{{ detailData.notes }}</span>
               </div>
             </div>
 
-            <!-- Registros de anestesia -->
+            <!-- {{ t('surgery.anesthesiaTitle') }} -->
             <template v-if="detailData.anesthesia_records && detailData.anesthesia_records.length">
-              <div class="section-title" style="margin-top:16px">Registros de anestesia</div>
+              <div class="section-title" style="margin-top:16px">{{ t('surgery.anesthesiaTitle') }}</div>
               <div
                 v-for="(rec, i) in detailData.anesthesia_records"
                 :key="i"
@@ -461,20 +461,20 @@
               >
                 <div class="ane-record__header">
                   <span class="badge badge--blue">{{ aneTypeLabel(rec.anesthesia_type) }}</span>
-                  <span v-if="rec.complications" class="badge badge--red">⚠ Complicaciones</span>
+                  <span v-if="rec.complications" class="badge badge--red">⚠ {{ t('surgery.detailComplications') }}</span>
                   <span class="sub">{{ rec.total_duration_minutes ? rec.total_duration_minutes + ' min' : '' }}</span>
                 </div>
-                <p class="sub" style="margin-top:4px">Agentes: {{ rec.anesthetic_agents }}</p>
-                <p v-if="rec.monitoring_notes" class="sub">Monitoreo: {{ rec.monitoring_notes }}</p>
+                <p class="sub" style="margin-top:4px">{{ t('surgery.agentsLabel') }}: {{ rec.anesthetic_agents }}</p>
+                <p v-if="rec.monitoring_notes" class="sub">{{ t('surgery.monitoringLabel') }}: {{ rec.monitoring_notes }}</p>
                 <p v-if="rec.complication_notes" class="sub" style="color:#c0392b">{{ rec.complication_notes }}</p>
               </div>
             </template>
             <div v-else class="sub" style="margin-top:12px; padding:12px; background:var(--surface); border-radius:var(--radius)">
-              Sin registros de anestesia.
+              {{ t('common.none') }}
             </div>
           </div>
           <div class="modal__actions">
-            <button type="button" class="btn-ghost" @click="showDetail = false">Cerrar</button>
+            <BaseButton type="button" variant="ghost" @click="showDetail = false">{{ t('common.close') }}</BaseButton>
           </div>
         </div>
       </div>
@@ -485,6 +485,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import BaseButton from '../components/base/BaseButton.vue'
 import http from '../api/client'
 import { t } from '../i18n'
 
@@ -695,9 +696,9 @@ function openNewSurgery() {
 
 function validateNew() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!newForm.patientId)    fe.patientId    = 'Seleccioná un paciente'
-  if (!newForm.surgeryTypeId) fe.surgeryTypeId = 'Seleccioná un tipo de cirugía'
-  if (!newForm.scheduledDate) fe.scheduledDate = 'Ingresá la fecha y hora'
+  if (!newForm.patientId)    fe.patientId    = t('surgery.selectPatient')
+  if (!newForm.surgeryTypeId) fe.surgeryTypeId = t('surgery.selectType')
+  if (!newForm.scheduledDate) fe.scheduledDate = t('surgery.enterDate')
   return Object.keys(fe).length === 0
 }
 
@@ -751,9 +752,9 @@ function openAnesthesia(surgery) {
 
 function validateAne() {
   Object.keys(afe).forEach(k => delete afe[k])
-  if (!aneForm.anesthesiaType)    afe.anesthesiaType    = 'Seleccioná el tipo de anestesia'
-  if (!aneForm.anestheticAgents)  afe.anestheticAgents  = 'Ingresá los agentes utilizados'
-  if (aneForm.complications && !aneForm.complicationNotes) afe.complicationNotes = 'Describí las complicaciones'
+  if (!aneForm.anesthesiaType)    afe.anesthesiaType    = t('surgery.anesthesiaTypePlaceholder')
+  if (!aneForm.anestheticAgents)  afe.anestheticAgents  = t('surgery.enterAgents')
+  if (aneForm.complications && !aneForm.complicationNotes) afe.complicationNotes = t('surgery.describeComplications')
   return Object.keys(afe).length === 0
 }
 
@@ -954,7 +955,7 @@ onMounted(load)
 .alert--error { background: #FDEAEA; color: #c0392b; border-left: 3px solid var(--danger); }
 .mx { margin: 0 24px 8px; }
 
-/* Estados */
+/* {{ t('surgery.tableStatus') }}s */
 .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 0.9rem; background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 0.9rem; background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
 .empty-state__emoji { font-size: 3rem; }

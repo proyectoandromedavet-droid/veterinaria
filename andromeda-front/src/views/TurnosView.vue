@@ -7,32 +7,32 @@
         <span class="page-emoji">📅</span>
         <div>
           <h2 class="page-title">{{ t('appointments.title') }}</h2>
-          <p class="page-sub">Gestión de citas y agenda diaria</p>
+          <p class="page-sub">{{ t('appointments.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openModal()">🐾 Nuevo turno</button>
+      <button type="button" class="btn-primary" @click="openModal()">🐾 {{ t('appointments.newAppointment') }}</button>
     </div>
 
     <!-- Filtros -->
     <div class="filters">
       <input v-model="filters.date" type="date" class="filter-input" @change="load()" />
       <select v-model="filters.status" class="filter-select" @change="load()">
-        <option value="">Todos los estados</option>
+        <option value="">{{ t('common.allStatuses') }}</option>
         <option v-for="(label, val) in STATUS_LABELS" :key="val" :value="val">{{ label }}</option>
       </select>
-      <input v-model.trim="filters.search" type="search" placeholder="🔍 Buscar paciente…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <input v-model.trim="filters.search" type="search" :placeholder="t('appointments.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
     <!-- Tarjetas de turnos -->
-    <div v-if="loading" class="loading-state">
-      <span class="spin" /> Cargando turnos…
+    <div v-if="loading" class="loading-state" role="status" aria-live="polite">
+      <span class="spin" /> {{ t('appointments.loading') }}
     </div>
 
-    <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+    <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
 
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐱</span>
-      <p>No hay turnos para este día</p>
+      <p>{{ t('appointments.empty') }}</p>
       <button type="button" class="btn-ghost" @click="openModal()">{{ t('appointments.scheduleFirst') }}</button>
     </div>
 
@@ -83,28 +83,28 @@
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>🐾 Nuevo turno</h3>
+            <h3>🐾 {{ t('appointments.newAppointment') }}</h3>
             <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-grid">
               <div class="field">
-                <label>Fecha y hora <span class="req">*</span></label>
+                <label>{{ t('appointments.dateTimeLabel') }} <span class="req">*</span></label>
                 <input v-model="form.scheduledDate" type="datetime-local" :disabled="saving" required />
                 <span v-if="fe.scheduledDate" class="field-error">{{ fe.scheduledDate }}</span>
               </div>
               <div class="field">
-                <label>Tipo de consulta <span class="req">*</span></label>
+                <label>{{ t('appointments.typeLabel') }} <span class="req">*</span></label>
                 <select v-model="form.appointmentTypeId" :disabled="saving" required>
-                  <option value="">Seleccioná…</option>
+                  <option value="">{{ t('common.choose') }}</option>
                   <option v-for="t in typeList" :key="t.id" :value="t.id">{{ t.name }}</option>
                 </select>
                 <span v-if="fe.appointmentTypeId" class="field-error">{{ fe.appointmentTypeId }}</span>
               </div>
               <div class="field field--full">
-                <label>Veterinario <span class="req">*</span></label>
+                <label>{{ t('appointments.vetLabel') }} <span class="req">*</span></label>
                 <select v-model="form.vetId" :disabled="saving" required>
-                  <option value="">Seleccioná un veterinario…</option>
+                  <option value="">{{ t('appointments.selectVet') }}</option>
                   <option v-for="v in vetList" :key="v.id" :value="v.id">
                     {{ v.first_name }} {{ v.last_name }}
                   </option>
@@ -112,16 +112,16 @@
                 <span v-if="fe.vetId" class="field-error">{{ fe.vetId }}</span>
               </div>
               <div class="field field--full">
-                <label>Paciente <span class="req">*</span></label>
+                <label>{{ t('appointments.patientLabel') }} <span class="req">*</span></label>
                 <input
                   v-model.trim="patientSearch"
                   type="search"
-                  placeholder="Buscar paciente por nombre o dueño…"
+                  :placeholder="t('appointments.patientSearchPlaceholder')"
                   :disabled="saving"
                   @input="searchPatients"
                   autocomplete="off"
                 />
-                <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
+                <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                   <button
                     v-for="pt in patientResults"
                     :key="pt.id"
@@ -141,15 +141,15 @@
                 <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
               </div>
               <div class="field field--full">
-                <label>Motivo</label>
-                <textarea v-model.trim="form.reason" rows="2" placeholder="Motivo de la consulta…" :disabled="saving" />
+                <label>{{ t('appointments.reasonLabel') }}</label>
+                <textarea v-model.trim="form.reason" rows="2" :placeholder="t('appointments.reasonPlaceholder')" :disabled="saving" />
               </div>
             </div>
-            <div v-if="saveError" class="alert alert--error">{{ saveError }}</div>
+            <div v-if="saveError" class="alert alert--error" role="alert">{{ saveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" /> <span v-else>Guardar turno</span>
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>{{ t('appointments.save') }}</span>
               </button>
             </div>
           </form>

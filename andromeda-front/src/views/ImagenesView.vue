@@ -1,38 +1,38 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">🩻</span>
+        <span class="page-emoji">ðŸ©»</span>
         <div>
-          <h2 class="page-title">Diagnóstico por Imágenes</h2>
-          <p class="page-sub">Órdenes de estudios y gestión de informes</p>
+          <h2 class="page-title">{{ t('imaging.title') }}</h2>
+          <p class="page-sub">{{ t('imaging.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openNewOrder()">+ Nueva orden</button>
+      <BaseButton type="button" @click="openNewOrder()">+ {{ t('imaging.newOrder') }}</BaseButton>
     </div>
 
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-        <span class="stat-card__icon">📋</span>
+        <span class="stat-card__icon">ðŸ“‹</span>
         <div>
           <strong>{{ stats.pendingReport }}</strong>
-          <span>Pendientes de informe</span>
+          <span>{{ t('imaging.pendingReport') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span class="stat-card__icon">✅</span>
+        <span class="stat-card__icon">âœ…</span>
         <div>
           <strong>{{ stats.completed }}</strong>
-          <span>Completadas</span>
+          <span>{{ t('imaging.completed') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span class="stat-card__icon">🩻</span>
+        <span class="stat-card__icon">ðŸ©»</span>
         <div>
           <strong>{{ stats.topModality }}</strong>
-          <span>Modalidad más usada</span>
+          <span>{{ t('imaging.topModality') }}</span>
         </div>
       </div>
     </div>
@@ -42,39 +42,37 @@
       <input
         v-model.trim="search"
         type="search"
-        placeholder="🔍 Buscar por paciente…"
-        class="filter-input filter-input--grow"
-        @input="debouncedLoad()"
-      />
+        :placeholder="t('imaging.searchPlaceholder')"
+        />
       <select v-model="statusFilter" class="filter-select" @change="load()">
-        <option value="">Todos los estados</option>
-        <option value="pending">Pendiente</option>
-        <option value="scheduled">Programada</option>
-        <option value="in_progress">En proceso</option>
-        <option value="reported">Con informe</option>
-        <option value="cancelled">Cancelada</option>
+        <option value="">{{ t('imaging.allStatuses') }}</option>
+        <option value="pending">{{ t('imaging.pendingStatus') }}</option>
+        <option value="scheduled">{{ t('imaging.scheduledStatus') }}</option>
+        <option value="in_progress">{{ t('imaging.inProgressStatus') }}</option>
+        <option value="reported">{{ t('imaging.reportedStatus') }}</option>
+        <option value="cancelled">{{ t('imaging.cancelledStatus') }}</option>
       </select>
     </div>
 
-    <div v-if="loading" class="loading-state">
-      <span class="spin spin--dark" /> Cargando órdenes…
+    <div v-if="loading" class="loading-state" role="status" aria-live="polite">
+      <span class="spin spin--dark" /> {{ t('imaging.loading') }}
     </div>
-    <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+    <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">🩻</span>
-      <p>No hay órdenes de imágenes</p>
+      <span class="empty-state__emoji">ðŸ©»</span>
+      <p>{{ t('imaging.empty') }}</p>
     </div>
 
     <div v-else class="card">
       <table class="table">
         <thead>
           <tr>
-            <th>Paciente</th>
-            <th>Tipo / Modalidad</th>
-            <th>Estado</th>
-            <th>Fecha</th>
-            <th>Informe</th>
-            <th>Acciones</th>
+            <th>{{ t('imaging.patient') }}</th>
+            <th>{{ t('imaging.typeLabel') }}</th>
+            <th>{{ t('imaging.status') }}</th>
+            <th>{{ t('imaging.date') }}</th>
+            <th>{{ t('imaging.report') }}</th>
+            <th>{{ t('imaging.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -83,15 +81,15 @@
               <div class="pet-cell">
                 <span>{{ petEmoji(order.species) }}</span>
                 <div>
-                  <strong>{{ order.patient_name || '—' }}</strong>
+                  <strong>{{ order.patient_name || 'â€”' }}</strong>
                   <span class="sub">{{ order.vet_name || '' }}</span>
                 </div>
               </div>
             </td>
             <td>
               <div>
-                <strong class="modality-name">{{ order.modality ? modalityLabel(order.modality) : '—' }}</strong>
-                <span v-if="order.study_count" class="sub">{{ order.study_count }} estudio(s)</span>
+                <strong class="modality-name">{{ order.modality ? modalityLabel(order.modality) : 'â€”' }}</strong>
+                <span v-if="order.study_count" class="sub">{{ order.study_count }} {{ t('imaging.studies') }}</span>
               </div>
               <span v-if="order.modality" class="badge" :class="modalityClass(order.modality)" style="margin-top:4px">
                 {{ order.modality.toUpperCase() }}
@@ -102,8 +100,8 @@
             </td>
             <td class="sub">{{ formatDate(order.requested_at) }}</td>
             <td>
-              <span v-if="order.has_report" class="badge badge--green">Con informe</span>
-              <span v-else class="badge badge--gray">Sin informe</span>
+              <span v-if="order.has_report" class="badge badge--green">{{ t('imaging.withReport') }}</span>
+              <span v-else class="badge badge--gray">{{ t('imaging.withoutReport') }}</span>
             </td>
             <td>
               <div class="action-btns">
@@ -112,18 +110,18 @@
                   type="button"
                   class="btn-action btn-action--primary"
                   @click="openReport(order)"
-                  title="Ingresar informe"
+                  :title="t('imaging.report')"
                 >
-                  Informe
+                  {{ t('imaging.report') }}
                 </button>
                 <button
                   v-if="order.has_report"
                   type="button"
                   class="btn-action"
                   @click="openReport(order)"
-                  title="Ver informe"
+                  :title="t('imaging.viewReport')"
                 >
-                  Ver
+                  {{ t('imaging.viewReport') }}
                 </button>
               </div>
             </td>
@@ -133,18 +131,18 @@
     </div>
 
     <div v-if="pagination.totalPages > 1" class="pagination">
-      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">{{ t('billing.previous') }}</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-      <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+      <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('billing.next') }}</button>
     </div>
 
-    <!-- Modal nueva orden -->
+    <!-- Modal {{ t('imaging.newOrder') }} -->
     <Transition name="modal">
       <div v-if="showNewOrder" class="modal-backdrop" @click.self="showNewOrder = false">
         <div class="modal">
           <div class="modal__header">
-            <h3>🩻 Nueva orden de imágenes</h3>
-            <button type="button" class="modal__close" @click="showNewOrder = false">✕</button>
+            <h3>ðŸ©» {{ t('imaging.newModalTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showNewOrder = false">âœ•</BaseButton>
           </div>
 
           <form @submit.prevent="handleCreateOrder" novalidate>
@@ -152,39 +150,39 @@
 
               <!-- Paciente autocomplete -->
               <div class="field field--full" style="position:relative">
-                <label>Paciente <span class="req">*</span></label>
+                <label>{{ t('imaging.patientLabel') }} <span class="req">*</span></label>
                 <input
                   v-model.trim="patientSearch"
                   type="search"
-                  placeholder="Buscar por nombre…"
+                  :placeholder="t('imaging.patientSearchPlaceholder')"
                   :disabled="saving"
                   @input="searchPatients"
                   autocomplete="off"
                 />
-                <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
+                <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button
                       v-for="pt in patientResults"
                       :key="pt.id"
                       type="button"
                       class="autocomplete__item"
                       role="option"
-                      :aria-label="`Seleccionar ${pt.name}`"
+                      :aria-label="`${t('imaging.selectPatient')} ${pt.name}`"
                       @click="selectPatient(pt)"
                     >
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                      <span class="autocomplete__owner">â€” {{ pt.primary_owner || '' }}</span>
                     </button>
                 </div>
-                <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                <div v-if="orderForm.patientId" class="selected-patient">âœ… {{ selectedPatientLabel }}</div>
                 <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
               </div>
 
               <div class="form-grid">
                 <!-- Tipo de imagen -->
                 <div class="field field--full">
-                  <label>Tipo de estudio <span class="req">*</span></label>
+                  <label>{{ t('imaging.typeLabel') }} <span class="req">*</span></label>
                   <select v-model="orderForm.imagingTypeId" :disabled="saving || typesLoading">
-                    <option value="">{{ typesLoading ? 'Cargando tipos…' : 'Seleccioná un tipo…' }}</option>
+                    <option value="">{{ typesLoading ? t('imaging.typeLoading') : t('imaging.typePlaceholder') }}</option>
                     <option v-for="t in imagingTypes" :key="t.id" :value="t.id">
                       {{ t.name }} ({{ t.modality ? t.modality.toUpperCase() : '' }})
                     </option>
@@ -196,46 +194,46 @@
                 <div v-if="selectedTypeInfo" class="field field--full type-info">
                   <div v-if="selectedTypeInfo.description" class="type-info__desc">{{ selectedTypeInfo.description }}</div>
                   <div v-if="selectedTypeInfo.preparation_required" class="type-info__prep">
-                    <strong>Preparación requerida:</strong> {{ selectedTypeInfo.preparation_instructions || 'Sí' }}
+                    <strong>{{ t('imaging.prepRequired') }}:</strong> {{ selectedTypeInfo.preparation_instructions || t('common.yes') }}
                   </div>
                 </div>
 
                 <div class="field">
-                  <label>Prioridad</label>
+                  <label>{{ t('imaging.priorityLabel') }}</label>
                   <select v-model="orderForm.priority" :disabled="saving">
-                    <option value="routine">Rutina</option>
-                    <option value="urgent">Urgente</option>
-                    <option value="emergency">Emergencia</option>
+                    <option value="routine">{{ t('imaging.routine') }}</option>
+                    <option value="urgent">{{ t('imaging.urgent') }}</option>
+                    <option value="emergency">{{ t('imaging.emergency') }}</option>
                   </select>
                 </div>
 
                 <div class="field" style="justify-content:flex-end;align-self:flex-end">
                   <label class="checkbox-label">
                     <input type="checkbox" v-model="orderForm.sedationRequired" :disabled="saving" />
-                    Sedación requerida
+                    {{ t('imaging.sedationRequired') }}
                   </label>
                 </div>
 
                 <div class="field field--full">
-                  <label>Notas clínicas</label>
+                  <label>{{ t('imaging.clinicalNotes') }}</label>
                   <textarea
                     v-model.trim="orderForm.clinicalNotes"
                     rows="3"
-                    placeholder="Indicaciones clínicas, sospecha diagnóstica, región a estudiar…"
+                    :placeholder="t('imaging.clinicalNotes')"
                     :disabled="saving"
                   />
                 </div>
               </div>
             </div>
 
-            <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
+            <div v-if="saveError" class="alert alert--error mx" role="alert">{{ saveError }}</div>
 
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="showNewOrder = false" :disabled="saving">Cancelar</button>
-              <button type="submit" class="btn-primary" :disabled="saving">
+              <BaseButton type="button" variant="ghost" @click="showNewOrder = false" :disabled="saving">{{ t('common.cancel') }}</BaseButton>
+              <BaseButton type="submit" :disabled="saving">
                 <span v-if="saving" class="spin spin--sm" />
-                <span v-else>💾 Crear orden</span>
-              </button>
+                <span v-else>ðŸ’¾ {{ t('imaging.createOrder') }}</span>
+              </BaseButton>
             </div>
           </form>
         </div>
@@ -247,35 +245,34 @@
       <div v-if="showReport" class="modal-backdrop" @click.self="showReport = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>📋 Informe de imágenes — {{ selectedOrder?.patient_name }}</h3>
-            <button type="button" class="modal__close" @click="showReport = false">✕</button>
+            <h3>ðŸ“‹ {{ t('imaging.reportTitle') }} â€” {{ selectedOrder?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showReport = false">âœ•</BaseButton>
           </div>
 
-          <div v-if="detailLoading" class="loading-state" style="min-height:200px">
-            <span class="spin spin--dark" /> Cargando detalle…
-          </div>
+          <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
+            <span class="spin spin--dark" /> {{ t('imaging.detailLoading') }}</div>
           <template v-else>
             <!-- Si ya tiene informe, mostrarlo de solo lectura -->
             <div v-if="existingReport" class="form-body">
               <div class="report-readonly">
                 <div class="report-section">
-                  <div class="section-title">Hallazgos</div>
+                  <div class="section-title">{{ t('imaging.findings') }}</div>
                   <p>{{ existingReport.findings }}</p>
                 </div>
                 <div class="report-section">
-                  <div class="section-title">Conclusión</div>
+                  <div class="section-title">{{ t('imaging.conclusion') }}</div>
                   <p>{{ existingReport.conclusion }}</p>
                 </div>
                 <div v-if="existingReport.recommendations" class="report-section">
-                  <div class="section-title">Recomendaciones</div>
+                  <div class="section-title">{{ t('imaging.recommendations') }}</div>
                   <p>{{ existingReport.recommendations }}</p>
                 </div>
                 <div v-if="existingReport.radiologist_name" class="report-meta">
-                  <strong>Radiólogo:</strong> {{ existingReport.radiologist_name }}
+                  <strong>{{ t('imaging.radiologist') }}:</strong> {{ existingReport.radiologist_name }}
                 </div>
               </div>
               <div class="modal__actions" style="position:static;border-top:none;padding-top:0">
-                <button type="button" class="btn-ghost" @click="showReport = false">Cerrar</button>
+                <BaseButton type="button" variant="ghost" @click="showReport = false">{{ t('common.close') }}</BaseButton>
               </div>
             </div>
 
@@ -284,54 +281,54 @@
               <div class="form-body">
                 <div class="form-grid">
                   <div class="field field--full">
-                    <label>Hallazgos <span class="req">*</span></label>
+                    <label>{{ t('imaging.findings') }} <span class="req">*</span></label>
                     <textarea
                       v-model.trim="reportForm.findings"
                       rows="4"
-                      placeholder="Describe los hallazgos observados en el estudio…"
+                      :placeholder="t('imaging.findings')"
                       :disabled="savingReport"
                     />
                     <span v-if="rfe.findings" class="field-error">{{ rfe.findings }}</span>
                   </div>
                   <div class="field field--full">
-                    <label>Conclusión <span class="req">*</span></label>
+                    <label>{{ t('imaging.conclusion') }} <span class="req">*</span></label>
                     <textarea
                       v-model.trim="reportForm.conclusion"
                       rows="3"
-                      placeholder="Diagnóstico o conclusión del estudio…"
+                      :placeholder="t('imaging.conclusion')"
                       :disabled="savingReport"
                     />
                     <span v-if="rfe.conclusion" class="field-error">{{ rfe.conclusion }}</span>
                   </div>
                   <div class="field field--full">
-                    <label>Recomendaciones</label>
+                    <label>{{ t('imaging.recommendations') }}</label>
                     <textarea
                       v-model.trim="reportForm.recommendations"
                       rows="2"
-                      placeholder="Sugerencias de seguimiento o estudios complementarios…"
+                      :placeholder="t('imaging.recommendations')"
                       :disabled="savingReport"
                     />
                   </div>
                   <div class="field">
-                    <label>Nombre del radiólogo</label>
+                    <label>{{ t('imaging.radiologist') }}</label>
                     <input
                       v-model.trim="reportForm.radiologistName"
                       type="text"
-                      placeholder="Dr./Dra. Apellido…"
+                      :placeholder="t('imaging.radiologist')"
                       :disabled="savingReport"
                     />
                   </div>
                 </div>
               </div>
 
-              <div v-if="reportError" class="alert alert--error mx">{{ reportError }}</div>
+              <div v-if="reportError" class="alert alert--error mx" role="alert">{{ reportError }}</div>
 
               <div class="modal__actions">
-                <button type="button" class="btn-ghost" @click="showReport = false" :disabled="savingReport">Cancelar</button>
-                <button type="submit" class="btn-primary" :disabled="savingReport">
+                <BaseButton type="button" variant="ghost" @click="showReport = false" :disabled="savingReport">{{ t('common.cancel') }}</BaseButton>
+                <BaseButton type="submit" :disabled="savingReport">
                   <span v-if="savingReport" class="spin spin--sm" />
-                  <span v-else>💾 Guardar informe</span>
-                </button>
+                  <span v-else>ðŸ’¾ {{ t('imaging.saveReport') }}</span>
+                </BaseButton>
               </div>
             </form>
           </template>
@@ -345,8 +342,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
+import BaseButton from '../components/base/BaseButton.vue'
 
-// ── Lista de órdenes ────────────────────────────────────────────────────────
+// â”€â”€ Lista de Ã³rdenes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function asArray(value) {
   if (Array.isArray(value)) return value
   if (value == null) return []
@@ -399,7 +398,7 @@ const search       = ref('')
 const statusFilter = ref('')
 const pagination   = ref({ page: 1, totalPages: 1 })
 
-const stats = reactive({ pendingReport: 0, completed: 0, topModality: '—' })
+const stats = reactive({ pendingReport: 0, completed: 0, topModality: 'â€”' })
 
 async function load(page = 1) {
   loading.value = true; error.value = ''
@@ -421,7 +420,7 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las órdenes'
+    error.value = e.response?.data?.message || 'No se pudieron cargar las Ã³rdenes'
   } finally { loading.value = false }
 }
 
@@ -436,27 +435,34 @@ function computeStats() {
   stats.pendingReport = pendingReport
   stats.completed     = completed
   const topEntry = Object.entries(modalityCounts).sort((a, b) => b[1] - a[1])[0]
-  stats.topModality = topEntry ? modalityLabel(topEntry[0]) : '—'
+  stats.topModality = topEntry ? modalityLabel(topEntry[0]) : 'â€”'
 }
 
 let loadTimer = null
 function debouncedLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(load, 350) }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function petEmoji(s) {
-  if (!s) return '🐾'
-  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
-  return m[s.toLowerCase()] || '🐾'
+  if (!s) return 'ðŸ¾'
+  const m = { perro:'ðŸ¶', dog:'ðŸ¶', gato:'ðŸ±', cat:'ðŸ±', conejo:'ðŸ°', rabbit:'ðŸ°', loro:'ðŸ¦œ', bird:'ðŸ¦œ', pez:'ðŸŸ', fish:'ðŸŸ', tortuga:'ðŸ¢', reptile:'ðŸ¦Ž', hamster:'ðŸ¹' }
+  return m[s.toLowerCase()] || 'ðŸ¾'
 }
 
 function formatDate(iso) {
-  if (!iso) return '—'
+  if (!iso) return 'â€”'
   return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function modalityLabel(m) {
-  const map = { xray: 'Radiografía', ultrasound: 'Ecografía', ct: 'Tomografía', mri: 'Resonancia', endoscopy: 'Endoscopía', other: 'Otro' }
-  return map[m] || m || '—'
+  const map = {
+    xray: t('imaging.xray'),
+    ultrasound: t('imaging.ultrasound'),
+    ct: t('imaging.ct'),
+    mri: t('imaging.mri'),
+    endoscopy: t('imaging.endoscopy'),
+    other: t('imaging.otherModality'),
+  }
+  return map[m] || m || 'â€”'
 }
 
 function modalityClass(m) {
@@ -470,11 +476,17 @@ function statusClass(s) {
 }
 
 function statusLabel(s) {
-  const map = { pending: 'Pendiente', scheduled: 'Programada', in_progress: 'En proceso', reported: 'Con informe', cancelled: 'Cancelada' }
-  return map[s] || s || '—'
+  const map = {
+    pending: t('imaging.pendingStatus'),
+    scheduled: t('imaging.scheduledStatus'),
+    in_progress: t('imaging.inProgressStatus'),
+    reported: t('imaging.reportedStatus'),
+    cancelled: t('imaging.cancelledStatus'),
+  }
+  return map[s] || s || 'â€”'
 }
 
-// ── Tipos de imagen ──────────────────────────────────────────────────────────
+// â”€â”€ Tipos de imagen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const imagingTypes = ref([])
 const typesLoading = ref(false)
 
@@ -487,7 +499,7 @@ async function loadImagingTypes() {
   finally { typesLoading.value = false }
 }
 
-// ── Modal nueva orden ────────────────────────────────────────────────────────
+// â”€â”€ Modal {{ t('imaging.newOrder') }} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showNewOrder = ref(false)
 const saving       = ref(false)
 const saveError    = ref('')
@@ -527,7 +539,7 @@ async function searchPatients() {
 
 function selectPatient(pt) {
   orderForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' â€” ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 }
@@ -545,8 +557,8 @@ function openNewOrder() {
 
 function validateOrder() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!orderForm.patientId)     fe.patientId     = 'Seleccioná un paciente'
-  if (!orderForm.imagingTypeId) fe.imagingTypeId = 'Seleccioná un tipo de estudio'
+  if (!orderForm.patientId)     fe.patientId     = 'SeleccionÃ¡ un paciente'
+  if (!orderForm.imagingTypeId) fe.imagingTypeId = 'SeleccionÃ¡ un tipo de estudio'
   return Object.keys(fe).length === 0
 }
 
@@ -569,7 +581,7 @@ async function handleCreateOrder() {
   } finally { saving.value = false }
 }
 
-// ── Modal informe ────────────────────────────────────────────────────────────
+// â”€â”€ Modal informe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showReport    = ref(false)
 const selectedOrder = ref(null)
 const detailLoading = ref(false)
@@ -592,7 +604,7 @@ async function openReport(order) {
     const { data } = await http.get(`/imaging/orders/${order.id}`)
     const detail = data?.data || data
     existingReport.value = detail?.report || null
-    // Pre-rellenar si ya tiene informe para edición futura (solo lectura en este caso)
+    // Pre-rellenar si ya tiene informe para ediciÃ³n futura (solo lectura en este caso)
   } catch (e) {
     reportError.value = e.response?.data?.message || 'No se pudo cargar el detalle'
   } finally { detailLoading.value = false }
@@ -678,7 +690,7 @@ onMounted(load)
 .btn-action--primary { background: var(--primary); color: white; border-color: var(--primary); }
 .btn-action--primary:hover { opacity: 0.88; }
 
-/* Paginación */
+/* PaginaciÃ³n */
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
 .pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }
@@ -753,7 +765,7 @@ onMounted(load)
 .spin--dark { border-color: rgba(0,0,0,0.1); border-top-color: var(--primary); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Transición modal */
+/* TransiciÃ³n modal */
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
@@ -765,3 +777,4 @@ onMounted(load)
   .table thead th:nth-child(5), .table tbody td:nth-child(5) { display: none; }
 }
 </style>
+

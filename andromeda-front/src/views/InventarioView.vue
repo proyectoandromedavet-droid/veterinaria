@@ -36,30 +36,30 @@
       <!-- Alertas de stock bajo -->
       <div v-if="lowStock.length > 0" class="stock-alert">
         <span>⚠️</span>
-        <span><strong>{{ lowStock.length }} producto{{ lowStock.length > 1 ? 's' : '' }}</strong> con stock bajo: {{ lowStock.slice(0,3).map(p => p.name).join(', ') }}{{ lowStock.length > 3 ? '…' : '' }}</span>
+        <span><strong>{{ lowStock.length }} {{ t('inventory.lowStock') }}</strong>: {{ lowStock.slice(0,3).map(p => p.name).join(', ') }}{{ lowStock.length > 3 ? '…' : '' }}</span>
       </div>
 
       <!-- Filtros -->
       <div class="filters">
-        <input v-model.trim="search" type="search" placeholder="🔍 Buscar producto…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+        <input v-model.trim="search" type="search" :placeholder="t('inventory.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
         <select v-model="categoryFilter" class="filter-select" @change="load()">
-          <option value="">Todas las categorías</option>
-          <option value="medication">💊 Medicamentos</option>
-          <option value="vaccine">💉 Vacunas</option>
-          <option value="supply">📦 Insumos</option>
-          <option value="food">🦴 Alimentos</option>
-          <option value="equipment">🔧 Equipamiento</option>
-          <option value="other">📦 Otros</option>
+          <option value="">{{ t('inventory.allCategories') }}</option>
+          <option value="medication">💊 {{ t('inventory.categoryMedication') }}</option>
+          <option value="vaccine">💉 {{ t('inventory.categoryVaccine') }}</option>
+          <option value="supply">📦 {{ t('inventory.categorySupply') }}</option>
+          <option value="food">🦴 {{ t('inventory.categoryFood') }}</option>
+          <option value="equipment">🔧 {{ t('inventory.categoryEquipment') }}</option>
+          <option value="other">📦 {{ t('inventory.categoryOther') }}</option>
         </select>
         <select v-model="stockFilter" class="filter-select" @change="load()">
           <option value="">{{ t('inventory.allStock') }}</option>
-          <option value="low">⚠️ Stock bajo</option>
-          <option value="zero">🔴 Sin stock</option>
+          <option value="low">⚠️ {{ t('inventory.lowStock') }}</option>
+          <option value="zero">🔴 {{ t('inventory.noStock') }}</option>
         </select>
       </div>
 
-      <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando inventario…</div>
-      <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+      <div v-if="loading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('inventory.loading') }}</div>
+      <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="empty-state__emoji">📦</span>
         <p>{{ t('inventory.empty') }}</p>
@@ -69,13 +69,13 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Producto</th>
-              <th>Categoría</th>
-              <th>Stock actual</th>
-              <th>Stock mín.</th>
-              <th>Precio venta</th>
-              <th>Vencimiento</th>
-              <th>Estado</th>
+              <th>{{ t('inventory.product') }}</th>
+              <th>{{ t('inventory.category') }}</th>
+              <th>{{ t('inventory.currentStock') }}</th>
+              <th>{{ t('inventory.minStock') }}</th>
+              <th>{{ t('inventory.salePrice') }}</th>
+              <th>{{ t('inventory.expiry') }}</th>
+              <th>{{ t('inventory.status') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -114,8 +114,8 @@
     <!-- TAB: ALERTAS                                            -->
     <!-- ======================================================= -->
     <template v-if="activeTab === 'alerts'">
-      <div v-if="alertsLoading" class="loading-state"><span class="spin spin--dark" /> Cargando alertas…</div>
-      <div v-else-if="alertsError" class="alert alert--error">{{ alertsError }}</div>
+      <div v-if="alertsLoading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('inventory.loading') }}</div>
+      <div v-else-if="alertsError" class="alert alert--error" role="alert">{{ alertsError }}</div>
       <div v-else-if="alerts.length === 0" class="empty-state">
         <span class="empty-state__emoji">✅</span>
         <p>{{ t('inventory.noAlerts') }}</p>
@@ -124,13 +124,13 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Producto</th>
-              <th>SKU</th>
-              <th>Tipo de alerta</th>
-              <th>Stock actual</th>
-              <th>Umbral</th>
-              <th>Fecha</th>
-              <th>Acción</th>
+              <th>{{ t('inventory.product') }}</th>
+              <th>{{ t('inventory.sku') }}</th>
+              <th>{{ t('inventory.alertType') }}</th>
+              <th>{{ t('inventory.currentStock') }}</th>
+              <th>{{ t('inventory.threshold') }}</th>
+              <th>{{ t('inventory.date') }}</th>
+              <th>{{ t('inventory.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -157,8 +157,8 @@
     <!-- TAB: PROVEEDORES                                        -->
     <!-- ======================================================= -->
     <template v-if="activeTab === 'suppliers'">
-      <div v-if="suppliersLoading" class="loading-state"><span class="spin spin--dark" /> Cargando proveedores…</div>
-      <div v-else-if="suppliersError" class="alert alert--error">{{ suppliersError }}</div>
+      <div v-if="suppliersLoading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('inventory.loading') }}</div>
+      <div v-else-if="suppliersError" class="alert alert--error" role="alert">{{ suppliersError }}</div>
       <div v-else-if="suppliers.length === 0" class="empty-state">
         <span class="empty-state__emoji">🚚</span>
         <p>{{ t('inventory.noSuppliers') }}</p>
@@ -167,13 +167,13 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Nombre</th>
+              <th>{{ t('common.name') }}</th>
               <th>CUIT/ID fiscal</th>
-              <th>Contacto</th>
+              <th>{{ t('inventory.contact') }}</th>
               <th>Email</th>
-              <th>Teléfono</th>
-              <th>Plazo pago (días)</th>
-              <th>Acciones</th>
+              <th>{{ t('patients.phone') }}</th>
+              <th>{{ t('inventory.paymentTerms') }}</th>
+              <th>{{ t('inventory.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -186,10 +186,10 @@
               <td>{{ s.payment_terms ?? '—' }}</td>
               <td>
                 <div class="action-btns">
-                  <button class="btn-sm btn-sm--icon" title="Editar" @click="openSupplierModal(s)">✏️</button>
+                  <button class="btn-sm btn-sm--icon" :title="t('common.edit')" @click="openSupplierModal(s)">✏️</button>
                   <button type="button" class="btn-sm btn-sm--danger" :disabled="deletingSupplier === s.id" @click="deleteSupplier(s.id)">
                     <span v-if="deletingSupplier === s.id" class="spin spin--sm spin--dark" />
-                    <span v-else>Eliminar</span>
+                    <span v-else>{{ t('common.delete') }}</span>
                   </button>
                 </div>
               </td>
@@ -203,23 +203,23 @@
     <!-- TAB: ÓRDENES DE COMPRA                                  -->
     <!-- ======================================================= -->
     <template v-if="activeTab === 'orders'">
-      <div v-if="ordersLoading" class="loading-state"><span class="spin spin--dark" /> Cargando órdenes de compra…</div>
-      <div v-else-if="ordersError" class="alert alert--error">{{ ordersError }}</div>
+      <div v-if="ordersLoading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('inventory.loading') }}</div>
+      <div v-else-if="ordersError" class="alert alert--error" role="alert">{{ ordersError }}</div>
       <div v-else-if="orders.length === 0" class="empty-state">
         <span class="empty-state__emoji">🛒</span>
-        <p>No hay órdenes de compra</p>
+        <p>{{ t('inventory.noOrders') }}</p>
       </div>
       <div v-else class="card">
         <table class="table">
           <thead>
             <tr>
-              <th>N° OC</th>
-              <th>Proveedor</th>
-              <th>Estado</th>
-              <th>Fecha pedido</th>
-              <th>Fecha esperada</th>
-              <th>Total</th>
-              <th>Acciones</th>
+              <th>{{ t('inventory.orderNumber') }}</th>
+              <th>{{ t('inventory.supplier') }}</th>
+              <th>{{ t('inventory.status') }}</th>
+              <th>{{ t('inventory.orderDate') }}</th>
+              <th>{{ t('inventory.expectedDate') }}</th>
+              <th>{{ t('inventory.total') }}</th>
+              <th>{{ t('inventory.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -239,7 +239,7 @@
                     @click="sendOrder(o.id)"
                   >
                     <span v-if="actioningOrder === o.id" class="spin spin--sm spin--dark" />
-                    <span v-else>Enviar</span>
+                    <span v-else>{{ t('common.send') }}</span>
                   </button>
                   <button
                     v-if="o.status === 'draft' || o.status === 'sent'"
@@ -248,7 +248,7 @@
                     @click="cancelOrder(o.id)"
                   >
                     <span v-if="actioningOrder === o.id" class="spin spin--sm spin--dark" />
-                    <span v-else>Cancelar</span>
+                    <span v-else>{{ t('common.cancel') }}</span>
                   </button>
                 </div>
               </td>
@@ -265,67 +265,67 @@
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>📦 Nuevo producto</h3>
+            <h3>📦 {{ t('inventory.newProduct') }}</h3>
             <button type="button" class="modal__close" @click="closeModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>Nombre del producto <span class="req">*</span></label>
+                  <label>{{ t('inventory.productName') }} <span class="req">*</span></label>
                   <input v-model.trim="form.name" type="text" placeholder="Amoxicilina 500mg" :disabled="saving" required />
                   <span v-if="fe.name" class="field-error">{{ fe.name }}</span>
                 </div>
                 <div class="field">
-                  <label>Tipo <span class="req">*</span></label>
+                  <label>{{ t('inventory.type') }} <span class="req">*</span></label>
                   <select v-model="form.category" :disabled="saving" required>
-                    <option value="">Seleccioná…</option>
-                    <option value="medication">💊 Medicamento</option>
-                    <option value="vaccine">💉 Vacuna</option>
-                    <option value="supply">📦 Insumo</option>
-                    <option value="food">🦴 Alimento</option>
-                    <option value="equipment">🔧 Equipamiento</option>
-                    <option value="other">📦 Otro</option>
+                    <option value="">{{ t('common.choose') }}</option>
+                    <option value="medication">💊 {{ t('inventory.categoryMedication') }}</option>
+                    <option value="vaccine">💉 {{ t('inventory.categoryVaccine') }}</option>
+                    <option value="supply">📦 {{ t('inventory.categorySupply') }}</option>
+                    <option value="food">🦴 {{ t('inventory.categoryFood') }}</option>
+                    <option value="equipment">🔧 {{ t('inventory.categoryEquipment') }}</option>
+                    <option value="other">📦 {{ t('inventory.categoryOther') }}</option>
                   </select>
                   <span v-if="fe.category" class="field-error">{{ fe.category }}</span>
                 </div>
                 <div class="field">
-                  <label>Código / SKU</label>
+                  <label>{{ t('inventory.code') }}</label>
                   <input v-model.trim="form.sku" type="text" placeholder="MED-001" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Precio venta <span class="req">*</span></label>
+                  <label>{{ t('inventory.salePrice') }} <span class="req">*</span></label>
                   <input v-model.number="form.salePrice" type="number" min="0" step="0.01" placeholder="0.00" :disabled="saving" required />
                   <span v-if="fe.salePrice" class="field-error">{{ fe.salePrice }}</span>
                 </div>
                 <div class="field">
-                  <label>Costo unitario</label>
+                  <label>{{ t('inventory.unitCost') }}</label>
                   <input v-model.number="form.unitCost" type="number" min="0" step="0.01" placeholder="0.00" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Stock inicial <span class="req">*</span></label>
+                  <label>{{ t('inventory.initialStock') }} <span class="req">*</span></label>
                   <input v-model.number="form.stock" type="number" min="0" placeholder="0" :disabled="saving" required />
                   <span v-if="fe.stock" class="field-error">{{ fe.stock }}</span>
                 </div>
                 <div class="field">
-                  <label>Stock mínimo</label>
+                  <label>{{ t('inventory.minimumStock') }}</label>
                   <input v-model.number="form.minStock" type="number" min="0" placeholder="5" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Vencimiento (lote inicial)</label>
+                  <label>{{ t('inventory.batchExpiration') }}</label>
                   <input v-model="form.expirationDate" type="date" :disabled="saving" />
                 </div>
                 <div class="field field--full">
-                  <label>Descripción</label>
-                  <textarea v-model.trim="form.description" rows="2" placeholder="Descripción o indicaciones…" :disabled="saving" />
+                  <label>{{ t('inventory.description') }}</label>
+                  <textarea v-model.trim="form.description" rows="2" :placeholder="t('inventory.description')" :disabled="saving" />
                 </div>
               </div>
             </div>
             <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" /> <span v-else>Agregar al inventario</span>
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>{{ t('inventory.addToInventory') || 'Agregar al inventario' }}</span>
               </button>
             </div>
           </form>
@@ -340,14 +340,14 @@
       <div v-if="showSupplierModal" class="modal-backdrop" @click.self="closeSupplierModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>🚚 {{ editingSupplier ? 'Editar proveedor' : 'Nuevo proveedor' }}</h3>
+            <h3>🚚 {{ editingSupplier ? t('inventory.editSupplier') : t('inventory.newSupplier') }}</h3>
             <button type="button" class="modal__close" @click="closeSupplierModal()">✕</button>
           </div>
           <form @submit.prevent="handleSupplierSave" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>Nombre <span class="req">*</span></label>
+                  <label>{{ t('common.name') }} <span class="req">*</span></label>
                   <input v-model.trim="supplierForm.name" type="text" placeholder="Droguería XYZ" :disabled="supplierSaving" required />
                   <span v-if="sfe.name" class="field-error">{{ sfe.name }}</span>
                 </div>
@@ -356,7 +356,7 @@
                   <input v-model.trim="supplierForm.taxId" type="text" placeholder="20-12345678-9" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
-                  <label>Contacto</label>
+                  <label>{{ t('inventory.contact') }}</label>
                   <input v-model.trim="supplierForm.contactName" type="text" placeholder="Juan Pérez" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
@@ -364,11 +364,11 @@
                   <input v-model.trim="supplierForm.email" type="email" placeholder="ventas@drogueria.com" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
-                  <label>Teléfono</label>
+                  <label>{{ t('patients.phone') }}</label>
                   <input v-model.trim="supplierForm.phone" type="text" placeholder="+54 11 1234-5678" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
-                  <label>Plazo de pago (días)</label>
+                  <label>{{ t('inventory.paymentTerms') }}</label>
                   <input v-model.number="supplierForm.paymentTerms" type="number" min="0" placeholder="30" :disabled="supplierSaving" />
                 </div>
                 <div class="field field--full">
@@ -376,17 +376,17 @@
                   <textarea v-model.trim="supplierForm.address" rows="2" placeholder="Av. Corrientes 1234, CABA" :disabled="supplierSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Notas</label>
-                  <textarea v-model.trim="supplierForm.notes" rows="2" placeholder="Observaciones adicionales…" :disabled="supplierSaving" />
+                  <label>{{ t('common.notes') }}</label>
+                  <textarea v-model.trim="supplierForm.notes" rows="2" :placeholder="t('inventory.description')" :disabled="supplierSaving" />
                 </div>
               </div>
             </div>
             <div v-if="supplierSaveError" class="alert alert--error mx">{{ supplierSaveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeSupplierModal()" :disabled="supplierSaving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeSupplierModal()" :disabled="supplierSaving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="supplierSaving">
                 <span v-if="supplierSaving" class="spin spin--sm" />
-                <span v-else>{{ editingSupplier ? 'Guardar cambios' : 'Crear proveedor' }}</span>
+                <span v-else>{{ editingSupplier ? t('common.update') : t('common.create') }}</span>
               </button>
             </div>
           </form>
@@ -401,74 +401,74 @@
       <div v-if="showOrderModal" class="modal-backdrop" @click.self="closeOrderModal()">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>🛒 Nueva orden de compra</h3>
+            <h3>🛒 {{ t('inventory.newOrder') }}</h3>
             <button type="button" class="modal__close" @click="closeOrderModal()">✕</button>
           </div>
           <form @submit.prevent="handleOrderCreate" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field">
-                  <label>Proveedor <span class="req">*</span></label>
+                  <label>{{ t('inventory.supplier') }} <span class="req">*</span></label>
                   <select v-model="orderForm.supplierId" :disabled="orderSaving" required>
-                    <option value="">Seleccioná…</option>
+                    <option value="">{{ t('common.choose') }}</option>
                     <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
                   </select>
                   <span v-if="ofe.supplierId" class="field-error">{{ ofe.supplierId }}</span>
                 </div>
                 <div class="field">
-                  <label>Fecha pedido</label>
+                  <label>{{ t('inventory.orderDate') }}</label>
                   <input v-model="orderForm.orderedDate" type="date" :disabled="orderSaving" />
                 </div>
                 <div class="field">
-                  <label>Fecha esperada</label>
+                  <label>{{ t('inventory.expectedDate') }}</label>
                   <input v-model="orderForm.expectedDate" type="date" :disabled="orderSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Notas</label>
-                  <textarea v-model.trim="orderForm.notes" rows="2" placeholder="Observaciones…" :disabled="orderSaving" />
+                  <label>{{ t('common.notes') }}</label>
+                  <textarea v-model.trim="orderForm.notes" rows="2" :placeholder="t('inventory.description')" :disabled="orderSaving" />
                 </div>
               </div>
 
               <!-- Items de la OC -->
               <div class="oc-items-section">
                 <div class="oc-items-header">
-                  <span class="oc-items-title">Ítems</span>
-                  <button type="button" class="btn-sm btn-sm--primary" @click="addOrderItem()">+ Agregar ítem</button>
+                  <span class="oc-items-title">{{ t('inventory.items') }}</span>
+                  <button type="button" class="btn-sm btn-sm--primary" @click="addOrderItem()">+ {{ t('inventory.addItem') }}</button>
                 </div>
                 <span v-if="ofe.items" class="field-error">{{ ofe.items }}</span>
 
-                <div v-if="orderForm.items.length === 0" class="oc-items-empty">Sin ítems. Agregá al menos uno.</div>
+                <div v-if="orderForm.items.length === 0" class="oc-items-empty">{{ t('inventory.noItemsInOrder') }}</div>
 
                 <div v-for="(item, idx) in orderForm.items" :key="idx" class="oc-item-row">
                   <div class="field field--grow">
-                    <label>Producto</label>
+                    <label>{{ t('inventory.product') }}</label>
                     <select v-model="item.itemId" :disabled="orderSaving">
-                      <option value="">Seleccioná…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option v-for="p in items" :key="p.id" :value="p.id">{{ p.name }}</option>
                     </select>
                   </div>
                   <div class="field field--narrow">
-                    <label>Cantidad</label>
+                    <label>{{ t('inventory.quantity') }}</label>
                     <input v-model.number="item.quantity" type="number" min="1" placeholder="1" :disabled="orderSaving" />
                   </div>
                   <div class="field field--narrow">
-                    <label>Costo unit.</label>
+                    <label>{{ t('inventory.unitCost') }}</label>
                     <input v-model.number="item.unitCost" type="number" min="0" step="0.01" placeholder="0.00" :disabled="orderSaving" />
                   </div>
                   <button type="button" class="btn-sm btn-sm--danger oc-item-remove" @click="removeOrderItem(idx)" :disabled="orderSaving">✕</button>
                 </div>
 
                 <div v-if="orderForm.items.length > 0" class="oc-total">
-                  Total estimado: <strong>${{ orderTotal }}</strong>
+                  {{ t('inventory.estimatedTotal') }} <strong>${{ orderTotal }}</strong>
                 </div>
               </div>
             </div>
             <div v-if="orderSaveError" class="alert alert--error mx">{{ orderSaveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeOrderModal()" :disabled="orderSaving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeOrderModal()" :disabled="orderSaving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="orderSaving">
                 <span v-if="orderSaving" class="spin spin--sm" />
-                <span v-else>Crear orden de compra</span>
+                <span v-else>{{ t('inventory.createOrder') || 'Crear orden de compra' }}</span>
               </button>
             </div>
           </form>
@@ -611,9 +611,9 @@ function stockBadge(p) {
 }
 
 function stockLabel(p) {
-  if (isOut(p)) return 'Sin stock'
-  if (isLow(p)) return 'Stock bajo'
-  return 'Disponible'
+  if (isOut(p)) return t('inventory.noStock')
+  if (isLow(p)) return t('inventory.lowStock')
+  return t('common.active')
 }
 
 function expClass(dt) {
@@ -664,10 +664,10 @@ function resetForm() {
 
 function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!form.name)                              fe.name      = 'Requerido'
-  if (!form.category)                          fe.category  = 'Requerido'
-  if (form.salePrice === '' || form.salePrice === null) fe.salePrice = 'Requerido'
-  if (form.stock === '' || form.stock === null) fe.stock     = 'Requerido'
+  if (!form.name)                              fe.name      = t('common.required')
+  if (!form.category)                          fe.category  = t('common.required')
+  if (form.salePrice === '' || form.salePrice === null) fe.salePrice = t('common.required')
+  if (form.stock === '' || form.stock === null) fe.stock     = t('common.required')
   return Object.keys(fe).length === 0
 }
 
@@ -708,7 +708,7 @@ const alertsError   = ref('')
 const resolvingAlert = ref(null)
 
 function alertLabel(type) {
-  const m = { low_stock: 'Stock bajo', out_of_stock: 'Sin stock', expiring_soon: 'Próximo a vencer', expired: 'Vencido' }
+  const m = { low_stock: t('inventory.lowStock'), out_of_stock: t('inventory.noStock'), expiring_soon: t('inventory.expiringSoon'), expired: t('inventory.expired') }
   return m[type] || type
 }
 
@@ -832,7 +832,7 @@ async function handleSupplierSave() {
 }
 
 async function deleteSupplier(id) {
-  if (!confirm('¿Eliminar este proveedor?')) return
+  if (!confirm(t('inventory.deleteSupplierConfirm') || '¿Eliminar este proveedor?')) return
   deletingSupplier.value = id
   try {
     await http.delete(`/suppliers/${id}`)
@@ -947,7 +947,7 @@ async function sendOrder(id) {
 }
 
 async function cancelOrder(id) {
-  if (!confirm('¿Cancelar esta orden de compra?')) return
+  if (!confirm(t('inventory.cancelOrderPrompt'))) return
   actioningOrder.value = id
   try {
     await http.patch(`/purchase-orders/${id}/cancel`)

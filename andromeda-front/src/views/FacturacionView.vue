@@ -1,15 +1,15 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">💰</span>
+        <span class="page-emoji">ðŸ’°</span>
         <div>
-          <h2 class="page-title">Facturación</h2>
-          <p class="page-sub">Comprobantes y pagos de servicios</p>
+          <h2 class="page-title">{{ t('billing.title') }}</h2>
+          <p class="page-sub">{{ t('billing.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" v-if="activeTab === 'facturas'" class="btn-primary" @click="openModal()">+ Nueva factura</button>
+      <BaseButton v-if="activeTab === 'facturas'" type="button" @click="openModal()">{{ t('billing.newInvoice') }}</BaseButton>
     </div>
 
     <!-- Tab Navigation -->
@@ -18,12 +18,12 @@
         class="tab-btn"
         :class="{ 'tab-btn--active': activeTab === 'facturas' }"
         @click="activeTab = 'facturas'"
-      >💰 Facturas</button>
+      >💰 {{ t('billing.invoicesTab') }}</button>
       <button
         class="tab-btn"
         :class="{ 'tab-btn--active': activeTab === 'consolidado' }"
         @click="activeTab = 'consolidado'"
-      >📊 Consolidado</button>
+      >📊 {{ t('billing.consolidatedTab') }}</button>
     </div>
 
     <!-- ===== TAB: FACTURAS ===== -->
@@ -32,31 +32,31 @@
       <!-- KPIs financieros -->
       <div class="kpi-row">
         <div class="kpi-card" style="--bc:#D6F3EC;--tc:#1A9E7F">
-          <span class="kpi-icon">💵</span>
+          <span class="kpi-icon">ðŸ’µ</span>
           <div>
             <strong>${{ summary.paid }}</strong>
-            <span>Cobrado hoy</span>
+            <span>{{ t('billing.paidToday') }}</span>
           </div>
         </div>
         <div class="kpi-card" style="--bc:#FFF3CC;--tc:#8A6200">
-          <span class="kpi-icon">⏳</span>
+          <span class="kpi-icon">â³</span>
           <div>
             <strong>{{ summary.pending }}</strong>
-            <span>Pendientes</span>
+            <span>{{ t('billing.pending') }}</span>
           </div>
         </div>
         <div class="kpi-card" style="--bc:#FDEAEA;--tc:#c0392b">
-          <span class="kpi-icon">❌</span>
+          <span class="kpi-icon">âŒ</span>
           <div>
             <strong>{{ summary.overdue }}</strong>
-            <span>Vencidas</span>
+            <span>{{ t('billing.overdue') }}</span>
           </div>
         </div>
         <div class="kpi-card" style="--bc:#D6EEFF;--tc:#1A5FAA">
-          <span class="kpi-icon">📋</span>
+          <span class="kpi-icon">ðŸ“‹</span>
           <div>
             <strong>{{ summary.total }}</strong>
-            <span>Emitidas hoy</span>
+            <span>{{ t('billing.issuedToday') }}</span>
           </div>
         </div>
       </div>
@@ -66,33 +66,33 @@
         <input v-model="dateFrom" type="date" class="filter-input" @change="load()" />
         <input v-model="dateTo"   type="date" class="filter-input" @change="load()" />
         <select v-model="statusFilter" class="filter-select" @change="load()">
-          <option value="">Todos los estados</option>
-          <option value="draft">Borrador</option>
-          <option value="pending">Pendiente</option>
-          <option value="paid">Pagada</option>
-          <option value="overdue">Vencida</option>
-          <option value="cancelled">Cancelada</option>
+          <option value="">{{ t('billing.allStatuses') }}</option>
+          <option value="draft">{{ t('billing.draft') }}</option>
+          <option value="pending">{{ t('billing.pendingStatus') }}</option>
+          <option value="paid">{{ t('billing.paidStatus') }}</option>
+          <option value="overdue">{{ t('billing.overdueStatus') }}</option>
+          <option value="cancelled">{{ t('billing.cancelledStatus') }}</option>
         </select>
-        <input v-model.trim="search" type="search" placeholder="🔍 Buscar por cliente o Nº…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+        <input v-model.trim="search" type="search" :placeholder="t('billing.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
       </div>
 
-      <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando facturas…</div>
-      <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+      <div v-if="loading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('billing.loading') }}</div>
+      <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
-        <span class="empty-state__emoji">💰</span>
-        <p>No hay facturas para el período seleccionado</p>
+        <span class="empty-state__emoji">ðŸ’°</span>
+        <p>{{ t('billing.empty') }}</p>
       </div>
 
       <div v-else class="card">
         <table class="table">
           <thead>
             <tr>
-              <th>Nº Factura</th>
-              <th>Cliente / Mascota</th>
-              <th>Fecha</th>
-              <th>Vencimiento</th>
-              <th>Total</th>
-              <th>Estado</th>
+              <th>{{ t('billing.invoiceNumber') }}</th>
+              <th>{{ t('billing.clientPatient') }}</th>
+              <th>{{ t('billing.issueDate') }}</th>
+              <th>{{ t('billing.dueDate') }}</th>
+              <th>{{ t('billing.total') }}</th>
+              <th>{{ t('billing.status') }}</th>
               <th></th>
             </tr>
           </thead>
@@ -101,18 +101,18 @@
               <td><strong class="inv-num">{{ inv.invoice_number || inv.number || `#${inv.id}` }}</strong></td>
               <td>
                 <div>
-                  <strong>{{ inv.client_name || inv.owner_name || '—' }}</strong>
+                  <strong>{{ inv.client_name || inv.owner_name || 'â€”' }}</strong>
                   <span class="sub">{{ inv.patient_name || '' }}</span>
                 </div>
               </td>
               <td class="sub">{{ formatDate(inv.issued_date) }}</td>
               <td :class="dueDateClass(inv.due_date)">{{ formatDate(inv.due_date) }}</td>
               <td><strong>${{ formatMoney(inv.total_amount) }}</strong></td>
-              <td><span class="badge" :class="`inv-${inv.status}`">{{ INV_STATUS[inv.status] || inv.status }}</span></td>
+              <td><span class="badge" :class="`inv-${inv.status}`">{{ invoiceStatusLabel(inv.status) }}</span></td>
               <td>
                 <div class="row-actions">
-                  <button type="button" v-if="inv.status === 'pending' || inv.status === 'draft'" class="btn-xs btn-xs--green" @click="openPayModal(inv)">Marcar pago</button>
-                  <button type="button" class="btn-xs btn-xs--blue" @click="viewInvoice(inv)" title="Ver detalle">👁</button>
+                  <button type="button" v-if="inv.status === 'pending' || inv.status === 'draft'" class="btn-xs btn-xs--green" @click="openPayModal(inv)">{{ t('billing.markPaid') }}</button>
+                  <button type="button" class="btn-xs btn-xs--blue" @click="viewInvoice(inv)" :title="t('billing.viewDetail')">ðŸ‘</button>
                 </div>
               </td>
             </tr>
@@ -121,9 +121,9 @@
       </div>
 
       <div v-if="pagination.totalPages > 1" class="pagination">
-        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">{{ t('billing.previous') }}</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-        <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+        <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('billing.next') }}</button>
       </div>
 
     </template>
@@ -133,30 +133,30 @@
       <div class="consol-filters card">
         <div class="consol-filters__inner">
           <div class="field">
-            <label>Desde</label>
+            <label>{{ t('billing.from') }}</label>
             <input v-model="consolFrom" type="date" class="filter-input" />
           </div>
           <div class="field">
-            <label>Hasta</label>
+            <label>{{ t('billing.to') }}</label>
             <input v-model="consolTo" type="date" class="filter-input" />
           </div>
           <button type="button" class="btn-primary" @click="loadConsolidated()" :disabled="consolLoading">
             <span v-if="consolLoading" class="spin spin--sm" />
-            <span v-else>Buscar</span>
+            <span v-else>{{ t('billing.search') }}</span>
           </button>
         </div>
       </div>
 
-      <div v-if="consolLoading" class="loading-state"><span class="spin spin--dark" /> Cargando consolidado…</div>
+      <div v-if="consolLoading" class="loading-state"><span class="spin spin--dark" /> {{ t('billing.loadingSummary') }}</div>
       <div v-else-if="consolError" class="alert alert--error">{{ consolError }}</div>
 
       <template v-else-if="consolSummary">
         <!-- Summary KPI Cards -->
-        <div class="section-title">Resumen del período</div>
+        <div class="section-title">{{ t('billing.summaryTitle') }}</div>
         <div class="kpi-row">
           <template v-for="(value, key) in consolSummary" :key="key">
             <div v-if="value !== null && value !== undefined" class="kpi-card" style="--bc:#EEF2FF;--tc:#3730A3">
-              <span class="kpi-icon">📊</span>
+              <span class="kpi-icon">ðŸ“Š</span>
               <div>
                 <strong>{{ formatConsolValue(key, value) }}</strong>
                 <span>{{ formatConsolLabel(key) }}</span>
@@ -166,27 +166,27 @@
         </div>
 
         <!-- Outstanding Table -->
-        <div class="section-title" style="margin-top:8px">Facturas vencidas por sucursal</div>
+        <div class="section-title" style="margin-top:8px">{{ t('billing.overdueByBranchTitle') }}</div>
         <div v-if="!consolOutstanding || consolOutstanding.length === 0" class="empty-state" style="padding:30px">
-          <span class="empty-state__emoji">✅</span>
-          <p>No hay facturas vencidas pendientes</p>
+          <span class="empty-state__emoji">âœ…</span>
+          <p>{{ t('billing.emptyOverdue') }}</p>
         </div>
         <div v-else class="card">
           <table class="table">
             <thead>
               <tr>
-                <th>Sucursal</th>
-                <th>Facturas vencidas</th>
-                <th>Monto pendiente</th>
-                <th>Días prom. de mora</th>
+                <th>{{ t('billing.branch') }}</th>
+                <th>{{ t('billing.overdueInvoices') }}</th>
+                <th>{{ t('billing.pendingAmount') }}</th>
+                <th>{{ t('billing.avgOverdueDays') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="row in consolOutstanding" :key="row.branch_name">
-                <td><strong>{{ row.branch_name || '—' }}</strong></td>
+                <td><strong>{{ row.branch_name || 'â€”' }}</strong></td>
                 <td><span class="badge inv-overdue">{{ row.overdue_invoices }}</span></td>
                 <td><strong class="text-danger">${{ formatMoney(row.outstanding_amount) }}</strong></td>
-                <td>{{ row.avg_days_overdue != null ? Math.round(row.avg_days_overdue) + ' días' : '—' }}</td>
+                <td>{{ row.avg_days_overdue != null ? Math.round(row.avg_days_overdue) + ' dÃ­as' : 'â€”' }}</td>
               </tr>
             </tbody>
           </table>
@@ -194,8 +194,8 @@
       </template>
 
       <div v-else class="empty-state">
-        <span class="empty-state__emoji">📊</span>
-        <p>Seleccioná un rango de fechas y presioná Buscar</p>
+        <span class="empty-state__emoji">ðŸ“Š</span>
+        <p>{{ t('billing.selectRangePrompt') }}</p>
       </div>
     </template>
 
@@ -204,70 +204,70 @@
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>💰 Nueva factura</h3>
-            <button type="button" class="modal__close" @click="closeModal()">✕</button>
+            <h3>💰 {{ t('billing.newModalTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="closeModal()">âœ•</BaseButton>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field">
-                  <label>ID Cliente <span class="req">*</span></label>
-                  <input v-model.trim="form.clientId" type="text" placeholder="ID del cliente" :disabled="saving" required />
+                  <label>{{ t('billing.clientIdLabel') }} <span class="req">*</span></label>
+                  <input v-model.trim="form.clientId" type="text" :placeholder="t('billing.clientIdLabel')" :disabled="saving" required />
                   <span v-if="fe.clientId" class="field-error">{{ fe.clientId }}</span>
                 </div>
                 <div class="field">
-                  <label>ID Paciente</label>
-                  <input v-model.trim="form.patientId" type="text" placeholder="ID del paciente" :disabled="saving" />
+                  <label>{{ t('billing.patientIdLabel') }}</label>
+                  <input v-model.trim="form.patientId" type="text" :placeholder="t('billing.patientIdLabel')" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Vencimiento</label>
+                  <label>{{ t('billing.dueDateLabel') }}</label>
                   <input v-model="form.dueDate" type="date" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Método de pago</label>
+                  <label>{{ t('billing.paymentMethodLabel') }}</label>
                   <select v-model="form.paymentMethod" :disabled="saving">
-                    <option value="">Sin especificar</option>
-                    <option value="cash">Efectivo</option>
-                    <option value="credit_card">Tarjeta crédito</option>
-                    <option value="debit_card">Tarjeta débito</option>
-                    <option value="bank_transfer">Transferencia</option>
-                    <option value="other">Mercado Pago / Otro</option>
+                    <option value="">{{ t('billing.noSpecific') }}</option>
+                    <option value="cash">{{ t('billing.cash') }}</option>
+                    <option value="credit_card">{{ t('billing.creditCard') }}</option>
+                    <option value="debit_card">{{ t('billing.debitCard') }}</option>
+                    <option value="bank_transfer">{{ t('billing.bankTransfer') }}</option>
+                    <option value="other">{{ t('billing.other') }}</option>
                   </select>
                 </div>
               </div>
 
-              <!-- Ítems -->
+              <!-- Ãtems -->
               <div class="items-section">
                 <div class="items-header">
-                  <span class="section-label">Ítems</span>
-                  <button type="button" class="btn-add-item" @click="addItem()">+ Agregar ítem</button>
+                  <span class="section-label">{{ t('billing.itemsLabel') }}</span>
+                  <button type="button" class="btn-add-item" @click="addItem()">+ {{ t('billing.addItem') }}</button>
                 </div>
                 <div class="items-list">
                   <div v-for="(item, idx) in form.items" :key="idx" class="item-row">
-                    <input v-model.trim="item.description" type="text" placeholder="Descripción" class="item-desc" :disabled="saving" />
-                    <input v-model.number="item.quantity"  type="number" min="1" placeholder="Cant." class="item-qty" :disabled="saving" />
-                    <input v-model.number="item.unit_price" type="number" min="0" step="0.01" placeholder="Precio unit." class="item-price" :disabled="saving" />
+                    <input v-model.trim="item.description" type="text" :placeholder="t('billing.descriptionPlaceholder')" class="item-desc" :disabled="saving" />
+                    <input v-model.number="item.quantity"  type="number" min="1" :placeholder="t('billing.quantityPlaceholder')" class="item-qty" :disabled="saving" />
+                    <input v-model.number="item.unit_price" type="number" min="0" step="0.01" :placeholder="t('billing.unitPricePlaceholder')" class="item-price" :disabled="saving" />
                     <span class="item-total">${{ ((item.quantity || 0) * (item.unit_price || 0)).toFixed(2) }}</span>
-                    <button type="button" class="btn-del-item" @click="removeItem(idx)" :disabled="form.items.length <= 1">✕</button>
+                    <button type="button" class="btn-del-item" @click="removeItem(idx)" :disabled="form.items.length <= 1">âœ•</button>
                   </div>
                 </div>
                 <div class="items-total">
-                  <span>Total:</span>
+                  <span>{{ t('billing.totalLabel') }}</span>
                   <strong>${{ invoiceTotal.toFixed(2) }}</strong>
                 </div>
               </div>
 
               <div class="field">
-                <label>Notas</label>
-                <textarea v-model.trim="form.notes" rows="2" placeholder="Observaciones…" :disabled="saving" />
+                <label>{{ t('billing.notesLabel') }}</label>
+                <textarea v-model.trim="form.notes" rows="2" :placeholder="t('billing.notesPlaceholder')" :disabled="saving" />
               </div>
             </div>
-            <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
+            <div v-if="saveError" class="alert alert--error mx" role="alert">{{ saveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
-              <button type="submit" class="btn-primary" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" /> <span v-else>Emitir factura</span>
-              </button>
+              <BaseButton type="button" variant="ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</BaseButton>
+              <BaseButton type="submit" :disabled="saving">
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>{{ t('billing.emitInvoice') }}</span>
+              </BaseButton>
             </div>
           </form>
         </div>
@@ -279,22 +279,22 @@
       <div v-if="showViewModal" class="modal-backdrop" @click.self="closeViewModal()">
         <div class="modal modal--detail">
           <div class="modal__header">
-            <h3>📄 Detalle de factura</h3>
-            <button type="button" class="modal__close" @click="closeViewModal()">✕</button>
+            <h3>📄 {{ t('billing.detailTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="closeViewModal()">âœ•</BaseButton>
           </div>
 
-          <div v-if="detailLoading" class="detail-loading">
-            <span class="spin spin--dark" /> Cargando detalle…
+          <div v-if="detailLoading" class="detail-loading" role="status" aria-live="polite">
+            <span class="spin spin--dark" /> {{ t('billing.loadingDetail') }}
           </div>
-          <div v-else-if="detailError" class="alert alert--error mx" style="margin:16px 24px">{{ detailError }}</div>
+          <div v-else-if="detailError" class="alert alert--error mx" style="margin:16px 24px" role="alert">{{ detailError }}</div>
           <template v-else-if="detailInvoice">
             <div class="detail-body">
 
-              <!-- Cabecera con número y monto -->
+              <!-- Cabecera con nÃºmero y monto -->
               <div class="detail-hero">
                 <div>
                   <span class="detail-inv-num">{{ detailInvoice.invoice_number || `#${detailInvoice.id}` }}</span>
-                  <span class="badge" :class="`inv-${detailInvoice.status}`" style="margin-left:10px">{{ INV_STATUS[detailInvoice.status] || detailInvoice.status }}</span>
+                  <span class="badge" :class="`inv-${detailInvoice.status}`" style="margin-left:10px">{{ invoiceStatusLabel(detailInvoice.status) }}</span>
                 </div>
                 <div class="detail-amount">${{ formatMoney(detailInvoice.total_amount) }}</div>
               </div>
@@ -302,43 +302,43 @@
               <!-- Info grid -->
               <div class="detail-grid">
                 <div class="detail-field">
-                  <span class="detail-label">Cliente</span>
-                  <span class="detail-value">{{ detailInvoice.client_name || '—' }}</span>
+                  <span class="detail-label">{{ t('billing.clientLabel') }}</span>
+                  <span class="detail-value">{{ detailInvoice.client_name || 'â€”' }}</span>
                 </div>
                 <div class="detail-field">
-                  <span class="detail-label">Paciente</span>
-                  <span class="detail-value">{{ detailInvoice.patient_name || '—' }}</span>
+                  <span class="detail-label">{{ t('billing.patientLabel') }}</span>
+                  <span class="detail-value">{{ detailInvoice.patient_name || 'â€”' }}</span>
                 </div>
                 <div class="detail-field">
-                  <span class="detail-label">Fecha emisión</span>
+                  <span class="detail-label">{{ t('billing.issuedDateLabel') }}</span>
                   <span class="detail-value">{{ formatDate(detailInvoice.issued_date) }}</span>
                 </div>
                 <div class="detail-field">
-                  <span class="detail-label">Vencimiento</span>
+                  <span class="detail-label">{{ t('billing.dueDateLabel') }}</span>
                   <span class="detail-value" :class="dueDateClass(detailInvoice.due_date)">{{ formatDate(detailInvoice.due_date) }}</span>
                 </div>
                 <div v-if="detailInvoice.paid_amount != null" class="detail-field">
-                  <span class="detail-label">Monto pagado</span>
+                  <span class="detail-label">{{ t('billing.amountPaidLabel') }}</span>
                   <span class="detail-value">${{ formatMoney(detailInvoice.paid_amount) }}</span>
                 </div>
               </div>
 
               <!-- Notas -->
               <div v-if="detailInvoice.notes" class="detail-notes">
-                <span class="detail-label">Notas</span>
+                <span class="detail-label">{{ t('billing.notesLabel') }}</span>
                 <p>{{ detailInvoice.notes }}</p>
               </div>
 
               <!-- Items -->
               <div v-if="detailInvoice.items && detailInvoice.items.length" class="detail-items">
-                <div class="detail-label" style="margin-bottom:8px">Ítems</div>
+                <div class="detail-label" style="margin-bottom:8px">{{ t('billing.itemsLabel') }}</div>
                 <table class="table table--compact">
                   <thead>
                     <tr>
-                      <th>Descripción</th>
-                      <th style="text-align:right">Cant.</th>
-                      <th style="text-align:right">Precio unit.</th>
-                      <th style="text-align:right">Total</th>
+                      <th>{{ t('billing.descriptionHeader') }}</th>
+                      <th style="text-align:right">{{ t('billing.quantityHeader') }}</th>
+                      <th style="text-align:right">{{ t('billing.unitPriceHeader') }}</th>
+                      <th style="text-align:right">{{ t('billing.totalHeader') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -354,19 +354,19 @@
             </div>
 
             <!-- Actions -->
-            <div v-if="detailError2" class="alert alert--error mx">{{ detailError2 }}</div>
+            <div v-if="detailError2" class="alert alert--error mx" role="alert">{{ detailError2 }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeViewModal()">Cerrar</button>
-              <button
+              <BaseButton type="button" variant="ghost" @click="closeViewModal()">{{ t('common.close') }}</BaseButton>
+              <BaseButton
                 v-if="detailInvoice.status !== 'paid' && detailInvoice.status !== 'cancelled'"
                 type="button"
-                class="btn-danger"
+                variant="danger"
                 :disabled="cancellingInvoice"
                 @click="cancelInvoice(detailInvoice)"
               >
                 <span v-if="cancellingInvoice" class="spin spin--sm" />
-                <span v-else>Cancelar factura</span>
-              </button>
+                <span v-else>{{ t('billing.cancelInvoice') }}</span>
+              </BaseButton>
             </div>
           </template>
         </div>
@@ -378,34 +378,34 @@
       <div v-if="showPayModal" class="modal-backdrop" @click.self="closePayModal()">
         <div class="modal modal--sm">
           <div class="modal__header">
-            <h3>💳 Registrar pago</h3>
-            <button type="button" class="modal__close" @click="closePayModal()">✕</button>
+            <h3>💳 {{ t('billing.registerPayment') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="closePayModal()">âœ•</BaseButton>
           </div>
           <div class="form-body">
             <p class="pay-invoice-ref">
-              Factura <strong>{{ payTarget?.invoice_number || '#' + payTarget?.id }}</strong> —
+              {{ t('billing.invoiceRef') }} <strong>{{ payTarget?.invoice_number || '#' + payTarget?.id }}</strong> â€”
               <strong>${{ formatMoney(payTarget?.total_amount) }}</strong>
             </p>
             <div class="field">
-              <label>Método de pago <span class="req">*</span></label>
+              <label>{{ t('billing.paymentMethodLabel') }} <span class="req">*</span></label>
               <select v-model="payMethod" :disabled="payingSaving">
-                <option value="">Seleccionar…</option>
-                <option value="cash">Efectivo</option>
-                <option value="credit_card">Tarjeta crédito</option>
-                <option value="debit_card">Tarjeta débito</option>
-                <option value="bank_transfer">Transferencia bancaria</option>
-                <option value="other">Mercado Pago / Otro</option>
+                <option value="">{{ t('billing.selectPaymentMethod') }}</option>
+                <option value="cash">{{ t('billing.cash') }}</option>
+                <option value="credit_card">{{ t('billing.creditCard') }}</option>
+                <option value="debit_card">{{ t('billing.debitCard') }}</option>
+                <option value="bank_transfer">{{ t('billing.bankTransfer') }}</option>
+                <option value="other">{{ t('billing.other') }}</option>
               </select>
               <span v-if="payMethodError" class="field-error">{{ payMethodError }}</span>
             </div>
           </div>
-          <div v-if="payError" class="alert alert--error mx">{{ payError }}</div>
+          <div v-if="payError" class="alert alert--error mx" role="alert">{{ payError }}</div>
           <div class="modal__actions">
-            <button type="button" class="btn-ghost" @click="closePayModal()" :disabled="payingSaving">Cancelar</button>
-            <button type="button" class="btn-primary" :disabled="payingSaving" @click="confirmMarkPaid()">
+            <BaseButton type="button" variant="ghost" @click="closePayModal()" :disabled="payingSaving">{{ t('common.cancel') }}</BaseButton>
+            <BaseButton type="button" :disabled="payingSaving" @click="confirmMarkPaid()">
               <span v-if="payingSaving" class="spin spin--sm" />
-              <span v-else>Confirmar pago</span>
-            </button>
+              <span v-else>{{ t('billing.confirmPayment') }}</span>
+            </BaseButton>
           </div>
         </div>
       </div>
@@ -417,17 +417,21 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
+import BaseButton from '../components/base/BaseButton.vue'
 
-// ── Tab ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const activeTab = ref('facturas')
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
-const INV_STATUS = {
-  draft:     'Borrador',
-  pending:   'Pendiente',
-  paid:      'Pagada',
-  overdue:   'Vencida',
-  cancelled: 'Cancelada',
+// â”€â”€ Shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function invoiceStatusLabel(status) {
+  return {
+    draft: t('billing.draft'),
+    pending: t('billing.pendingStatus'),
+    paid: t('billing.paidStatus'),
+    overdue: t('billing.overdueStatus'),
+    cancelled: t('billing.cancelledStatus'),
+  }[status] || status || '—'
 }
 
 function formatMoney(n) {
@@ -435,7 +439,7 @@ function formatMoney(n) {
 }
 
 function formatDate(iso) {
-  if (!iso) return '—'
+  if (!iso) return 'â€”'
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
@@ -501,7 +505,7 @@ function normalizeInvoiceDetail(detail) {
   }
 }
 
-// ── Facturas list ─────────────────────────────────────────────────────────────
+// â”€â”€ Facturas list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const items = ref([])
 const loading = ref(false)
 const error   = ref('')
@@ -548,7 +552,7 @@ function computeSummary() {
 let timer = null
 function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 
-// ── Modal: Nueva factura ──────────────────────────────────────────────────────
+// â”€â”€ Modal: Nueva factura â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showModal = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
@@ -607,7 +611,7 @@ async function handleCreate() {
   } finally { saving.value = false }
 }
 
-// ── Modal: Ver detalle ────────────────────────────────────────────────────────
+// â”€â”€ Modal: Ver detalle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showViewModal    = ref(false)
 const detailLoading    = ref(false)
 const detailError      = ref('')
@@ -639,7 +643,7 @@ function closeViewModal() {
 }
 
 async function cancelInvoice(inv) {
-  if (!confirm(`¿Cancelar la factura ${inv.invoice_number || '#' + inv.id}? Esta acción no se puede deshacer.`)) return
+  if (!confirm(t('billing.cancelInvoiceConfirm', { invoice: inv.invoice_number || '#' + inv.id }))) return
   cancellingInvoice.value = true
   detailError2.value = ''
   try {
@@ -656,7 +660,7 @@ async function cancelInvoice(inv) {
   }
 }
 
-// ── Modal: Marcar pago ────────────────────────────────────────────────────────
+// â”€â”€ Modal: Marcar pago â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showPayModal   = ref(false)
 const payTarget      = ref(null)
 const payMethod      = ref('')
@@ -679,7 +683,7 @@ function closePayModal() {
 
 async function confirmMarkPaid() {
   payMethodError.value = ''
-  if (!payMethod.value) { payMethodError.value = 'Seleccioná un método de pago'; return }
+  if (!payMethod.value) { payMethodError.value = t('billing.paymentMethodRequired'); return }
   payingSaving.value = true; payError.value = ''
   try {
     await http.patch(`/invoices/${payTarget.value.id}/pay`, { payment_method: payMethod.value })
@@ -694,7 +698,7 @@ async function confirmMarkPaid() {
   }
 }
 
-// ── Tab: Consolidado ──────────────────────────────────────────────────────────
+// â”€â”€ Tab: Consolidado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const now = new Date()
 const consolFrom = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`)
 const consolTo   = ref(now.toISOString().split('T')[0])
@@ -705,14 +709,14 @@ const consolOutstanding = ref(null)
 
 // Labels for summary keys
 const CONSOL_LABELS = {
-  total_revenue:   'Ingresos totales',
-  total_invoices:  'Facturas emitidas',
-  paid_invoices:   'Facturas pagadas',
-  pending_invoices: 'Facturas pendientes',
-  overdue_invoices: 'Facturas vencidas',
-  avg_invoice_amount: 'Monto promedio',
-  cancelled_invoices: 'Facturas canceladas',
-  collection_rate: 'Tasa de cobro',
+  total_revenue:   t('billing.totalRevenue'),
+  total_invoices:  t('billing.totalInvoices'),
+  paid_invoices:   t('billing.paidInvoices'),
+  pending_invoices: t('billing.pendingInvoices'),
+  overdue_invoices: t('billing.overdueInvoicesLabel'),
+  avg_invoice_amount: t('billing.avgInvoiceAmount'),
+  cancelled_invoices: t('billing.cancelledInvoices'),
+  collection_rate: t('billing.collectionRate'),
 }
 const MONEY_KEYS = ['total_revenue', 'avg_invoice_amount', 'total_amount', 'paid_amount', 'outstanding_amount']
 const PERCENT_KEYS = ['collection_rate']
@@ -763,26 +767,26 @@ onMounted(load)
 .page-title { font-size: 1.35rem; font-weight: 700; color: var(--text); }
 .page-sub   { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
 
-/* ── Tab navigation ── */
+/* â”€â”€ Tab navigation â”€â”€ */
 .tab-nav { display: flex; gap: 4px; border-bottom: 2px solid var(--border); padding-bottom: 0; }
 .tab-btn { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-3); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color var(--transition), border-color var(--transition); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
 .tab-btn:hover { color: var(--primary); background: var(--surface); }
 .tab-btn--active { color: var(--primary); border-bottom-color: var(--primary); background: var(--white); }
 
-/* ── KPIs ── */
+/* â”€â”€ KPIs â”€â”€ */
 .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .kpi-card { background: var(--bc); border-radius: var(--radius-lg); padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
 .kpi-icon { font-size: 1.6rem; }
 .kpi-card strong { display: block; font-size: 1.2rem; font-weight: 700; color: var(--tc); }
 .kpi-card span   { font-size: 0.72rem; color: var(--tc); opacity: 0.8; }
 
-/* ── Filters ── */
+/* â”€â”€ Filters â”€â”€ */
 .filters { display: flex; gap: 10px; flex-wrap: wrap; }
 .filter-input, .filter-select { padding: 9px 13px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 0.87rem; background: var(--white); color: var(--text); outline: none; }
 .filter-input:focus, .filter-select:focus { border-color: var(--primary); }
 .filter-input--grow { flex: 1; min-width: 180px; }
 
-/* ── Table ── */
+/* â”€â”€ Table â”€â”€ */
 .card { background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow); overflow: hidden; }
 .table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .table th { text-align: left; padding: 12px 14px; font-size: 0.78rem; font-weight: 600; color: var(--text-3); letter-spacing: 0.05em; text-transform: uppercase; background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -815,7 +819,7 @@ onMounted(load)
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }
 .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ── Buttons ── */
+/* â”€â”€ Buttons â”€â”€ */
 .btn-primary { padding: 10px 20px; background: linear-gradient(135deg, var(--primary) 0%, var(--accent-mint) 100%); color: white; border: none; border-radius: var(--radius); font-size: 0.9rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: opacity var(--transition), transform var(--transition); }
 .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -825,7 +829,7 @@ onMounted(load)
 .btn-danger:hover:not(:disabled) { background: #f8d7d7; }
 .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* ── Modals ── */
+/* â”€â”€ Modals â”€â”€ */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
 .modal { background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); width: 100%; max-width: 600px; max-height: 92vh; overflow-y: auto; }
 .modal--detail { max-width: 680px; }
@@ -844,7 +848,7 @@ onMounted(load)
 .field-error { font-size: 0.75rem; color: var(--danger); }
 .req { color: var(--danger); }
 
-/* ── Items section ── */
+/* â”€â”€ Items section â”€â”€ */
 .items-section { border: 1.5px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .items-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .section-label { font-size: 0.82rem; font-weight: 700; color: var(--text-2); }
@@ -875,7 +879,7 @@ onMounted(load)
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
-/* ── Invoice detail modal ── */
+/* â”€â”€ Invoice detail modal â”€â”€ */
 .detail-loading { display: flex; align-items: center; gap: 10px; padding: 40px 24px; color: var(--text-3); font-size: 0.9rem; }
 .detail-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; }
 .detail-hero { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
@@ -889,13 +893,13 @@ onMounted(load)
 .detail-notes p { font-size: 0.88rem; color: var(--text-2); margin: 0; }
 .detail-items { display: flex; flex-direction: column; gap: 6px; }
 
-/* ── Consolidado ── */
+/* â”€â”€ Consolidado â”€â”€ */
 .consol-filters { padding: 16px 20px; }
 .consol-filters__inner { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
 .consol-filters__inner .field { flex: 1; min-width: 140px; }
 .section-title { font-size: 0.85rem; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; }
 
-/* ── Pay modal ── */
+/* â”€â”€ Pay modal â”€â”€ */
 .pay-invoice-ref { font-size: 0.9rem; color: var(--text-2); margin: 0 0 4px; }
 
 @media (max-width: 600px) {
@@ -907,3 +911,5 @@ onMounted(load)
   .detail-amount { font-size: 1.35rem; }
 }
 </style>
+
+

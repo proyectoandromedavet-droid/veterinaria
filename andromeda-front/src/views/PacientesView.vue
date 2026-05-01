@@ -9,14 +9,14 @@
           <p class="page-sub">{{ t('patients.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openModal()">{{ t('patients.newPatient') }}</button>
+      <BaseButton type="button" @click="openModal()">{{ t('patients.newPatient') }}</BaseButton>
     </div>
 
     <!-- Búsqueda -->
     <div class="filters">
       <input v-model.trim="search" type="search" :placeholder="t('patients.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
       <select v-model="speciesFilter" class="filter-select" @change="load()">
-        <option value="">Todas las especies</option>
+        <option value="">{{ t('patients.allSpecies') }}</option>
         <option v-for="sp in speciesList" :key="sp.id" :value="sp.common_name">
           {{ petEmoji(sp.slug) }} {{ sp.common_name }}
         </option>
@@ -24,16 +24,16 @@
     </div>
 
     <!-- Carga -->
-    <div v-if="loading" class="loading-state">
+    <div v-if="loading" class="loading-state" role="status" aria-live="polite">
       <span class="spin spin--dark" /> {{ t('patients.loading') }}
     </div>
-    <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+    <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
 
     <!-- Grid de pacientes -->
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐾</span>
       <p>{{ t('patients.empty') }}</p>
-      <button type="button" class="btn-ghost" @click="openModal()">{{ t('patients.registerFirst') }}</button>
+      <BaseButton type="button" variant="ghost" @click="openModal()">{{ t('patients.registerFirst') }}</BaseButton>
     </div>
 
     <div v-else class="patient-grid">
@@ -45,7 +45,7 @@
             <span class="patient-card__species">{{ p.species }}</span>
           </div>
           <span class="badge badge--species" :style="{ background: speciesBg(p.species), color: speciesColor(p.species) }">
-            {{ p.breed_name || p.breed || 'Sin raza' }}
+            {{ p.breed_name || p.breed || t('patients.noBreed') }}
           </span>
         </div>
         <div class="patient-card__body">
@@ -68,11 +68,11 @@
         </div>
         <div class="patient-card__footer">
           <span class="badge" :class="p.is_active !== false ? 'badge--active' : 'badge--inactive'">
-            {{ p.is_active !== false ? 'Activo' : 'Inactivo' }}
+            {{ p.is_active !== false ? t('common.active') : t('common.inactive') }}
           </span>
           <div class="patient-card__actions">
-            <button type="button" class="btn-card" title="Ver historial" @click="openDetail(p)">📋</button>
-            <button type="button" class="btn-card" title="Editar" @click="openEdit(p)">✏️</button>
+            <button type="button" class="btn-card" :title="t('patients.history')" :aria-label="t('patients.history')" @click="openDetail(p)">📋</button>
+            <button type="button" class="btn-card" :title="t('patients.edit')" :aria-label="t('patients.edit')" @click="openEdit(p)">✏️</button>
           </div>
         </div>
       </div>
@@ -91,7 +91,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>{{ petEmoji(detailPatient?.species) }} {{ detailPatient?.name }}</h3>
-            <button type="button" class="modal__close" @click="showDetail = false">✕</button>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showDetail = false">✕</BaseButton>
           </div>
           <div class="form-body" v-if="detailPatient">
             <div class="detail-row"><b>{{ t('patients.species') }}:</b> {{ detailPatient.species }}</div>
@@ -104,8 +104,8 @@
             <div class="detail-row"><b>{{ t('patients.ownerPhone') }}:</b> {{ detailPatient.owner_phone || '—' }}</div>
           </div>
           <div class="modal__actions">
-            <button type="button" class="btn-ghost" @click="showDetail = false">Cerrar</button>
-            <button type="button" class="btn-primary" @click="openEdit(detailPatient); showDetail = false">{{ t('patients.edit') }}</button>
+            <BaseButton type="button" variant="ghost" @click="showDetail = false">{{ t('common.close') }}</BaseButton>
+            <BaseButton type="button" @click="openEdit(detailPatient); showDetail = false">{{ t('patients.edit') }}</BaseButton>
           </div>
         </div>
       </div>
@@ -117,11 +117,11 @@
         <div class="modal">
           <div class="modal__header">
             <h3>{{ editingId ? t('patients.editPatient') : t('patients.newPatientModal') }}</h3>
-            <button type="button" class="modal__close" @click="closeModal()">✕</button>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="closeModal()">✕</BaseButton>
           </div>
           <form @submit.prevent="handleSave" novalidate>
             <div class="form-body">
-              <div class="form-section-title">Datos de la mascota</div>
+              <div class="form-section-title">{{ t('patients.petData') }}</div>
               <div class="form-grid">
                 <div class="field">
                   <label>Nombre <span class="req">*</span></label>
@@ -131,25 +131,25 @@
                 <div class="field">
                   <label>Especie <span class="req">*</span></label>
                   <select v-model="form.speciesId" :disabled="saving || !!editingId" required>
-                    <option value="">Seleccioná…</option>
+                    <option value="">{{ t('common.choose') }}</option>
                     <option v-for="sp in speciesList" :key="sp.id" :value="sp.id">
                       {{ petEmoji(sp.slug) }} {{ sp.common_name }}
                     </option>
                   </select>
-                  <span v-if="editingId" class="field-hint">La especie no se puede cambiar</span>
-                  <span v-if="fe.speciesId" class="field-error">{{ fe.speciesId }}</span>
+                  <span v-if="editingId" class="field-hint">{{ t('patients.cannotChangeSpecies') }}</span>
+                  <span v-if="fe.speciesId" class="field-error">{{ fe.speciesId || t('patients.selectSpecies') }}</span>
                 </div>
                 <div class="field">
                   <label>Sexo <span class="req">*</span></label>
                   <select v-model="form.sex" :disabled="saving" required>
-                    <option value="unknown">Sin especificar</option>
+                    <option value="unknown">{{ t('common.none') }}</option>
                     <option value="male">Macho</option>
                     <option value="female">Hembra</option>
                   </select>
                   <span v-if="fe.sex" class="field-error">{{ fe.sex }}</span>
                 </div>
                 <div class="field">
-                  <label>Fecha de nacimiento</label>
+                  <label>{{ t('patients.birthdate') }}</label>
                   <input v-model="form.birthDate" type="date" :disabled="saving" />
                 </div>
                 <div class="field">
@@ -164,7 +164,7 @@
 
               <!-- Datos del dueño: solo en creación -->
               <template v-if="!editingId">
-                <div class="form-section-title" style="margin-top:16px">Datos del dueño</div>
+              <div class="form-section-title" style="margin-top:16px">{{ t('patients.owner') }}</div>
                 <div class="form-grid">
                   <div class="field">
                     <label>Nombre <span class="req">*</span></label>
@@ -189,13 +189,13 @@
               </template>
             </div>
 
-            <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
+            <div v-if="saveError" class="alert alert--error mx" role="alert">{{ saveError }}</div>
             <div class="modal__actions">
-      <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</button>
-              <button type="submit" class="btn-primary" :disabled="saving">
+      <BaseButton type="button" variant="ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</BaseButton>
+              <BaseButton type="submit" :disabled="saving">
                 <span v-if="saving" class="spin spin--sm" />
-                <span v-else>{{ editingId ? 'Guardar cambios' : 'Registrar paciente' }}</span>
-              </button>
+                <span v-else>{{ editingId ? t('patients.saveChanges') : t('patients.registerPatient') }}</span>
+              </BaseButton>
             </div>
           </form>
         </div>
@@ -206,6 +206,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import BaseButton from '../components/base/BaseButton.vue'
 import http from '../api/client'
 import { t } from '../i18n'
 
@@ -376,7 +377,7 @@ function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
   if (!form.name) fe.name = 'El nombre es requerido'
   if (!editingId.value) {
-    if (!form.speciesId)       fe.speciesId    = 'Seleccioná una especie'
+    if (!form.speciesId)       fe.speciesId    = t('patients.selectSpecies')
     if (!form.ownerFirstName)  fe.ownerFirstName = 'El nombre es requerido'
     if (!form.ownerLastName)   fe.ownerLastName  = 'El apellido es requerido'
     if (!form.ownerPhone)      fe.ownerPhone     = 'El teléfono es requerido'

@@ -9,7 +9,7 @@
           <p class="page-sub">{{ t('pathology.subtitle') }}</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openOrderModal()">?? {{ t('pathology.newOrder') }}</button>
+      <button class="btn-primary" @click="openOrderModal()">{{ t('pathology.newOrder') }}</button>
     </div>
 
     <!-- KPIs -->
@@ -28,19 +28,19 @@
     <!-- Filtros -->
     <div class="filters">
       <select v-model="statusFilter" class="filter-select" @change="load()">
-        <option value="">Todos los estados</option>
-        <option value="pending">Pendiente</option>
+        <option value="">{{ t('common.allStatuses') }}</option>
+        <option value="pending">{{ t('common.pending') || 'Pendiente' }}</option>
         <option value="processing">{{ t('pathology.processing') }}</option>
-        <option value="reported">Informado</option>
+        <option value="reported">{{ t('pathology.reported') }}</option>
       </select>
       <input v-model.trim="search" type="search" :placeholder="t('pathology.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
-    <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando órdenes…</div>
+    <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> {{ t('pathology.loading') }}</div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🔬</span>
-      <p>No hay órdenes de patología</p>
+      <p>{{ t('pathology.empty') }}</p>
     </div>
 
     <div v-else class="table-wrap">
@@ -71,8 +71,8 @@
             <td><span class="badge" :class="`status--${o.status}`">{{ STATUS[o.status] || o.status }}</span></td>
             <td>
               <div class="action-btns">
-                <button class="btn-xs btn-xs--blue" @click="viewOrder(o)">Ver</button>
-                <button v-if="o.status !== 'reported'" class="btn-xs btn-xs--purple" @click="openResultModal(o)">Informar</button>
+                <button class="btn-xs btn-xs--blue" @click="viewOrder(o)">{{ t('common.viewAll') }}</button>
+                <button v-if="o.status !== 'reported'" class="btn-xs btn-xs--purple" @click="openResultModal(o)">{{ t('pathology.loadReport') }}</button>
               </div>
             </td>
           </tr>
@@ -85,7 +85,7 @@
       <div v-if="showOrderModal" class="modal-backdrop" @click.self="closeOrderModal()">
         <div class="modal modal--lg">
           <div class="modal__header">
-            <h3>?? {{ t('pathology.newModalTitle') }}</h3>
+            <h3>{{ t('pathology.newModalTitle') }}</h3>
             <button type="button" class="modal__close" @click="closeOrderModal()">✕</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
@@ -129,7 +129,7 @@
                     </div>
                     <div class="sample-grid">
                       <div class="field">
-                        <label>Tipo de muestra</label>
+                        <label>{{ t('pathology.sampleType') }}</label>
                         <select v-model="s.sampleType" :disabled="saving">
                           <option value="">{{ t('common.none') }}</option>
                           <option value="biopsy">Biopsia</option>
@@ -141,17 +141,17 @@
                         </select>
                       </div>
                       <div class="field">
-                        <label>Localización anatómica</label>
-                        <input v-model.trim="s.anatomicalLocation" type="text" placeholder="Ej: piel dorsal, ganglio inguinal…" :disabled="saving" />
+                        <label>{{ t('pathology.anatomicalLocation') }}</label>
+                        <input v-model.trim="s.anatomicalLocation" type="text" :placeholder="t('pathology.anatomicalLocation')" :disabled="saving" />
                       </div>
                       <div class="field">
-                        <label>Fecha de toma</label>
+                        <label>{{ t('pathology.collectionDate') }}</label>
                         <input v-model="s.collectionDate" type="date" :disabled="saving" />
                       </div>
                       <div class="field">
-                        <label>Fijación</label>
+                        <label>{{ t('pathology.fixationMethod') }}</label>
                         <select v-model="s.fixationMethod" :disabled="saving">
-                          <option value="">Sin especificar</option>
+                          <option value="">{{ t('common.none') }}</option>
                           <option value="formalin_10">Formol 10%</option>
                           <option value="fresh">En fresco</option>
                           <option value="alcohol">Alcohol</option>
@@ -159,20 +159,20 @@
                         </select>
                       </div>
                       <div class="field field--full-sample">
-                        <label>Descripción macroscópica</label>
-                        <textarea v-model.trim="s.macroscopicDescription" rows="2" placeholder="Tamaño, color, consistencia…" :disabled="saving" />
+                        <label>{{ t('pathology.macroscopicDescription') }}</label>
+                        <textarea v-model.trim="s.macroscopicDescription" rows="2" :placeholder="t('pathology.macroscopicDescription')" :disabled="saving" />
                       </div>
                     </div>
                   </div>
-                  <div v-if="orderForm.samples.length === 0" class="no-samples">Sin muestras agregadas aún</div>
+                  <div v-if="orderForm.samples.length === 0" class="no-samples">{{ t('pathology.noSamples') }}</div>
                 </div>
               </div>
             </div>
             <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeOrderModal()" :disabled="saving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeOrderModal()" :disabled="saving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" /> <span v-else>Crear orden</span>
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>{{ t('pathology.createOrder') }}</span>
               </button>
             </div>
           </form>
@@ -190,59 +190,59 @@
           </div>
           <div class="form-body detail-body">
             <div class="detail-section">
-              <h4>Datos generales</h4>
+              <h4>{{ t('pathology.detailGeneral') }}</h4>
               <div class="detail-grid">
-                <div><span class="detail-label">Tipo</span><span>{{ detailOrder.type_name }}</span></div>
-                <div><span class="detail-label">Estado</span><span class="badge" :class="`status--${detailOrder.status}`">{{ STATUS[detailOrder.status] }}</span></div>
-                <div><span class="detail-label">Solicitado</span><span>{{ formatDate(detailOrder.ordered_at) }}</span></div>
-                <div><span class="detail-label">Especie</span><span>{{ detailOrder.species }}</span></div>
+                <div><span class="detail-label">{{ t('pathology.detailType') }}</span><span>{{ detailOrder.type_name }}</span></div>
+                <div><span class="detail-label">{{ t('pathology.status') }}</span><span class="badge" :class="`status--${detailOrder.status}`">{{ STATUS[detailOrder.status] }}</span></div>
+                <div><span class="detail-label">{{ t('pathology.detailRequested') }}</span><span>{{ formatDate(detailOrder.ordered_at) }}</span></div>
+                <div><span class="detail-label">{{ t('pathology.detailSpecies') }}</span><span>{{ detailOrder.species }}</span></div>
               </div>
               <div v-if="detailOrder.clinical_history" class="detail-text">
-                <span class="detail-label">Historia clínica</span>
+                <span class="detail-label">{{ t('pathology.detailClinicalHistory') }}</span>
                 <p>{{ detailOrder.clinical_history }}</p>
               </div>
             </div>
 
             <div v-if="detailOrder.samples?.length" class="detail-section">
-              <h4>Muestras ({{ detailOrder.samples.length }})</h4>
+              <h4>{{ t('pathology.detailSamples') }} ({{ detailOrder.samples.length }})</h4>
               <div v-for="s in detailOrder.samples" :key="s.id" class="sample-detail">
-                <div class="sample-detail__header">Muestra {{ s.sample_number }} — {{ s.sample_type }}</div>
+                <div class="sample-detail__header">{{ t('pathology.detailSamples') }} {{ s.sample_number }} — {{ s.sample_type }}</div>
                 <div class="detail-grid">
-                  <div v-if="s.anatomical_location"><span class="detail-label">Localización</span><span>{{ s.anatomical_location }}</span></div>
-                  <div v-if="s.collection_date"><span class="detail-label">Fecha</span><span>{{ formatDate(s.collection_date) }}</span></div>
-                  <div v-if="s.fixation_method"><span class="detail-label">Fijación</span><span>{{ s.fixation_method }}</span></div>
+                  <div v-if="s.anatomical_location"><span class="detail-label">{{ t('pathology.anatomicalLocation') }}</span><span>{{ s.anatomical_location }}</span></div>
+                  <div v-if="s.collection_date"><span class="detail-label">{{ t('pathology.collectionDate') }}</span><span>{{ formatDate(s.collection_date) }}</span></div>
+                  <div v-if="s.fixation_method"><span class="detail-label">{{ t('pathology.fixationMethod') }}</span><span>{{ s.fixation_method }}</span></div>
                 </div>
                 <div v-if="s.macroscopic_description" class="detail-text">
-                  <span class="detail-label">Descripción macroscópica</span>
+                  <span class="detail-label">{{ t('pathology.macroscopicDescription') }}</span>
                   <p>{{ s.macroscopic_description }}</p>
                 </div>
               </div>
             </div>
 
             <div v-if="detailOrder.result" class="detail-section result-section">
-              <h4>📄 Informe patológico</h4>
+              <h4>📄 {{ t('pathology.resultTitle') }}</h4>
               <div class="detail-grid">
-                <div><span class="detail-label">Patólogo</span><span>{{ detailOrder.result.pathologist_name }}</span></div>
-                <div><span class="detail-label">Fecha informe</span><span>{{ formatDate(detailOrder.result.reported_at) }}</span></div>
-                <div v-if="detailOrder.result.behavior"><span class="detail-label">Comportamiento</span><span class="badge" :class="behaviorClass(detailOrder.result.behavior)">{{ BEHAVIOR[detailOrder.result.behavior] || detailOrder.result.behavior }}</span></div>
+                <div><span class="detail-label">{{ t('pathology.detailPathologist') }}</span><span>{{ detailOrder.result.pathologist_name }}</span></div>
+                <div><span class="detail-label">{{ t('pathology.reportDate') }}</span><span>{{ formatDate(detailOrder.result.reported_at) }}</span></div>
+                <div v-if="detailOrder.result.behavior"><span class="detail-label">{{ t('pathology.detailBehavior') }}</span><span class="badge" :class="behaviorClass(detailOrder.result.behavior)">{{ BEHAVIOR[detailOrder.result.behavior] || detailOrder.result.behavior }}</span></div>
               </div>
               <div v-if="detailOrder.result.tnm_stage" class="tnm-row">
-                <span class="detail-label">Estadificación TNM</span>
+                <span class="detail-label">{{ t('pathology.detailTNM') }}</span>
                 <span>T{{ detailOrder.result.tnm_t }} N{{ detailOrder.result.tnm_n }} M{{ detailOrder.result.tnm_m }} — Estadio {{ detailOrder.result.tnm_stage }}</span>
               </div>
-              <div class="detail-text"><span class="detail-label">Descripción microscópica</span><p>{{ detailOrder.result.microscopic_description }}</p></div>
-              <div class="detail-text"><span class="detail-label">Diagnóstico</span><p><strong>{{ detailOrder.result.diagnosis }}</strong></p></div>
-              <div v-if="detailOrder.result.differential_diagnosis" class="detail-text"><span class="detail-label">Diagnóstico diferencial</span><p>{{ detailOrder.result.differential_diagnosis }}</p></div>
-              <div v-if="detailOrder.result.prognostic_notes" class="detail-text"><span class="detail-label">Notas pronósticas</span><p>{{ detailOrder.result.prognostic_notes }}</p></div>
-              <div v-if="detailOrder.result.ihc_results" class="detail-text"><span class="detail-label">Inmunohistoquímica</span><p>{{ detailOrder.result.ihc_results }}</p></div>
-              <div v-if="detailOrder.result.special_stains" class="detail-text"><span class="detail-label">Tinciones especiales</span><p>{{ detailOrder.result.special_stains }}</p></div>
-              <div v-if="detailOrder.result.recommendations" class="detail-text"><span class="detail-label">Recomendaciones</span><p>{{ detailOrder.result.recommendations }}</p></div>
+              <div class="detail-text"><span class="detail-label">{{ t('pathology.detailMicroscopic') }}</span><p>{{ detailOrder.result.microscopic_description }}</p></div>
+              <div class="detail-text"><span class="detail-label">{{ t('pathology.detailDiagnosis') }}</span><p><strong>{{ detailOrder.result.diagnosis }}</strong></p></div>
+              <div v-if="detailOrder.result.differential_diagnosis" class="detail-text"><span class="detail-label">{{ t('pathology.detailDifferential') }}</span><p>{{ detailOrder.result.differential_diagnosis }}</p></div>
+              <div v-if="detailOrder.result.prognostic_notes" class="detail-text"><span class="detail-label">{{ t('pathology.detailPrognostic') }}</span><p>{{ detailOrder.result.prognostic_notes }}</p></div>
+              <div v-if="detailOrder.result.ihc_results" class="detail-text"><span class="detail-label">{{ t('pathology.detailIHC') }}</span><p>{{ detailOrder.result.ihc_results }}</p></div>
+              <div v-if="detailOrder.result.special_stains" class="detail-text"><span class="detail-label">{{ t('pathology.detailSpecialStains') }}</span><p>{{ detailOrder.result.special_stains }}</p></div>
+              <div v-if="detailOrder.result.recommendations" class="detail-text"><span class="detail-label">{{ t('pathology.detailRecommendations') }}</span><p>{{ detailOrder.result.recommendations }}</p></div>
             </div>
-            <div v-else class="no-result-note">Sin informe aún</div>
+            <div v-else class="no-result-note">{{ t('pathology.noReport') }}</div>
           </div>
           <div class="modal__actions">
-            <button type="button" class="btn-ghost" @click="showDetailModal = false">Cerrar</button>
-            <button v-if="detailOrder.status !== 'reported'" type="button" class="btn-primary" @click="showDetailModal = false; openResultModal(detailOrder)">📄 Cargar informe</button>
+            <button type="button" class="btn-ghost" @click="showDetailModal = false">{{ t('common.close') }}</button>
+            <button v-if="detailOrder.status !== 'reported'" type="button" class="btn-primary" @click="showDetailModal = false; openResultModal(detailOrder)">📄 {{ t('pathology.loadReport') }}</button>
           </div>
         </div>
       </div>
@@ -253,26 +253,26 @@
       <div v-if="showResultModal" class="modal-backdrop" @click.self="closeResultModal()">
         <div class="modal modal--lg">
           <div class="modal__header">
-            <h3>📄 Informe patológico — {{ resultOrderNum }}</h3>
+            <h3>📄 {{ t('pathology.resultTitle') }} — {{ resultOrderNum }}</h3>
             <button type="button" class="modal__close" @click="closeResultModal()">✕</button>
           </div>
           <form @submit.prevent="handleResult" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>Descripción microscópica <span class="req">*</span></label>
-                  <textarea v-model.trim="resultForm.microscopicDescription" rows="4" placeholder="Descripción histológica detallada…" :disabled="resultSaving" required />
+                  <label>{{ t('pathology.microscopicDescription') }} <span class="req">*</span></label>
+                  <textarea v-model.trim="resultForm.microscopicDescription" rows="4" :placeholder="t('pathology.microscopicDescription')" :disabled="resultSaving" required />
                   <span v-if="rfe.microscopicDescription" class="field-error">{{ rfe.microscopicDescription }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Diagnóstico <span class="req">*</span></label>
-                  <textarea v-model.trim="resultForm.diagnosis" rows="3" placeholder="Diagnóstico histopatológico…" :disabled="resultSaving" required />
+                  <label>{{ t('pathology.diagnosis') }} <span class="req">*</span></label>
+                  <textarea v-model.trim="resultForm.diagnosis" rows="3" :placeholder="t('pathology.diagnosis')" :disabled="resultSaving" required />
                   <span v-if="rfe.diagnosis" class="field-error">{{ rfe.diagnosis }}</span>
                 </div>
                 <div class="field">
-                  <label>Comportamiento tumoral</label>
+                  <label>{{ t('pathology.behavior') }}</label>
                   <select v-model="resultForm.behavior" :disabled="resultSaving">
-                    <option value="">Sin especificar</option>
+                    <option value="">{{ t('common.none') }}</option>
                     <option value="benign">Benigno</option>
                     <option value="malignant">Maligno</option>
                     <option value="borderline">Borderline</option>
@@ -282,7 +282,7 @@
                   </select>
                 </div>
                 <div class="field">
-                  <label>Estadio TNM</label>
+                  <label>{{ t('pathology.detailTNM') }}</label>
                   <input v-model.trim="resultForm.tnmStage" type="text" placeholder="Ej: III" :disabled="resultSaving" />
                 </div>
                 <div class="field">
@@ -298,32 +298,32 @@
                   <input v-model.trim="resultForm.tnmM" type="text" placeholder="M0, M1…" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Diagnóstico diferencial</label>
+                  <label>{{ t('pathology.differentialDiagnosis') }}</label>
                   <textarea v-model.trim="resultForm.differentialDiagnosis" rows="2" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Notas pronósticas</label>
+                  <label>{{ t('pathology.detailPrognostic') }}</label>
                   <textarea v-model.trim="resultForm.prognosticNotes" rows="2" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Inmunohistoquímica (IHC)</label>
+                  <label>{{ t('pathology.detailIHC') }}</label>
                   <textarea v-model.trim="resultForm.ihcResults" rows="2" placeholder="Marcadores, resultados…" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Tinciones especiales</label>
+                  <label>{{ t('pathology.detailSpecialStains') }}</label>
                   <textarea v-model.trim="resultForm.specialStains" rows="2" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Recomendaciones</label>
+                  <label>{{ t('pathology.detailRecommendations') }}</label>
                   <textarea v-model.trim="resultForm.recommendations" rows="2" :disabled="resultSaving" />
                 </div>
               </div>
             </div>
             <div v-if="resultError" class="alert alert--error mx">{{ resultError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeResultModal()" :disabled="resultSaving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeResultModal()" :disabled="resultSaving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="resultSaving">
-                <span v-if="resultSaving" class="spin spin--sm" /> <span v-else>Guardar informe</span>
+                <span v-if="resultSaving" class="spin spin--sm" /> <span v-else>{{ t('pathology.saveReport') }}</span>
               </button>
             </div>
           </form>
