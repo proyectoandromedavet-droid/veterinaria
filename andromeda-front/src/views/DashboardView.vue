@@ -108,12 +108,12 @@ const today = computed(() => new Date().toLocaleDateString('es-AR', {
 }))
 
 const STATUS_LABELS: Record<string, string> = {
-  scheduled: 'Programado',
-  confirmed: 'Confirmado',
-  in_progress: 'En curso',
-  completed: 'Completado',
-  cancelled: 'Cancelado',
-  no_show: 'Ausente',
+  scheduled: t('dashboard.statusScheduled'),
+  confirmed: t('dashboard.statusConfirmed'),
+  in_progress: t('dashboard.statusInProgress'),
+  completed: t('dashboard.statusCompleted'),
+  cancelled: t('dashboard.statusCancelled'),
+  no_show: t('dashboard.statusNoShow'),
 }
 
 const kpis = ref<KpiCard[]>([

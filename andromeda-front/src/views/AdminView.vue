@@ -72,7 +72,7 @@
                   :aria-label="t('admin.deactivateUser')"
                   @click="confirmDeactivate(user)"
                 >
-                  X
+                  {{ t('common.delete') }}
                 </button>
               </td>
             </tr>
@@ -142,8 +142,8 @@
         <thead>
           <tr>
             <th>{{ t('admin.role') }}</th>
-            <th>Grant</th>
-            <th>Revoke</th>
+            <th>{{ t('admin.grant') }}</th>
+            <th>{{ t('admin.revoke') }}</th>
             <th>{{ t('admin.updated') }}</th>
             <th>{{ t('admin.actions') }}</th>
           </tr>
@@ -164,7 +164,7 @@
                 :aria-label="`${t('admin.saveOverride')}: ${item.role}`"
                 @click="removeOverride(item.role)"
               >
-                X
+                {{ t('common.delete') }}
               </button>
             </td>
           </tr>
@@ -175,16 +175,16 @@
     <BaseModal v-model="showModal" :label="t('admin.newUser')" labelledby="admin-new-user-title">
       <div class="modal__header">
         <h3 id="admin-new-user-title">{{ t('admin.newUser') }}</h3>
-        <button class="modal__close" type="button" :aria-label="t('common.close')" @click="closeModal">X</button>
+        <button class="modal__close" type="button" :aria-label="t('common.close')" @click="closeModal">{{ t('common.close') }}</button>
       </div>
 
       <div v-if="createSuccess" class="modal__success" role="status">
-        <span class="success-icon">OK</span>
+        <span class="success-icon">{{ t('admin.successBadge') }}</span>
         <h4>{{ t('admin.createUserSuccess') }}</h4>
         <p>
           {{ t('admin.welcomeEmailHint') }}
           <strong>{{ form.email }}</strong>
-          con la contrasena temporal generada automaticamente.
+          {{ t('admin.tempPasswordSentence') }}
         </p>
         <p class="hint">{{ t('admin.tempPasswordHint') }}</p>
         <BaseButton @click="closeModal">{{ t('common.close') }}</BaseButton>
@@ -193,25 +193,25 @@
       <form v-else @submit.prevent="handleCreate" novalidate>
         <div class="form-row">
           <div class="field">
-            <label>Nombre <span class="req">*</span></label>
+            <label>{{ t('admin.firstName') }} <span class="req">*</span></label>
             <input v-model.trim="form.firstName" type="text" placeholder="Juan" :disabled="creating" required />
             <span v-if="errors.firstName" class="field-error">{{ errors.firstName }}</span>
           </div>
           <div class="field">
-            <label>Apellido <span class="req">*</span></label>
+            <label>{{ t('admin.lastName') }} <span class="req">*</span></label>
             <input v-model.trim="form.lastName" type="text" placeholder="Perez" :disabled="creating" required />
             <span v-if="errors.lastName" class="field-error">{{ errors.lastName }}</span>
           </div>
         </div>
 
         <div class="field">
-          <label>Email <span class="req">*</span></label>
+          <label>{{ t('admin.email') }} <span class="req">*</span></label>
           <input v-model.trim="form.email" type="email" placeholder="usuario@veterinaria.com" :disabled="creating" required />
           <span v-if="errors.email" class="field-error">{{ errors.email }}</span>
         </div>
 
         <div class="field">
-          <label>Rol <span class="req">*</span></label>
+          <label>{{ t('admin.role') }} <span class="req">*</span></label>
           <select v-model="form.role" :disabled="creating" required>
             <option value="">{{ t('admin.selectRole') }}</option>
             <option v-for="role in ROLES" :key="role.value" :value="role.value">{{ role.label }}</option>
@@ -221,11 +221,11 @@
 
         <div class="form-row">
           <div class="field">
-            <label>Telefono</label>
+            <label>{{ t('admin.phone') }}</label>
             <input v-model.trim="form.phone" type="tel" placeholder="+54 9 11 1234-5678" :disabled="creating" />
           </div>
           <div class="field">
-            <label>Matricula</label>
+            <label>{{ t('admin.licenseNumber') }}</label>
             <input v-model.trim="form.licenseNumber" type="text" placeholder="VET-0001" :disabled="creating" />
           </div>
         </div>
@@ -238,13 +238,12 @@
           </BaseButton>
           <BaseButton type="submit" :disabled="creating">
             <span v-if="creating" class="spinner" />
-            <span v-else>{{ t('common.create') }} usuario y enviar email</span>
+            <span v-else>{{ t('admin.createAndEmail') }}</span>
           </BaseButton>
         </div>
 
         <p class="modal__hint">
-          Se generara una contrasena temporal de forma automatica y se enviara al email ingresado junto con
-          las instrucciones de acceso.
+          {{ t('admin.createUserHint') }}
         </p>
       </form>
     </BaseModal>
@@ -258,11 +257,11 @@
     >
       <div class="modal__header">
         <h3 id="admin-deactivate-title">{{ t('admin.deactivateUser') }}</h3>
-        <button class="modal__close" type="button" :aria-label="t('common.close')" @click="deactivateTarget = null">X</button>
+        <button class="modal__close" type="button" :aria-label="t('common.close')" @click="deactivateTarget = null">{{ t('common.close') }}</button>
       </div>
       <p class="confirm-text">
-        Desactivar la cuenta de
-        <strong>{{ deactivateTarget?.first_name }} {{ deactivateTarget?.last_name }}</strong>?
+        {{ t('admin.deactivatePromptPrefix') }}
+        <strong>{{ deactivateTarget?.first_name }} {{ deactivateTarget?.last_name }}</strong>
         {{ t('admin.deactivatePrompt') }}
       </p>
       <div v-if="deactivateError" class="alert alert--error" role="alert">{{ deactivateError }}</div>
