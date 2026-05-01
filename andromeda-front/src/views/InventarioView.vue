@@ -5,14 +5,14 @@
       <div class="page-header__left">
         <span class="page-emoji">📦</span>
         <div>
-          <h2 class="page-title">Inventario</h2>
-          <p class="page-sub">Stock de medicamentos e insumos</p>
+          <h2 class="page-title">{{ t('inventory.title') }}</h2>
+          <p class="page-sub">{{ t('inventory.subtitle') }}</p>
         </div>
       </div>
       <!-- Tab-level action buttons -->
-      <button v-if="activeTab === 'products'" class="btn-primary" @click="openModal()">+ Agregar producto</button>
-      <button v-if="activeTab === 'suppliers'" class="btn-primary" @click="openSupplierModal()">+ Nuevo proveedor</button>
-      <button v-if="activeTab === 'orders'" class="btn-primary" @click="openOrderModal()">+ Nueva OC</button>
+      <button v-if="activeTab === 'products'" type="button" class="btn-primary" @click="openModal()">{{ t('inventory.addProduct') }}</button>
+      <button v-if="activeTab === 'suppliers'" type="button" class="btn-primary" @click="openSupplierModal()">{{ t('inventory.newSupplier') }}</button>
+      <button v-if="activeTab === 'orders'" type="button" class="btn-primary" @click="openOrderModal()">{{ t('inventory.newOrder') }}</button>
     </div>
 
     <!-- Tab navigation -->
@@ -52,7 +52,7 @@
           <option value="other">📦 Otros</option>
         </select>
         <select v-model="stockFilter" class="filter-select" @change="load()">
-          <option value="">Todo el stock</option>
+          <option value="">{{ t('inventory.allStock') }}</option>
           <option value="low">⚠️ Stock bajo</option>
           <option value="zero">🔴 Sin stock</option>
         </select>
@@ -62,7 +62,7 @@
       <div v-else-if="error" class="alert alert--error">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="empty-state__emoji">📦</span>
-        <p>No hay productos en el inventario</p>
+        <p>{{ t('inventory.empty') }}</p>
       </div>
 
       <div v-else class="card">
@@ -118,7 +118,7 @@
       <div v-else-if="alertsError" class="alert alert--error">{{ alertsError }}</div>
       <div v-else-if="alerts.length === 0" class="empty-state">
         <span class="empty-state__emoji">✅</span>
-        <p>No hay alertas activas</p>
+        <p>{{ t('inventory.noAlerts') }}</p>
       </div>
       <div v-else class="card">
         <table class="table">
@@ -142,9 +142,9 @@
               <td>{{ a.threshold ?? '—' }}</td>
               <td>{{ a.expiry_date ? formatDate(a.expiry_date) : formatDate(a.created_at) }}</td>
               <td>
-                <button class="btn-sm btn-sm--ghost" :disabled="resolvingAlert === a.id" @click="resolveAlert(a.id)">
+                <button type="button" class="btn-sm btn-sm--ghost" :disabled="resolvingAlert === a.id" @click="resolveAlert(a.id)">
                   <span v-if="resolvingAlert === a.id" class="spin spin--sm spin--dark" />
-                  <span v-else>Resolver</span>
+                  <span v-else>{{ t('inventory.resolve') }}</span>
                 </button>
               </td>
             </tr>
@@ -161,7 +161,7 @@
       <div v-else-if="suppliersError" class="alert alert--error">{{ suppliersError }}</div>
       <div v-else-if="suppliers.length === 0" class="empty-state">
         <span class="empty-state__emoji">🚚</span>
-        <p>No hay proveedores registrados</p>
+        <p>{{ t('inventory.noSuppliers') }}</p>
       </div>
       <div v-else class="card">
         <table class="table">
@@ -187,7 +187,7 @@
               <td>
                 <div class="action-btns">
                   <button class="btn-sm btn-sm--icon" title="Editar" @click="openSupplierModal(s)">✏️</button>
-                  <button class="btn-sm btn-sm--danger" :disabled="deletingSupplier === s.id" @click="deleteSupplier(s.id)">
+                  <button type="button" class="btn-sm btn-sm--danger" :disabled="deletingSupplier === s.id" @click="deleteSupplier(s.id)">
                     <span v-if="deletingSupplier === s.id" class="spin spin--sm spin--dark" />
                     <span v-else>Eliminar</span>
                   </button>
@@ -482,6 +482,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -1115,3 +1116,4 @@ onMounted(load)
   .field--narrow { width: 100%; }
 }
 </style>
+

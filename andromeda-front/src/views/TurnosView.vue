@@ -6,7 +6,7 @@
       <div class="page-header__left">
         <span class="page-emoji">📅</span>
         <div>
-          <h2 class="page-title">Turnos</h2>
+          <h2 class="page-title">{{ t('appointments.title') }}</h2>
           <p class="page-sub">Gestión de citas y agenda diaria</p>
         </div>
       </div>
@@ -33,7 +33,7 @@
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐱</span>
       <p>No hay turnos para este día</p>
-      <button type="button" class="btn-ghost" @click="openModal()">Agendar primer turno</button>
+      <button type="button" class="btn-ghost" @click="openModal()">{{ t('appointments.scheduleFirst') }}</button>
     </div>
 
     <div v-else class="appt-grid">
@@ -59,21 +59,21 @@
           <p v-if="a.vet_name" class="appt-card__vet">👨‍⚕️ {{ a.vet_name }}</p>
         </div>
         <div class="appt-card__actions">
-          <button
+          <button type="button"
             v-if="a.status === 'scheduled' || a.status === 'confirmed'"
             class="btn-xs btn-xs--green"
             @click="updateStatus(a, 'in_progress')"
-          >En curso</button>
-          <button
+          >{{ t('appointments.inProgress') }}</button>
+          <button type="button"
             v-if="a.status === 'in_progress'"
             class="btn-xs btn-xs--blue"
             @click="updateStatus(a, 'completed')"
-          >Completar</button>
-          <button
+          >{{ t('appointments.complete') }}</button>
+          <button type="button"
             v-if="a.status !== 'cancelled' && a.status !== 'completed'"
             class="btn-xs btn-xs--red"
             @click="updateStatus(a, 'cancelled')"
-          >Cancelar</button>
+          >{{ t('appointments.cancel') }}</button>
         </div>
       </div>
     </div>
@@ -121,16 +121,19 @@
                   @input="searchPatients"
                   autocomplete="off"
                 />
-                <div v-if="patientResults.length" class="autocomplete">
-                  <div
+                <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
+                  <button
                     v-for="pt in patientResults"
                     :key="pt.id"
+                    type="button"
                     class="autocomplete__item"
+                    role="option"
+                    :aria-label="`Seleccionar ${pt.name}`"
                     @click="selectPatient(pt)"
                   >
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
                     <span class="autocomplete__owner">— {{ pt.primary_owner || pt.owner_name }}</span>
-                  </div>
+                  </button>
                 </div>
                 <div v-if="form.patientId" class="selected-patient">
                   ✅ {{ selectedPatientLabel }}
@@ -162,6 +165,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/client'
 import { adminUsersApi } from '../api/adminUsers'
+import { t } from '../i18n'
 
 const auth = useAuthStore()
 const items   = ref([])
@@ -602,3 +606,4 @@ onMounted(() => { load(); loadVets(); loadTypes() })
   .form-grid { grid-template-columns: 1fr; }
 }
 </style>
+
