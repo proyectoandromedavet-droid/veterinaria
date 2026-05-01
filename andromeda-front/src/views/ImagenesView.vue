@@ -161,12 +161,14 @@
                   @input="searchPatients"
                   autocomplete="off"
                 />
-                <div v-if="patientResults.length" class="autocomplete">
+                <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
                     <button
                       v-for="pt in patientResults"
                       :key="pt.id"
                       type="button"
                       class="autocomplete__item"
+                      role="option"
+                      :aria-label="`Seleccionar ${pt.name}`"
                       @click="selectPatient(pt)"
                     >
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>

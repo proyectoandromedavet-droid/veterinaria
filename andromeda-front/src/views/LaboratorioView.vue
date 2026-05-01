@@ -150,16 +150,19 @@
                   @input="searchPatients"
                   autocomplete="off"
                 />
-                <div v-if="patientResults.length" class="autocomplete">
-                  <div
+                <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
+                  <button
                     v-for="pt in patientResults"
                     :key="pt.id"
+                    type="button"
                     class="autocomplete__item"
+                    role="option"
+                    :aria-label="`Seleccionar ${pt.name}`"
                     @click="selectPatient(pt)"
                   >
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
                     <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
-                  </div>
+                  </button>
                 </div>
                 <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
                 <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
