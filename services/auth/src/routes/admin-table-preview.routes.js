@@ -22,273 +22,254 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ success: false, error: { message: 'Se requiere rol org_admin', code: 'FORBIDDEN' } });
 }
 
-// Tablas de negocio habilitadas + descripciones de columnas
-const TABLES = {
-  patients: {
-    label: 'Pacientes',
-    description: 'Animales registrados en el sistema. Cada fila es un animal con su información clínica básica.',
-    filterType: 'org',
-    columns: {
-      id:               'ID único autogenerado del paciente',
-      organization_id:  'Organización a la que pertenece',
-      species_id:       'Especie del animal (referencia tabla species)',
-      breed_id:         'Raza del animal (referencia tabla breeds)',
-      name:             'Nombre del animal',
-      sex:              'Sexo: male (macho), female (hembra), unknown (desconocido)',
-      birthdate:        'Fecha de nacimiento',
-      birth_date:       'Fecha de nacimiento (campo alternativo)',
-      weight_kg:        'Peso en kilogramos al último registro',
-      chip_number:      'Número de microchip de identificación',
-      microchip_number: 'Número de microchip (campo alternativo)',
-      is_sterilized:    'Castrado/Esterilizado: 1=Sí, 0=No',
-      is_deceased:      'Si el animal falleció: 1=Sí, 0=No',
-      is_active:        'Registro activo en el sistema: 1=Sí, 0=No',
-      notes:            'Notas generales del paciente',
-      created_at:       'Fecha y hora de alta en el sistema',
-      updated_at:       'Última modificación del registro',
-      deleted_at:       'Fecha de borrado lógico (null = activo)',
-    },
-  },
-  clients: {
-    label: 'Clientes / Propietarios',
-    description: 'Personas responsables de los pacientes. Un cliente puede tener varios animales.',
-    filterType: 'branch',
-    columns: {
-      id:              'ID único del cliente',
-      branch_id:       'Sucursal donde está registrado',
-      first_name:      'Nombre del propietario',
-      last_name:       'Apellido del propietario',
-      email:           'Correo electrónico de contacto',
-      phone:           'Teléfono principal',
-      document_type:   'Tipo de documento (DNI, Pasaporte, CUIT, etc.)',
-      document_number: 'Número del documento de identidad',
-      is_active:       'Si el cliente está activo: 1=Sí, 0=No',
-      created_at:      'Fecha de registro',
-    },
-  },
-  appointments: {
-    label: 'Turnos / Citas',
-    description: 'Consultas agendadas para los pacientes. Incluye turnos pasados, presentes y futuros.',
-    filterType: 'branch',
-    columns: {
-      id:                  'ID único del turno',
-      branch_id:           'Sucursal donde se realiza',
-      patient_id:          'Paciente que asiste (referencia tabla patients)',
-      vet_id:              'Veterinario asignado (referencia tabla users)',
-      appointment_type_id: 'Tipo de turno (referencia tabla appointment_types)',
-      scheduled_date:      'Fecha y hora programada del turno',
-      duration_minutes:    'Duración estimada en minutos',
-      status:              'Estado: scheduled, confirmed, in_progress, completed, cancelled, no_show',
-      is_emergency:        'Indica si es una emergencia: 1=Sí, 0=No',
-      reason:              'Motivo de la consulta',
-      notes:               'Observaciones adicionales',
-      created_at:          'Cuándo se registró el turno',
-    },
-  },
-  appointment_types: {
-    label: 'Tipos de Turno',
-    description: 'Categorías de consultas disponibles (Consulta general, Vacunación, Cirugía, etc.).',
-    filterType: 'none',
-    columns: {
-      id:                       'ID único del tipo',
-      name:                     'Nombre del tipo de turno',
-      default_duration_minutes: 'Duración predeterminada en minutos',
-      color_hex:                'Color en formato HEX para mostrar en el calendario',
-      is_active:                'Si está disponible para agendar: 1=Sí, 0=No',
-    },
-  },
-  vaccinations: {
-    label: 'Vacunaciones',
-    description: 'Historial de vacunas aplicadas a cada paciente, con fechas y lotes.',
-    filterType: 'branch',
-    columns: {
-      id:               'ID único del registro',
-      branch_id:        'Sucursal donde se aplicó',
-      patient_id:       'Paciente vacunado (referencia tabla patients)',
-      vaccine_id:       'Vacuna aplicada (referencia tabla vaccines)',
-      vaccination_date: 'Fecha en que se aplicó la vacuna',
-      next_due_date:    'Fecha de vencimiento o próxima dosis',
-      batch_number:     'Número de lote del vial',
-      dose:             'Dosis administrada',
-      route:            'Vía: subcutaneous, intramuscular, intranasal, oral, other',
-      administered_by:  'Veterinario que aplicó la vacuna (referencia tabla users)',
-      notes:            'Observaciones adicionales',
-    },
-  },
-  vaccines: {
-    label: 'Vacunas (Catálogo)',
-    description: 'Listado de vacunas disponibles en el sistema con su información técnica.',
-    filterType: 'none',
-    columns: {
-      id:                'ID único de la vacuna',
-      name:              'Nombre comercial o genérico',
-      species_id:        'Especie a la que aplica (referencia tabla species)',
-      target_diseases:   'Enfermedades que previene',
-      manufacturer:      'Fabricante / laboratorio',
-      frequency_months:  'Cada cuántos meses se revacuna',
-      is_active:         'Si está disponible: 1=Sí, 0=No',
-    },
-  },
-  medical_records: {
-    label: 'Fichas Médicas',
-    description: 'Registro de cada consulta veterinaria: síntomas, diagnóstico y evolución del paciente.',
-    filterType: 'vet',
-    columns: {
-      id:                  'ID único de la ficha',
-      appointment_id:      'Turno al que corresponde (referencia tabla appointments)',
-      patient_id:          'Paciente consultado (referencia tabla patients)',
-      vet_id:              'Veterinario responsable (referencia tabla users)',
-      chief_complaint:     'Motivo principal de consulta relatado',
-      status:              'Estado: open (abierta), signed (firmada), amended (corregida)',
-      weight_kg:           'Peso del animal en la consulta',
-      temperature_celsius: 'Temperatura corporal en °C',
-      visit_date:          'Fecha y hora de la consulta',
-      notes:               'Notas clínicas del veterinario',
-      signed_at:           'Cuándo firmó el veterinario',
-    },
-  },
-  species: {
-    label: 'Especies',
-    description: 'Catálogo maestro de especies animales (Perro, Gato, Conejo, etc.).',
-    filterType: 'none',
-    columns: {
-      id:                  'ID único de la especie',
-      common_name:         'Nombre común en español (ej: Perro, Gato)',
-      scientific_name:     'Nombre científico (ej: Canis lupus familiaris)',
-      avg_lifespan_years:  'Expectativa de vida promedio en años',
-      gestation_days:      'Días de gestación promedio',
-      is_active:           'Disponible para registrar pacientes: 1=Sí, 0=No',
-    },
-  },
-  breeds: {
-    label: 'Razas',
-    description: 'Catálogo de razas por especie (Labrador, Siamés, etc.).',
-    filterType: 'none',
-    columns: {
-      id:         'ID único de la raza',
-      species_id: 'Especie a la que pertenece (referencia tabla species)',
-      name:       'Nombre de la raza',
-      is_active:  'Disponible para usar: 1=Sí, 0=No',
-    },
-  },
-  inventory_items: {
-    label: 'Inventario',
-    description: 'Medicamentos, insumos y productos disponibles en la clínica.',
-    filterType: 'branch',
-    columns: {
-      id:            'ID único del ítem',
-      branch_id:     'Sucursal donde está el stock',
-      name:          'Nombre del producto o medicamento',
-      item_type:     'Categoría: medication, supply, equipment, food, accessory, vaccine, other',
-      unit:          'Unidad de medida (comprimido, ml, unidad, pipeta, etc.)',
-      stock_quantity:'Cantidad disponible actualmente en stock',
-      minimum_stock: 'Stock mínimo antes de generar alerta de reposición',
-      unit_cost:     'Costo unitario de compra (precio al que se adquiere)',
-      sale_price:    'Precio de venta al cliente',
-      is_active:     'Disponible para usar/vender: 1=Sí, 0=No',
-      expiry_date:   'Fecha de vencimiento del lote actual',
-    },
-  },
-  invoices: {
-    label: 'Facturas',
-    description: 'Comprobantes de cobro emitidos a los clientes por servicios prestados.',
-    filterType: 'branch',
-    columns: {
-      id:           'ID único de la factura',
-      branch_id:    'Sucursal que emite la factura',
-      client_id:    'Cliente facturado (referencia tabla clients)',
-      patient_id:   'Paciente asociado (referencia tabla patients)',
-      total_amount: 'Monto total de la factura',
-      status:       'Estado: draft (borrador), issued (emitida), paid (pagada), cancelled (anulada)',
-      issued_at:    'Fecha y hora de emisión',
-      due_date:     'Fecha límite de pago',
-      notes:        'Observaciones del comprobante',
-    },
-  },
-  surgeries: {
-    label: 'Cirugías',
-    description: 'Registro de procedimientos quirúrgicos programados y realizados.',
-    filterType: 'branch',
-    columns: {
-      id:              'ID único de la cirugía',
-      branch_id:       'Sucursal donde se realiza',
-      patient_id:      'Paciente operado (referencia tabla patients)',
-      surgeon_id:      'Cirujano principal (referencia tabla users)',
-      surgery_type_id: 'Tipo de procedimiento (referencia tabla surgery_types)',
-      scheduled_at:    'Fecha y hora programada',
-      started_at:      'Inicio real de la cirugía',
-      ended_at:        'Finalización de la cirugía',
-      status:          'Estado: scheduled, in_progress, completed, cancelled',
-      notes:           'Notas del procedimiento quirúrgico',
-    },
-  },
-  hospitalizations: {
-    label: 'Hospitalizaciones',
-    description: 'Internaciones de pacientes en la clínica, con seguimiento diario.',
-    filterType: 'branch',
-    columns: {
-      id:             'ID único de la hospitalización',
-      branch_id:      'Sucursal donde está internado',
-      patient_id:     'Paciente internado (referencia tabla patients)',
-      vet_id:         'Veterinario responsable',
-      kennel_id:      'Jaula o espacio asignado (referencia tabla kennels)',
-      admission_date: 'Fecha y hora de ingreso',
-      discharge_date: 'Fecha y hora de alta (null si sigue internado)',
-      reason:         'Motivo de la internación',
-      status:         'Estado: active (internado), discharged (de alta), deceased (fallecido)',
-      notes:          'Notas clínicas de la internación',
-    },
-  },
+// Tablas operativas/sistema que no son de negocio — excluidas del explorador
+const SYSTEM_TABLE_PATTERN = [
+  '^v_',                        // vistas
+  '^audit_',                    // logs de auditoría
+  '_archive$',                  // archivos históricos
+  '_session',                   // sesiones
+  '_token',                     // tokens
+  'login_history',
+  'security_alert',
+  'security_event',
+  'notification_log',
+  'message_log',
+  'subscription_event',
+  'report_run',
+  'service_registry_snapshot',
+  'data_classification',
+  'data_retention',
+  'webrtc_',
+  'ip_rule',
+  'api_key',
+  'two_factor',
+  'user_fcm',
+  'cross_branch',
+  'org_plugin',
+  'org_role_override',
+  'organization_auth_polic',
+  'organization_sso',
+  'migration_',
+  'tenant',
+  'business_rule',
+  'stock_alert',
+  'in_app_notification',
+].join('|');
+
+// Etiquetas en español para tablas conocidas (opcional — si no está, se usa el nombre de la tabla)
+const TABLE_LABELS = {
+  patients:                    { label: 'Pacientes',              description: 'Animales registrados en el sistema' },
+  clients:                     { label: 'Clientes / Propietarios',description: 'Dueños responsables de los pacientes' },
+  appointments:                { label: 'Turnos',                 description: 'Citas agendadas para los pacientes' },
+  appointment_types:           { label: 'Tipos de Turno',         description: 'Categorías de turnos disponibles' },
+  vaccinations:                { label: 'Vacunaciones',           description: 'Historial de vacunas aplicadas' },
+  vaccines:                    { label: 'Vacunas (catálogo)',      description: 'Vacunas disponibles en el sistema' },
+  vaccine_manufacturers:       { label: 'Fabricantes de Vacunas', description: 'Laboratorios que producen las vacunas' },
+  medical_records:             { label: 'Fichas Médicas',         description: 'Registro de cada consulta veterinaria' },
+  anamnesis:                   { label: 'Anamnesis',              description: 'Historial clínico previo del paciente' },
+  physical_examinations:       { label: 'Exámenes Físicos',       description: 'Resultados de exámenes físicos en consulta' },
+  species:                     { label: 'Especies',               description: 'Catálogo de especies animales' },
+  species_categories:          { label: 'Categorías de Especies', description: 'Grupos de especies (mascotas, aves, etc.)' },
+  breeds:                      { label: 'Razas',                  description: 'Razas por especie' },
+  coat_colors:                 { label: 'Colores de Pelaje',      description: 'Colores disponibles para identificar el animal' },
+  inventory_items:             { label: 'Inventario',             description: 'Medicamentos e insumos de la clínica' },
+  inventory_batches:           { label: 'Lotes de Inventario',    description: 'Lotes con fecha de vencimiento' },
+  inventory_movements:         { label: 'Movimientos de Stock',   description: 'Entradas y salidas de inventario' },
+  inventory_stock:             { label: 'Stock por Sucursal',     description: 'Stock actual por sucursal e ítem' },
+  invoices:                    { label: 'Facturas',               description: 'Comprobantes de cobro a clientes' },
+  invoice_items:               { label: 'Ítems de Factura',       description: 'Líneas de detalle de cada factura' },
+  payments:                    { label: 'Pagos',                  description: 'Pagos recibidos por facturas' },
+  surgeries:                   { label: 'Cirugías',               description: 'Procedimientos quirúrgicos' },
+  surgery_types:               { label: 'Tipos de Cirugía',       description: 'Catálogo de procedimientos quirúrgicos' },
+  surgery_categories:          { label: 'Categorías de Cirugía',  description: 'Grupos de tipos de cirugía' },
+  anesthesia_records:          { label: 'Registros de Anestesia', description: 'Control anestésico en cirugías' },
+  hospitalizations:            { label: 'Hospitalizaciones',      description: 'Internaciones de pacientes' },
+  hospitalization_medications: { label: 'Medicación Internados',  description: 'Medicamentos administrados a internados' },
+  hospitalization_monitoring:  { label: 'Control de Internados',  description: 'Signos vitales y evolución de internados' },
+  kennels:                     { label: 'Jaulas / Espacios',      description: 'Espacios de internación disponibles' },
+  wards:                       { label: 'Sectores de Internación', description: 'Sectores del área de internación' },
+  prescriptions:               { label: 'Recetas',                description: 'Recetas médicas emitidas' },
+  prescription_items:          { label: 'Ítems de Receta',        description: 'Medicamentos de cada receta' },
+  lab_orders:                  { label: 'Pedidos de Lab.',        description: 'Órdenes de análisis de laboratorio' },
+  lab_order_items:             { label: 'Análisis Pedidos',       description: 'Tests individuales de cada orden' },
+  lab_tests:                   { label: 'Análisis (catálogo)',     description: 'Tipos de análisis disponibles' },
+  lab_test_categories:         { label: 'Categorías de Lab.',     description: 'Grupos de análisis (hematología, etc.)' },
+  lab_test_panels:             { label: 'Paneles de Lab.',        description: 'Combinaciones de tests habituales' },
+  lab_panel_tests:             { label: 'Tests de Paneles',       description: 'Tests que integran cada panel' },
+  lab_results:                 { label: 'Resultados de Lab.',     description: 'Resultados de cada análisis' },
+  lab_reference_ranges:        { label: 'Rangos de Referencia',   description: 'Valores normales por especie y test' },
+  imaging_orders:              { label: 'Pedidos de Imágenes',    description: 'Órdenes de estudios de imagen' },
+  imaging_studies:             { label: 'Estudios de Imagen',     description: 'Radiografías, ecografías, etc.' },
+  imaging_images:              { label: 'Imágenes',               description: 'Archivos de imagen de estudios' },
+  imaging_reports:             { label: 'Informes de Imagen',     description: 'Informes de estudios de imagen' },
+  imaging_types:               { label: 'Tipos de Imagen',        description: 'Tipos de estudios de imagen' },
+  pathology_orders:            { label: 'Pedidos Patología',      description: 'Órdenes de análisis histopatológico' },
+  pathology_samples:           { label: 'Muestras de Patología',  description: 'Muestras enviadas a patología' },
+  pathology_results:           { label: 'Resultados Patología',   description: 'Informes de patología' },
+  pathology_types:             { label: 'Tipos de Patología',     description: 'Categorías de análisis patológico' },
+  grooming_appointments:       { label: 'Turnos de Grooming',     description: 'Citas de peluquería/baño' },
+  grooming_records:            { label: 'Registros de Grooming',  description: 'Servicios de grooming realizados' },
+  grooming_service_types:      { label: 'Servicios de Grooming',  description: 'Catálogo de servicios de grooming' },
+  grooming_ratings:            { label: 'Calificaciones Grooming',description: 'Valoraciones de clientes al grooming' },
+  groomers:                    { label: 'Groomers',               description: 'Personal de peluquería' },
+  groomer_commission_records:  { label: 'Comisiones Groomer',     description: 'Comisiones calculadas por groomer' },
+  patient_grooming_profile:    { label: 'Perfil Grooming Paciente',description: 'Preferencias de grooming del animal' },
+  tele_sessions:               { label: 'Sesiones Telemedicina',  description: 'Consultas realizadas por videollamada' },
+  tele_messages:               { label: 'Mensajes Telemedicina',  description: 'Chat de sesiones de telemedicina' },
+  tele_platforms:              { label: 'Plataformas Tele',       description: 'Plataformas de videollamada configuradas' },
+  tele_digital_prescriptions:  { label: 'Recetas Digitales Tele', description: 'Recetas emitidas en telemedicina' },
+  tele_pre_anamnesis:          { label: 'Pre-Anamnesis Tele',     description: 'Formulario previo a la teleconsulta' },
+  tele_ratings:                { label: 'Calificaciones Tele',    description: 'Valoraciones de las teleconsultas' },
+  tele_shared_documents:       { label: 'Docs Compartidos Tele',  description: 'Documentos enviados en telemedicina' },
+  antiparasitic_products:      { label: 'Antiparasitarios',       description: 'Productos antiparasitarios disponibles' },
+  deworming_records:           { label: 'Desparasitaciones',      description: 'Historial de desparasitaciones' },
+  medications:                 { label: 'Medicamentos',           description: 'Catálogo de medicamentos' },
+  treatments:                  { label: 'Tratamientos',           description: 'Tratamientos aplicados a pacientes' },
+  diagnoses:                   { label: 'Diagnósticos',           description: 'Diagnósticos registrados en fichas' },
+  patient_allergies:           { label: 'Alergias del Paciente',  description: 'Alergias conocidas de cada animal' },
+  patient_chronic_conditions:  { label: 'Condiciones Crónicas',   description: 'Enfermedades crónicas del paciente' },
+  patient_transfers:           { label: 'Transferencias',         description: 'Transferencias de paciente entre sucursales' },
+  emergency_triage:            { label: 'Triaje de Emergencias',  description: 'Clasificación de urgencias al ingreso' },
+  reminders:                   { label: 'Recordatorios',          description: 'Recordatorios enviados a clientes' },
+  follow_ups:                  { label: 'Seguimientos',           description: 'Seguimiento post-consulta de pacientes' },
+  services_catalog:            { label: 'Catálogo de Servicios',  description: 'Servicios ofrecidos por la clínica' },
+  service_categories:          { label: 'Categorías de Servicios',description: 'Grupos de servicios' },
+  price_lists:                 { label: 'Listas de Precios',      description: 'Listas de precios configuradas' },
+  price_list_items:            { label: 'Ítems de Lista de Precios',description: 'Precios por servicio o producto' },
+  suppliers:                   { label: 'Proveedores',            description: 'Proveedores de insumos y medicamentos' },
+  purchase_orders:             { label: 'Órdenes de Compra',      description: 'Pedidos realizados a proveedores' },
+  purchase_order_items:        { label: 'Ítems Orden de Compra',  description: 'Detalle de cada orden de compra' },
+  branches:                    { label: 'Sucursales',             description: 'Sucursales de la organización' },
+  organizations:               { label: 'Organizaciones',        description: 'Clínicas u organizaciones registradas' },
+  users:                       { label: 'Usuarios del Sistema',   description: 'Personal con acceso al sistema' },
+  roles:                       { label: 'Roles',                  description: 'Roles de acceso disponibles' },
+  species_categories_ref:      { label: 'Categorías de Especies', description: 'Clasificación de especies' },
+  countries:                   { label: 'Países',                 description: 'Países disponibles para configuración' },
+  states:                      { label: 'Provincias / Estados',   description: 'Provincias o estados por país' },
+  cities:                      { label: 'Ciudades',               description: 'Ciudades disponibles' },
+  currencies:                  { label: 'Monedas',                description: 'Monedas configuradas en el sistema' },
 };
+
+// Descripciones de columnas comunes a todas las tablas
+const COMMON_COL_DESC = {
+  id:              'Identificador único autogenerado',
+  organization_id: 'Organización a la que pertenece el registro',
+  branch_id:       'Sucursal a la que pertenece el registro',
+  created_at:      'Fecha y hora de creación del registro',
+  updated_at:      'Última vez que se modificó el registro',
+  deleted_at:      'Fecha de borrado lógico (null = activo)',
+  is_active:       'Si el registro está activo: 1=Sí, 0=No',
+  notes:           'Notas u observaciones adicionales',
+  name:            'Nombre descriptivo',
+  status:          'Estado actual del registro',
+  created_by:      'Usuario que creó el registro',
+  updated_by:      'Último usuario que modificó el registro',
+};
+
+// Cache en memoria: { tables: [], columnsMap: {}, ttl: timestamp }
+let schemaCache = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+
+async function loadSchema() {
+  if (schemaCache && Date.now() - schemaCache.ts < CACHE_TTL_MS) return schemaCache;
+
+  // Todas las tablas base, excluyendo las operativas/sistema
+  const tables = await db.query(
+    `SELECT TABLE_NAME AS name, TABLE_ROWS AS approxRows
+     FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_TYPE = 'BASE TABLE'
+       AND TABLE_NAME NOT REGEXP :pattern
+     ORDER BY TABLE_NAME`,
+    { pattern: SYSTEM_TABLE_PATTERN },
+  );
+
+  // Todas las columnas de esas tablas en una sola query
+  const tableNames = tables.map(t => t.name);
+  if (!tableNames.length) {
+    schemaCache = { tables: [], columnsMap: {}, ts: Date.now() };
+    return schemaCache;
+  }
+
+  const placeholders = tableNames.map((_, i) => `:t${i}`).join(',');
+  const params = Object.fromEntries(tableNames.map((n, i) => [`t${i}`, n]));
+
+  const cols = await db.query(
+    `SELECT TABLE_NAME AS tbl, COLUMN_NAME AS col, DATA_TYPE AS type,
+            IS_NULLABLE AS nullable, COLUMN_COMMENT AS comment, ORDINAL_POSITION AS pos
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME IN (${placeholders})
+     ORDER BY TABLE_NAME, ORDINAL_POSITION`,
+    params,
+  );
+
+  const columnsMap = {};
+  for (const c of cols) {
+    if (!columnsMap[c.tbl]) columnsMap[c.tbl] = [];
+    columnsMap[c.tbl].push(c);
+  }
+
+  // Detectar filterType automáticamente por columnas presentes
+  const enrichedTables = tables.map(t => {
+    const tcols = columnsMap[t.name] || [];
+    const colNames = new Set(tcols.map(c => c.col));
+    const meta = TABLE_LABELS[t.name] || {};
+    let filterType = 'none';
+    if (colNames.has('organization_id')) filterType = 'org';
+    else if (colNames.has('branch_id'))  filterType = 'branch';
+    return {
+      key:         t.name,
+      label:       meta.label       || t.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      description: meta.description || '',
+      filterType,
+      approxRows:  t.approxRows || 0,
+    };
+  });
+
+  schemaCache = { tables: enrichedTables, columnsMap, ts: Date.now() };
+  return schemaCache;
+}
 
 function buildFilter(filterType, orgId) {
   switch (filterType) {
     case 'org':    return { where: 'WHERE organization_id = :orgId', params: { orgId } };
     case 'branch': return { where: 'WHERE branch_id IN (SELECT id FROM branches WHERE organization_id = :orgId)', params: { orgId } };
-    case 'vet':    return { where: 'WHERE vet_id IN (SELECT id FROM users WHERE branch_id IN (SELECT id FROM branches WHERE organization_id = :orgId))', params: { orgId } };
     default:       return { where: '', params: {} };
   }
 }
 
-// GET /admin/preview — lista de tablas disponibles
-router.get('/', fromHeaders, requireAdmin, (_req, res) => {
-  return R.ok(res, {
-    tables: Object.entries(TABLES).map(([key, def]) => ({
-      key,
-      label:       def.label,
-      description: def.description,
-    })),
-  });
+// GET /admin/preview — lista dinámica de tablas de negocio
+router.get('/', fromHeaders, requireAdmin, async (req, res, next) => {
+  try {
+    // ?refresh=1 fuerza recarga del cache
+    if (req.query.refresh) schemaCache = null;
+    const { tables } = await loadSchema();
+    return R.ok(res, { tables, cachedAt: new Date(schemaCache.ts).toISOString() });
+  } catch (e) { next(e); }
 });
 
-// GET /admin/preview/:tableName — columnas reales + 10 registros
+// GET /admin/preview/:tableName — columnas + 10 registros (siempre del esquema real)
 router.get('/:tableName', fromHeaders, requireAdmin, async (req, res, next) => {
   try {
     const { tableName } = req.params;
-    const tableDef = TABLES[tableName];
+    const { tables, columnsMap } = await loadSchema();
+
+    const tableDef = tables.find(t => t.key === tableName);
     if (!tableDef) {
       return res.status(404).json({ success: false, error: { message: `Tabla '${tableName}' no disponible`, code: 'NOT_FOUND' } });
     }
 
     const orgId = req.user.orgId;
-    if (!orgId && tableDef.filterType !== 'none') {
-      return res.status(401).json({ success: false, error: { message: 'Missing org context', code: 'UNAUTHORIZED' } });
-    }
 
-    // Columnas reales desde information_schema
-    const schemaRows = await db.query(
-      `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, IS_NULLABLE AS nullable, COLUMN_COMMENT AS comment
-       FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :tableName
-       ORDER BY ORDINAL_POSITION`,
-      { tableName },
-    );
-
-    const columns = schemaRows.map(col => ({
-      name:        col.name,
-      type:        col.type,
-      nullable:    col.nullable === 'YES',
-      description: tableDef.columns[col.name] || col.comment || '—',
+    // Columnas siempre vienen del esquema real — las descripciones son hints
+    const rawCols = columnsMap[tableName] || [];
+    const colHints = TABLE_LABELS[tableName]?.columns || {};
+    const columns = rawCols.map(c => ({
+      name:        c.col,
+      type:        c.type,
+      nullable:    c.nullable === 'YES',
+      description: colHints[c.col] || COMMON_COL_DESC[c.col] || c.comment || '—',
     }));
 
     const { where, params } = buildFilter(tableDef.filterType, orgId);
@@ -301,6 +282,7 @@ router.get('/:tableName', fromHeaders, requireAdmin, async (req, res, next) => {
       table:       tableName,
       label:       tableDef.label,
       description: tableDef.description,
+      filterType:  tableDef.filterType,
       columns,
       rows,
     });
