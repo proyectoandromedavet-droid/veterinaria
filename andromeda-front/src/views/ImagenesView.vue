@@ -3,7 +3,7 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">ðŸ©»</span>
+        <span class="page-emoji">🩻</span>
         <div>
           <h2 class="page-title">{{ t('imaging.title') }}</h2>
           <p class="page-sub">{{ t('imaging.subtitle') }}</p>
@@ -15,21 +15,21 @@
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-        <span class="stat-card__icon">ðŸ“‹</span>
+        <span class="stat-card__icon">📋</span>
         <div>
           <strong>{{ stats.pendingReport }}</strong>
           <span>{{ t('imaging.pendingReport') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span class="stat-card__icon">âœ…</span>
+        <span class="stat-card__icon">✅</span>
         <div>
           <strong>{{ stats.completed }}</strong>
           <span>{{ t('imaging.completed') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span class="stat-card__icon">ðŸ©»</span>
+        <span class="stat-card__icon">🩻</span>
         <div>
           <strong>{{ stats.topModality }}</strong>
           <span>{{ t('imaging.topModality') }}</span>
@@ -59,7 +59,7 @@
     </div>
     <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">ðŸ©»</span>
+      <span class="empty-state__emoji">🩻</span>
       <p>{{ t('imaging.empty') }}</p>
     </div>
 
@@ -81,14 +81,14 @@
               <div class="pet-cell">
                 <span>{{ petEmoji(order.species) }}</span>
                 <div>
-                  <strong>{{ order.patient_name || 'â€”' }}</strong>
+                  <strong>{{ order.patient_name || '—' }}</strong>
                   <span class="sub">{{ order.vet_name || '' }}</span>
                 </div>
               </div>
             </td>
             <td>
               <div>
-                <strong class="modality-name">{{ order.modality ? modalityLabel(order.modality) : 'â€”' }}</strong>
+                <strong class="modality-name">{{ order.modality ? modalityLabel(order.modality) : '—' }}</strong>
                 <span v-if="order.study_count" class="sub">{{ order.study_count }} {{ t('imaging.studies') }}</span>
               </div>
               <span v-if="order.modality" class="badge" :class="modalityClass(order.modality)" style="margin-top:4px">
@@ -141,8 +141,8 @@
       <div v-if="showNewOrder" class="modal-backdrop" @click.self="showNewOrder = false">
         <div class="modal">
           <div class="modal__header">
-            <h3>ðŸ©» {{ t('imaging.newModalTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showNewOrder = false">âœ•</BaseButton>
+            <h3>🩻 {{ t('imaging.newModalTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showNewOrder = false">✕</BaseButton>
           </div>
 
           <form @submit.prevent="handleCreateOrder" novalidate>
@@ -170,10 +170,10 @@
                       @click="selectPatient(pt)"
                     >
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                      <span class="autocomplete__owner">â€” {{ pt.primary_owner || '' }}</span>
+                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
                 </div>
-                <div v-if="orderForm.patientId" class="selected-patient">âœ… {{ selectedPatientLabel }}</div>
+                <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
                 <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
               </div>
 
@@ -232,7 +232,7 @@
               <BaseButton type="button" variant="ghost" @click="showNewOrder = false" :disabled="saving">{{ t('common.cancel') }}</BaseButton>
               <BaseButton type="submit" :disabled="saving">
                 <span v-if="saving" class="spin spin--sm" />
-                <span v-else>ðŸ’¾ {{ t('imaging.createOrder') }}</span>
+                <span v-else>💾 {{ t('imaging.createOrder') }}</span>
               </BaseButton>
             </div>
           </form>
@@ -245,8 +245,8 @@
       <div v-if="showReport" class="modal-backdrop" @click.self="showReport = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>ðŸ“‹ {{ t('imaging.reportTitle') }} â€” {{ selectedOrder?.patient_name }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showReport = false">âœ•</BaseButton>
+            <h3>📋 {{ t('imaging.reportTitle') }} — {{ selectedOrder?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showReport = false">✕</BaseButton>
           </div>
 
           <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
@@ -327,7 +327,7 @@
                 <BaseButton type="button" variant="ghost" @click="showReport = false" :disabled="savingReport">{{ t('common.cancel') }}</BaseButton>
                 <BaseButton type="submit" :disabled="savingReport">
                   <span v-if="savingReport" class="spin spin--sm" />
-                  <span v-else>ðŸ’¾ {{ t('imaging.saveReport') }}</span>
+                  <span v-else>💾 {{ t('imaging.saveReport') }}</span>
                 </BaseButton>
               </div>
             </form>
@@ -345,7 +345,7 @@ import http from '../api/client'
 import { t } from '../i18n'
 import BaseButton from '../components/base/BaseButton.vue'
 
-// â”€â”€ Lista de Ã³rdenes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Lista de órdenes ────────────────────────────────────────────────────────
 function asArray(value) {
   if (Array.isArray(value)) return value
   if (value == null) return []
@@ -398,7 +398,7 @@ const search       = ref('')
 const statusFilter = ref('')
 const pagination   = ref({ page: 1, totalPages: 1 })
 
-const stats = reactive({ pendingReport: 0, completed: 0, topModality: 'â€”' })
+const stats = reactive({ pendingReport: 0, completed: 0, topModality: '—' })
 
 async function load(page = 1) {
   loading.value = true; error.value = ''
@@ -420,7 +420,7 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las Ã³rdenes'
+    error.value = e.response?.data?.message || 'No se pudieron cargar las órdenes'
   } finally { loading.value = false }
 }
 
@@ -435,21 +435,21 @@ function computeStats() {
   stats.pendingReport = pendingReport
   stats.completed     = completed
   const topEntry = Object.entries(modalityCounts).sort((a, b) => b[1] - a[1])[0]
-  stats.topModality = topEntry ? modalityLabel(topEntry[0]) : 'â€”'
+  stats.topModality = topEntry ? modalityLabel(topEntry[0]) : '—'
 }
 
 let loadTimer = null
 function debouncedLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(load, 350) }
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helpers ─────────────────────────────────────────────────────────────────
 function petEmoji(s) {
-  if (!s) return 'ðŸ¾'
-  const m = { perro:'ðŸ¶', dog:'ðŸ¶', gato:'ðŸ±', cat:'ðŸ±', conejo:'ðŸ°', rabbit:'ðŸ°', loro:'ðŸ¦œ', bird:'ðŸ¦œ', pez:'ðŸŸ', fish:'ðŸŸ', tortuga:'ðŸ¢', reptile:'ðŸ¦Ž', hamster:'ðŸ¹' }
-  return m[s.toLowerCase()] || 'ðŸ¾'
+  if (!s) return '🐾'
+  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
+  return m[s.toLowerCase()] || '🐾'
 }
 
 function formatDate(iso) {
-  if (!iso) return 'â€”'
+  if (!iso) return '—'
   return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
@@ -462,7 +462,7 @@ function modalityLabel(m) {
     endoscopy: t('imaging.endoscopy'),
     other: t('imaging.otherModality'),
   }
-  return map[m] || m || 'â€”'
+  return map[m] || m || '—'
 }
 
 function modalityClass(m) {
@@ -483,10 +483,10 @@ function statusLabel(s) {
     reported: t('imaging.reportedStatus'),
     cancelled: t('imaging.cancelledStatus'),
   }
-  return map[s] || s || 'â€”'
+  return map[s] || s || '—'
 }
 
-// â”€â”€ Tipos de imagen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Tipos de imagen ──────────────────────────────────────────────────────────
 const imagingTypes = ref([])
 const typesLoading = ref(false)
 
@@ -499,7 +499,7 @@ async function loadImagingTypes() {
   finally { typesLoading.value = false }
 }
 
-// â”€â”€ Modal {{ t('imaging.newOrder') }} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal {{ t('imaging.newOrder') }} ────────────────────────────────────────────────────────
 const showNewOrder = ref(false)
 const saving       = ref(false)
 const saveError    = ref('')
@@ -539,7 +539,7 @@ async function searchPatients() {
 
 function selectPatient(pt) {
   orderForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' â€” ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 }
@@ -557,8 +557,8 @@ function openNewOrder() {
 
 function validateOrder() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!orderForm.patientId)     fe.patientId     = 'SeleccionÃ¡ un paciente'
-  if (!orderForm.imagingTypeId) fe.imagingTypeId = 'SeleccionÃ¡ un tipo de estudio'
+  if (!orderForm.patientId)     fe.patientId     = 'Seleccioná un paciente'
+  if (!orderForm.imagingTypeId) fe.imagingTypeId = 'Seleccioná un tipo de estudio'
   return Object.keys(fe).length === 0
 }
 
@@ -581,7 +581,7 @@ async function handleCreateOrder() {
   } finally { saving.value = false }
 }
 
-// â”€â”€ Modal informe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal informe ────────────────────────────────────────────────────────────
 const showReport    = ref(false)
 const selectedOrder = ref(null)
 const detailLoading = ref(false)
@@ -604,7 +604,7 @@ async function openReport(order) {
     const { data } = await http.get(`/imaging/orders/${order.id}`)
     const detail = data?.data || data
     existingReport.value = detail?.report || null
-    // Pre-rellenar si ya tiene informe para ediciÃ³n futura (solo lectura en este caso)
+    // Pre-rellenar si ya tiene informe para edición futura (solo lectura en este caso)
   } catch (e) {
     reportError.value = e.response?.data?.message || 'No se pudo cargar el detalle'
   } finally { detailLoading.value = false }
@@ -690,7 +690,7 @@ onMounted(load)
 .btn-action--primary { background: var(--primary); color: white; border-color: var(--primary); }
 .btn-action--primary:hover { opacity: 0.88; }
 
-/* PaginaciÃ³n */
+/* Paginación */
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
 .pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }
@@ -765,7 +765,7 @@ onMounted(load)
 .spin--dark { border-color: rgba(0,0,0,0.1); border-top-color: var(--primary); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* TransiciÃ³n modal */
+/* Transición modal */
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 

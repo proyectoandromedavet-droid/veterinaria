@@ -3,7 +3,7 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">ðŸ’°</span>
+        <span class="page-emoji">💰</span>
         <div>
           <h2 class="page-title">{{ t('billing.title') }}</h2>
           <p class="page-sub">{{ t('billing.subtitle') }}</p>
@@ -32,28 +32,28 @@
       <!-- KPIs financieros -->
       <div class="kpi-row">
         <div class="kpi-card" style="--bc:#D6F3EC;--tc:#1A9E7F">
-          <span class="kpi-icon">ðŸ’µ</span>
+          <span class="kpi-icon">💵</span>
           <div>
             <strong>${{ summary.paid }}</strong>
             <span>{{ t('billing.paidToday') }}</span>
           </div>
         </div>
         <div class="kpi-card" style="--bc:#FFF3CC;--tc:#8A6200">
-          <span class="kpi-icon">â³</span>
+          <span class="kpi-icon">⏳</span>
           <div>
             <strong>{{ summary.pending }}</strong>
             <span>{{ t('billing.pending') }}</span>
           </div>
         </div>
         <div class="kpi-card" style="--bc:#FDEAEA;--tc:#c0392b">
-          <span class="kpi-icon">âŒ</span>
+          <span class="kpi-icon">❌</span>
           <div>
             <strong>{{ summary.overdue }}</strong>
             <span>{{ t('billing.overdue') }}</span>
           </div>
         </div>
         <div class="kpi-card" style="--bc:#D6EEFF;--tc:#1A5FAA">
-          <span class="kpi-icon">ðŸ“‹</span>
+          <span class="kpi-icon">📋</span>
           <div>
             <strong>{{ summary.total }}</strong>
             <span>{{ t('billing.issuedToday') }}</span>
@@ -79,7 +79,7 @@
       <div v-if="loading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('billing.loading') }}</div>
       <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
-        <span class="empty-state__emoji">ðŸ’°</span>
+        <span class="empty-state__emoji">💰</span>
         <p>{{ t('billing.empty') }}</p>
       </div>
 
@@ -101,7 +101,7 @@
               <td><strong class="inv-num">{{ inv.invoice_number || inv.number || `#${inv.id}` }}</strong></td>
               <td>
                 <div>
-                  <strong>{{ inv.client_name || inv.owner_name || 'â€”' }}</strong>
+                  <strong>{{ inv.client_name || inv.owner_name || '—' }}</strong>
                   <span class="sub">{{ inv.patient_name || '' }}</span>
                 </div>
               </td>
@@ -112,7 +112,7 @@
               <td>
                 <div class="row-actions">
                   <button type="button" v-if="inv.status === 'pending' || inv.status === 'draft'" class="btn-xs btn-xs--green" @click="openPayModal(inv)">{{ t('billing.markPaid') }}</button>
-                  <button type="button" class="btn-xs btn-xs--blue" @click="viewInvoice(inv)" :title="t('billing.viewDetail')">ðŸ‘</button>
+                  <button type="button" class="btn-xs btn-xs--blue" @click="viewInvoice(inv)" :title="t('billing.viewDetail')">👁</button>
                 </div>
               </td>
             </tr>
@@ -156,7 +156,7 @@
         <div class="kpi-row">
           <template v-for="(value, key) in consolSummary" :key="key">
             <div v-if="value !== null && value !== undefined" class="kpi-card" style="--bc:#EEF2FF;--tc:#3730A3">
-              <span class="kpi-icon">ðŸ“Š</span>
+              <span class="kpi-icon">📊</span>
               <div>
                 <strong>{{ formatConsolValue(key, value) }}</strong>
                 <span>{{ formatConsolLabel(key) }}</span>
@@ -168,7 +168,7 @@
         <!-- Outstanding Table -->
         <div class="section-title" style="margin-top:8px">{{ t('billing.overdueByBranchTitle') }}</div>
         <div v-if="!consolOutstanding || consolOutstanding.length === 0" class="empty-state" style="padding:30px">
-          <span class="empty-state__emoji">âœ…</span>
+          <span class="empty-state__emoji">✅</span>
           <p>{{ t('billing.emptyOverdue') }}</p>
         </div>
         <div v-else class="card">
@@ -183,10 +183,10 @@
             </thead>
             <tbody>
               <tr v-for="row in consolOutstanding" :key="row.branch_name">
-                <td><strong>{{ row.branch_name || 'â€”' }}</strong></td>
+                <td><strong>{{ row.branch_name || '—' }}</strong></td>
                 <td><span class="badge inv-overdue">{{ row.overdue_invoices }}</span></td>
                 <td><strong class="text-danger">${{ formatMoney(row.outstanding_amount) }}</strong></td>
-                <td>{{ row.avg_days_overdue != null ? Math.round(row.avg_days_overdue) + ' dÃ­as' : 'â€”' }}</td>
+                <td>{{ row.avg_days_overdue != null ? Math.round(row.avg_days_overdue) + ' días' : '—' }}</td>
               </tr>
             </tbody>
           </table>
@@ -194,7 +194,7 @@
       </template>
 
       <div v-else class="empty-state">
-        <span class="empty-state__emoji">ðŸ“Š</span>
+        <span class="empty-state__emoji">📊</span>
         <p>{{ t('billing.selectRangePrompt') }}</p>
       </div>
     </template>
@@ -205,7 +205,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>💰 {{ t('billing.newModalTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="closeModal()">âœ•</BaseButton>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="closeModal()">✕</BaseButton>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -236,7 +236,7 @@
                 </div>
               </div>
 
-              <!-- Ãtems -->
+              <!-- Ítems -->
               <div class="items-section">
                 <div class="items-header">
                   <span class="section-label">{{ t('billing.itemsLabel') }}</span>
@@ -248,7 +248,7 @@
                     <input v-model.number="item.quantity"  type="number" min="1" :placeholder="t('billing.quantityPlaceholder')" class="item-qty" :disabled="saving" />
                     <input v-model.number="item.unit_price" type="number" min="0" step="0.01" :placeholder="t('billing.unitPricePlaceholder')" class="item-price" :disabled="saving" />
                     <span class="item-total">${{ ((item.quantity || 0) * (item.unit_price || 0)).toFixed(2) }}</span>
-                    <button type="button" class="btn-del-item" @click="removeItem(idx)" :disabled="form.items.length <= 1">âœ•</button>
+                    <button type="button" class="btn-del-item" @click="removeItem(idx)" :disabled="form.items.length <= 1">✕</button>
                   </div>
                 </div>
                 <div class="items-total">
@@ -280,7 +280,7 @@
         <div class="modal modal--detail">
           <div class="modal__header">
             <h3>📄 {{ t('billing.detailTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="closeViewModal()">âœ•</BaseButton>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="closeViewModal()">✕</BaseButton>
           </div>
 
           <div v-if="detailLoading" class="detail-loading" role="status" aria-live="polite">
@@ -290,7 +290,7 @@
           <template v-else-if="detailInvoice">
             <div class="detail-body">
 
-              <!-- Cabecera con nÃºmero y monto -->
+              <!-- Cabecera con número y monto -->
               <div class="detail-hero">
                 <div>
                   <span class="detail-inv-num">{{ detailInvoice.invoice_number || `#${detailInvoice.id}` }}</span>
@@ -303,11 +303,11 @@
               <div class="detail-grid">
                 <div class="detail-field">
                   <span class="detail-label">{{ t('billing.clientLabel') }}</span>
-                  <span class="detail-value">{{ detailInvoice.client_name || 'â€”' }}</span>
+                  <span class="detail-value">{{ detailInvoice.client_name || '—' }}</span>
                 </div>
                 <div class="detail-field">
                   <span class="detail-label">{{ t('billing.patientLabel') }}</span>
-                  <span class="detail-value">{{ detailInvoice.patient_name || 'â€”' }}</span>
+                  <span class="detail-value">{{ detailInvoice.patient_name || '—' }}</span>
                 </div>
                 <div class="detail-field">
                   <span class="detail-label">{{ t('billing.issuedDateLabel') }}</span>
@@ -379,11 +379,11 @@
         <div class="modal modal--sm">
           <div class="modal__header">
             <h3>💳 {{ t('billing.registerPayment') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="closePayModal()">âœ•</BaseButton>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="closePayModal()">✕</BaseButton>
           </div>
           <div class="form-body">
             <p class="pay-invoice-ref">
-              {{ t('billing.invoiceRef') }} <strong>{{ payTarget?.invoice_number || '#' + payTarget?.id }}</strong> â€”
+              {{ t('billing.invoiceRef') }} <strong>{{ payTarget?.invoice_number || '#' + payTarget?.id }}</strong> —
               <strong>${{ formatMoney(payTarget?.total_amount) }}</strong>
             </p>
             <div class="field">
@@ -420,10 +420,10 @@ import http from '../api/client'
 import { t } from '../i18n'
 import BaseButton from '../components/base/BaseButton.vue'
 
-// â”€â”€ Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Tab ──────────────────────────────────────────────────────────────────────
 const activeTab = ref('facturas')
 
-// â”€â”€ Shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Shared helpers ────────────────────────────────────────────────────────────
 function invoiceStatusLabel(status) {
   return {
     draft: t('billing.draft'),
@@ -439,7 +439,7 @@ function formatMoney(n) {
 }
 
 function formatDate(iso) {
-  if (!iso) return 'â€”'
+  if (!iso) return '—'
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
@@ -505,7 +505,7 @@ function normalizeInvoiceDetail(detail) {
   }
 }
 
-// â”€â”€ Facturas list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Facturas list ─────────────────────────────────────────────────────────────
 const items = ref([])
 const loading = ref(false)
 const error   = ref('')
@@ -552,7 +552,7 @@ function computeSummary() {
 let timer = null
 function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 
-// â”€â”€ Modal: Nueva factura â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal: Nueva factura ──────────────────────────────────────────────────────
 const showModal = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
@@ -611,7 +611,7 @@ async function handleCreate() {
   } finally { saving.value = false }
 }
 
-// â”€â”€ Modal: Ver detalle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal: Ver detalle ────────────────────────────────────────────────────────
 const showViewModal    = ref(false)
 const detailLoading    = ref(false)
 const detailError      = ref('')
@@ -660,7 +660,7 @@ async function cancelInvoice(inv) {
   }
 }
 
-// â”€â”€ Modal: Marcar pago â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal: Marcar pago ────────────────────────────────────────────────────────
 const showPayModal   = ref(false)
 const payTarget      = ref(null)
 const payMethod      = ref('')
@@ -698,7 +698,7 @@ async function confirmMarkPaid() {
   }
 }
 
-// â”€â”€ Tab: Consolidado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Tab: Consolidado ──────────────────────────────────────────────────────────
 const now = new Date()
 const consolFrom = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`)
 const consolTo   = ref(now.toISOString().split('T')[0])
@@ -767,26 +767,26 @@ onMounted(load)
 .page-title { font-size: 1.35rem; font-weight: 700; color: var(--text); }
 .page-sub   { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
 
-/* â”€â”€ Tab navigation â”€â”€ */
+/* ── Tab navigation ── */
 .tab-nav { display: flex; gap: 4px; border-bottom: 2px solid var(--border); padding-bottom: 0; }
 .tab-btn { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-3); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color var(--transition), border-color var(--transition); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
 .tab-btn:hover { color: var(--primary); background: var(--surface); }
 .tab-btn--active { color: var(--primary); border-bottom-color: var(--primary); background: var(--white); }
 
-/* â”€â”€ KPIs â”€â”€ */
+/* ── KPIs ── */
 .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .kpi-card { background: var(--bc); border-radius: var(--radius-lg); padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
 .kpi-icon { font-size: 1.6rem; }
 .kpi-card strong { display: block; font-size: 1.2rem; font-weight: 700; color: var(--tc); }
 .kpi-card span   { font-size: 0.72rem; color: var(--tc); opacity: 0.8; }
 
-/* â”€â”€ Filters â”€â”€ */
+/* ── Filters ── */
 .filters { display: flex; gap: 10px; flex-wrap: wrap; }
 .filter-input, .filter-select { padding: 9px 13px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 0.87rem; background: var(--white); color: var(--text); outline: none; }
 .filter-input:focus, .filter-select:focus { border-color: var(--primary); }
 .filter-input--grow { flex: 1; min-width: 180px; }
 
-/* â”€â”€ Table â”€â”€ */
+/* ── Table ── */
 .card { background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow); overflow: hidden; }
 .table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .table th { text-align: left; padding: 12px 14px; font-size: 0.78rem; font-weight: 600; color: var(--text-3); letter-spacing: 0.05em; text-transform: uppercase; background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -819,7 +819,7 @@ onMounted(load)
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }
 .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* â”€â”€ Buttons â”€â”€ */
+/* ── Buttons ── */
 .btn-primary { padding: 10px 20px; background: linear-gradient(135deg, var(--primary) 0%, var(--accent-mint) 100%); color: white; border: none; border-radius: var(--radius); font-size: 0.9rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: opacity var(--transition), transform var(--transition); }
 .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -829,7 +829,7 @@ onMounted(load)
 .btn-danger:hover:not(:disabled) { background: #f8d7d7; }
 .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* â”€â”€ Modals â”€â”€ */
+/* ── Modals ── */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
 .modal { background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); width: 100%; max-width: 600px; max-height: 92vh; overflow-y: auto; }
 .modal--detail { max-width: 680px; }
@@ -848,7 +848,7 @@ onMounted(load)
 .field-error { font-size: 0.75rem; color: var(--danger); }
 .req { color: var(--danger); }
 
-/* â”€â”€ Items section â”€â”€ */
+/* ── Items section ── */
 .items-section { border: 1.5px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .items-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .section-label { font-size: 0.82rem; font-weight: 700; color: var(--text-2); }
@@ -879,7 +879,7 @@ onMounted(load)
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
-/* â”€â”€ Invoice detail modal â”€â”€ */
+/* ── Invoice detail modal ── */
 .detail-loading { display: flex; align-items: center; gap: 10px; padding: 40px 24px; color: var(--text-3); font-size: 0.9rem; }
 .detail-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; }
 .detail-hero { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
@@ -893,13 +893,13 @@ onMounted(load)
 .detail-notes p { font-size: 0.88rem; color: var(--text-2); margin: 0; }
 .detail-items { display: flex; flex-direction: column; gap: 6px; }
 
-/* â”€â”€ Consolidado â”€â”€ */
+/* ── Consolidado ── */
 .consol-filters { padding: 16px 20px; }
 .consol-filters__inner { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
 .consol-filters__inner .field { flex: 1; min-width: 140px; }
 .section-title { font-size: 0.85rem; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; }
 
-/* â”€â”€ Pay modal â”€â”€ */
+/* ── Pay modal ── */
 .pay-invoice-ref { font-size: 0.9rem; color: var(--text-2); margin: 0 0 4px; }
 
 @media (max-width: 600px) {
