@@ -5,9 +5,14 @@
         <h2 class="hero__title">{{ t('admin.title') }}</h2>
         <p class="hero__subtitle">{{ t('admin.subtitle') }}</p>
       </div>
-      <BaseButton :aria-label="t('admin.newUser')" @click="openModal">
-        + {{ t('admin.newUser') }}
-      </BaseButton>
+      <div class="hero__actions">
+        <BaseButton :aria-label="t('admin.newUser')" @click="openModal">
+          + {{ t('admin.newUser') }}
+        </BaseButton>
+        <button class="btn-logout" type="button" @click="handleLogout" title="Cerrar sesión">
+          ⏻ Cerrar sesión
+        </button>
+      </div>
     </section>
 
     <div v-if="globalError" class="alert alert--error" role="alert">{{ globalError }}</div>
@@ -172,6 +177,49 @@
       </table>
     </section>
 
+    <!-- ── Logs del sistema ─────────────────────────────────────────────── -->
+    <section class="panel panel--stacked">
+      <header class="section-head">
+        <div>
+          <h3>Logs del sistema</h3>
+          <p>Últimas acciones registradas en la organización</p>
+        </div>
+        <BaseButton variant="ghost" @click="loadLogs" :disabled="loadingLogs">
+          {{ loadingLogs ? 'Cargando…' : 'Actualizar' }}
+        </BaseButton>
+      </header>
+
+      <div v-if="logsError" class="alert alert--error" role="alert">{{ logsError }}</div>
+
+      <div v-if="loadingLogs" class="table-loading" role="status">
+        <span class="spinner spinner--dark" /><span>Cargando logs…</span>
+      </div>
+
+      <table v-else class="table table--logs">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Acción</th>
+            <th>Recurso</th>
+            <th>Usuario</th>
+            <th>IP</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="logs.length === 0">
+            <td colspan="5" class="table__empty">Sin registros</td>
+          </tr>
+          <tr v-for="log in logs" :key="log.id" :class="log.action === 'DELETE' ? 'log-row--danger' : ''">
+            <td class="table__date">{{ formatDateTime(log.created_at) }}</td>
+            <td><span class="badge" :class="logBadgeClass(log.action)">{{ log.action }}</span></td>
+            <td class="log-resource">{{ log.resource }}{{ log.resource_id ? ` #${log.resource_id}` : '' }}</td>
+            <td class="table__email">{{ log.user_email || log.user_id || '—' }}</td>
+            <td class="log-ip">{{ log.ip_address || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <BaseModal v-model="showModal" :label="t('admin.newUser')" labelledby="admin-new-user-title">
       <div class="modal__header">
         <h3 id="admin-new-user-title">{{ t('admin.newUser') }}</h3>
@@ -280,6 +328,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { adminRbacApi } from '../api/adminRbac'
 import { adminUsersApi } from '../api/adminUsers'
 import BaseButton from '../components/base/BaseButton.vue'
@@ -288,7 +337,8 @@ import BaseTable from '../components/base/BaseTable.vue'
 import { t } from '../i18n'
 import { useAuthStore } from '../stores/auth'
 
-const auth = useAuthStore()
+const auth   = useAuthStore()
+const router = useRouter()
 
 const users = ref([])
 const meta = ref({ page: 1, totalPages: 1 })
@@ -345,6 +395,10 @@ const form = reactive({
 const deactivateTarget = ref(null)
 const deactivating = ref(false)
 const deactivateError = ref('')
+
+const logs = ref([])
+const loadingLogs = ref(false)
+const logsError = ref('')
 
 function openModal() {
   resetForm()
@@ -561,10 +615,37 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString('es-AR')
 }
 
+function handleLogout() {
+  auth.logout()
+  router.push('/login')
+}
+
+async function loadLogs() {
+  loadingLogs.value = true
+  logsError.value = ''
+  try {
+    const { data } = await adminUsersApi.getLogs({ limit: 50 })
+    logs.value = data?.data?.rows || data?.rows || []
+  } catch (e) {
+    logsError.value = e.response?.data?.error?.message || 'No se pudieron cargar los logs.'
+  } finally {
+    loadingLogs.value = false
+  }
+}
+
+function logBadgeClass(action) {
+  if (!action) return ''
+  if (action === 'DELETE') return 'badge--inactive'
+  if (action === 'CREATE') return 'badge--active'
+  if (action === 'UPDATE') return 'badge--role'
+  return ''
+}
+
 onMounted(async () => {
   await loadPage()
   await loadAuthPolicy()
   await loadOverrides()
+  await loadLogs()
 })
 </script>
 
@@ -849,6 +930,50 @@ onMounted(async () => {
   margin: 0 0 16px;
   color: var(--text);
   line-height: 1.5;
+}
+
+.hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-logout {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1.5px solid var(--danger, #e74c3c);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--danger, #e74c3c);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.btn-logout:hover {
+  background: var(--danger-light, #fdf3f3);
+}
+
+.table--logs {
+  font-size: 0.82rem;
+}
+
+.log-resource {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-ip {
+  color: var(--text-3);
+  font-size: 0.78rem;
+  font-family: monospace;
+}
+
+.log-row--danger td {
+  background: #fff8f8;
 }
 
 @media (max-width: 900px) {

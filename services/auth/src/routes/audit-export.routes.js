@@ -38,10 +38,10 @@ function fromHeaders(req, _res, next) {
 
 function requireAdminRole(req, res, next) {
   const roles = req.user?.roles || [];
-  if (roles.includes('owner') || roles.includes('admin')) return next();
+  if (roles.some(r => ['superadmin', 'org_admin'].includes(r))) return next();
   return res.status(403).json({
     success: false,
-    error: { message: 'Audit export requires owner or admin role', code: 'FORBIDDEN' },
+    error: { message: 'Audit export requires org_admin or superadmin role', code: 'FORBIDDEN' },
   });
 }
 

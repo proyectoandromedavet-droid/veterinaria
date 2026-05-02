@@ -360,6 +360,12 @@ async function login(req, res) {
     }).catch(() => {});
   }
 
+  // ── 2FA gate — if enabled, issue a short-lived pending token ─────────────
+  if (user.two_factor_enabled) {
+    const pendingToken = jwt.signAccess({ scope: '2fa_pending', userId: user.id });
+    return R.ok(res, { requiresTwoFactor: true, pendingToken });
+  }
+
   const payload = await finalizeLogin(res, req, user, roles, {
     id: user.id,
     email: user.email,
