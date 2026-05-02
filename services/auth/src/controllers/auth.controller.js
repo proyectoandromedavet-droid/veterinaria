@@ -61,7 +61,10 @@ function setSessionCookies(res, accessToken, refreshToken) {
   const cookieBase = {
     httpOnly: true,
     secure:   isProd,
-    sameSite: 'strict',
+    // 'none' required for cross-site deployments where frontend and API are on
+    // different railway.app subdomains (up.railway.app is in the public suffix list).
+    // httpOnly + Secure + CORS credentials policy mitigate the reduced SameSite protection.
+    sameSite: isProd ? 'none' : 'lax',
   };
 
   res.cookie('accessToken', accessToken, {

@@ -269,6 +269,7 @@ if (process.env.OPENAPI_VALIDATE !== 'false') {
       apiSpec:           openApiPath,
       validateRequests:  true,
       validateResponses: false,   // response validation has high overhead in proxy
+      validateSecurity:  false,   // auth enforced by authMiddleware, not by the spec
       ignorePaths:       /^\/health|^\/metrics|^\/api\/v\d+\/docs/,
     }));
     // Map validation errors to standard error envelope
