@@ -109,7 +109,7 @@ function requireInternalSig(req, res, next) {
   const orgId = req.headers['x-org-id'] || '';
   const { ok, reason } = verifySignature(
     req.method,
-    req.path,
+    req.baseUrl + req.path,
     orgId,
     req.headers[HEADER] || ''
   );
