@@ -49,6 +49,7 @@ app.use('/audit', requireInternalSig, require('./routes/audit-export.routes'));
 app.use('/admin/rbac', require('./routes/admin-rbac.routes'));
 app.use('/admin', require('./routes/admin-users.routes'));
 app.use('/admin/auth', require('./routes/admin-auth.routes'));
+app.use('/admin/preview', require('./routes/admin-table-preview.routes'));
 app.use('/admin/data-governance', requireInternalSig, require('./routes/data-governance.routes'));
 app.use('/admin/plugins', requireInternalSig, require('./routes/plugins.routes'));
 app.use('/me', requireInternalSig, require('./routes/ui-schema.routes'));

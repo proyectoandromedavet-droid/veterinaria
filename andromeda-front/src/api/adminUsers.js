@@ -7,6 +7,8 @@ export const adminUsersApi = {
   updateRole: (id, role) => http.patch(`/auth/admin/users/${id}/role`, { role }),
   getAuthPolicy: () => http.get('/auth/admin/auth/policy'),
   updateAuthPolicy: (data) => http.patch('/auth/admin/auth/policy', data),
-  getLogs:    (params) => http.get('/auth/audit/export', { params }),
-  getAlerts:  ()       => http.get('/auth/audit/alerts'),
+  getLogs:         (params) => http.get('/auth/audit/export', { params }),
+  getAlerts:       ()       => http.get('/auth/audit/alerts'),
+  getTableList:    ()       => http.get('/auth/admin/preview'),
+  getTablePreview: (table)  => http.get(`/auth/admin/preview/${table}`),
 }

@@ -220,6 +220,75 @@
       </table>
     </section>
 
+    <!-- ── Explorador de base de datos ───────────────────────────────────── -->
+    <section class="panel panel--stacked">
+      <header class="section-head">
+        <div>
+          <h3>Explorador de datos</h3>
+          <p>Tablas de negocio — estructura y últimos 10 registros</p>
+        </div>
+      </header>
+
+      <div class="db-table-pills">
+        <button
+          v-for="tbl in dbTableList"
+          :key="tbl.key"
+          class="pill"
+          :class="{ 'pill--active': dbSelectedTable === tbl.key }"
+          type="button"
+          @click="loadTablePreview(tbl.key)"
+        >
+          {{ tbl.label }}
+        </button>
+      </div>
+
+      <div v-if="dbLoading" class="table-loading" role="status">
+        <span class="spinner spinner--dark" /><span>Cargando…</span>
+      </div>
+
+      <template v-if="dbPreview && !dbLoading">
+        <div class="db-table-meta">
+          <strong>{{ dbPreview.label }}</strong>
+          <span class="db-table-desc">{{ dbPreview.description }}</span>
+        </div>
+
+        <details class="db-glossary" open>
+          <summary>Glosario de columnas ({{ dbPreview.columns.length }})</summary>
+          <div class="db-glossary-grid">
+            <div v-for="col in dbPreview.columns" :key="col.name" class="db-col-card">
+              <div class="db-col-name">{{ col.name }}<span class="db-col-type">{{ col.type }}</span></div>
+              <div class="db-col-desc">{{ col.description }}</div>
+            </div>
+          </div>
+        </details>
+
+        <div class="db-records-wrap">
+          <p class="db-records-label">Últimos {{ dbPreview.rows.length }} registros</p>
+          <div class="table-scroll">
+            <table class="table table--sm">
+              <thead>
+                <tr>
+                  <th v-for="col in dbPreview.columns" :key="col.name">{{ col.name }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="dbPreview.rows.length === 0">
+                  <td :colspan="dbPreview.columns.length" class="table__empty">Sin registros</td>
+                </tr>
+                <tr v-for="(row, i) in dbPreview.rows" :key="i">
+                  <td v-for="col in dbPreview.columns" :key="col.name" class="db-cell">
+                    {{ formatCellValue(row[col.name]) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="dbError" class="alert alert--error" role="alert">{{ dbError }}</div>
+    </section>
+
     <BaseModal v-model="showModal" :label="t('admin.newUser')" labelledby="admin-new-user-title">
       <div class="modal__header">
         <h3 id="admin-new-user-title">{{ t('admin.newUser') }}</h3>
@@ -399,6 +468,12 @@ const deactivateError = ref('')
 const logs = ref([])
 const loadingLogs = ref(false)
 const logsError = ref('')
+
+const dbTableList     = ref([])
+const dbSelectedTable = ref('')
+const dbPreview       = ref(null)
+const dbLoading       = ref(false)
+const dbError         = ref('')
 
 function openModal() {
   resetForm()
@@ -633,6 +708,36 @@ async function loadLogs() {
   }
 }
 
+async function loadDbTableList() {
+  try {
+    const { data } = await adminUsersApi.getTableList()
+    dbTableList.value = data?.data?.tables || []
+  } catch { /* silencioso */ }
+}
+
+async function loadTablePreview(tableName) {
+  if (dbSelectedTable.value === tableName && dbPreview.value) return
+  dbSelectedTable.value = tableName
+  dbPreview.value = null
+  dbError.value = ''
+  dbLoading.value = true
+  try {
+    const { data } = await adminUsersApi.getTablePreview(tableName)
+    dbPreview.value = data?.data || null
+  } catch (e) {
+    dbError.value = e.response?.data?.error?.message || 'No se pudo cargar la tabla.'
+  } finally {
+    dbLoading.value = false
+  }
+}
+
+function formatCellValue(val) {
+  if (val === null || val === undefined) return '—'
+  if (typeof val === 'object') return JSON.stringify(val)
+  const s = String(val)
+  return s.length > 60 ? s.slice(0, 57) + '…' : s
+}
+
 function logBadgeClass(action) {
   if (!action) return ''
   if (action === 'DELETE') return 'badge--inactive'
@@ -646,6 +751,7 @@ onMounted(async () => {
   await loadAuthPolicy()
   await loadOverrides()
   await loadLogs()
+  await loadDbTableList()
 })
 </script>
 
@@ -974,6 +1080,132 @@ onMounted(async () => {
 
 .log-row--danger td {
   background: #fff8f8;
+}
+
+.db-table-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill {
+  padding: 6px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--text-2);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.pill:hover {
+  background: var(--surface);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.pill--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--white);
+}
+
+.db-table-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0 4px;
+}
+
+.db-table-desc {
+  color: var(--text-3);
+  font-size: 0.86rem;
+}
+
+.db-glossary {
+  border: 1px solid var(--border-light, #eef2f4);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.db-glossary summary {
+  padding: 10px 16px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--text-2);
+}
+
+.db-glossary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1px;
+  background: var(--border-light, #eef2f4);
+}
+
+.db-col-card {
+  background: var(--white);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.db-col-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.db-col-type {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--text-3);
+  background: var(--surface-2, #f4f6f8);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.db-col-desc {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+.db-records-label {
+  font-size: 0.82rem;
+  color: var(--text-3);
+  margin: 12px 0 6px;
+}
+
+.db-records-wrap {
+  overflow: hidden;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table--sm th,
+.table--sm td {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.db-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
 }
 
 @media (max-width: 900px) {
