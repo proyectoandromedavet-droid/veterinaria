@@ -94,7 +94,12 @@ function makeProxy(target, pathRewrite = {}, name) {
         proxyReq.setHeader('X-Trace-Id',     req.traceId || '');
         proxyReq.setHeader('X-Forwarded-For', req.ip);
         // Internal service auth — HMAC signature for gateway→service trust
-        const sig = signRequest(req.method, req.path, req.user?.orgId || req.tenantOrgId || '');
+        // Use proxyReq.path (the rewritten path sent to the service) so the HMAC
+        // matches what the service verifies against (req.baseUrl + req.path).
+        // req.path alone is relative to the Express mount point (e.g. '/') and
+        // diverges from the actual upstream path when STRIP_API_VERSION is used.
+        const _sigPath = (proxyReq.path || req.path).split('?')[0];
+        const sig = signRequest(req.method, _sigPath, req.user?.orgId || req.tenantOrgId || '');
         if (sig) proxyReq.setHeader(INTERNAL_SIG_HEADER, sig);
         // Re-buffer parsed body LAST — write() commits headers so all setHeader calls must precede it
         if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
