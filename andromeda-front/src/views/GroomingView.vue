@@ -3,48 +3,48 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">✂️</span>
+        <span class="page-emoji" aria-hidden="true">✂️</span>
         <div>
-          <h2 class="page-title">Grooming</h2>
-          <p class="page-sub">Servicios de estética y cuidado</p>
+          <h2 class="page-title">{{ t('grooming.title') }}</h2>
+          <p class="page-sub">{{ t('grooming.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openModal()">✂️ Nueva sesión</button>
+      <button type="button" class="btn-primary" @click="openModal()">{{ t('grooming.newSession') }}</button>
     </div>
 
     <!-- KPIs -->
     <div class="kpi-row">
       <div class="kpi" style="--c:#FFE4D6;--ct:#c0392b">
-        <span>✂️</span><div><strong>{{ kpis.today }}</strong><span>Hoy</span></div>
+        <span aria-hidden="true">✂️</span><div><strong>{{ kpis.today }}</strong><span>{{ t('common.today') }}</span></div>
       </div>
       <div class="kpi" style="--c:#FFF3CC;--ct:#8A6200">
-        <span>⏳</span><div><strong>{{ kpis.pending }}</strong><span>Pendientes</span></div>
+        <span aria-hidden="true">⏳</span><div><strong>{{ kpis.pending }}</strong><span>{{ t('common.pending') }}</span></div>
       </div>
       <div class="kpi" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span>✅</span><div><strong>{{ kpis.completed }}</strong><span>Completados</span></div>
+        <span aria-hidden="true">✅</span><div><strong>{{ kpis.completed }}</strong><span>{{ t('grooming.completed') }}</span></div>
       </div>
       <div class="kpi" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span>💰</span><div><strong>{{ kpis.revenue }}</strong><span>Facturado hoy</span></div>
+        <span aria-hidden="true">💰</span><div><strong>{{ kpis.revenue }}</strong><span>{{ t('grooming.revenueToday') }}</span></div>
       </div>
     </div>
 
     <div class="filters">
-      <input v-model="dateFilter" type="date" class="filter-input" @change="load()" />
+      <input v-model="dateFilter" type="date" class="filter-input" :aria-label="t('grooming.dateFilter')" @change="load()" />
       <select v-model="statusFilter" class="filter-select" @change="load()">
-        <option value="">Todos los estados</option>
-        <option value="scheduled">Programado</option>
-        <option value="in_progress">En proceso</option>
-        <option value="completed">Completado</option>
-        <option value="cancelled">Cancelado</option>
+        <option value="">{{ t('grooming.allStatuses') }}</option>
+        <option value="scheduled">{{ t('grooming.statusScheduled') }}</option>
+        <option value="in_progress">{{ t('grooming.statusInProgress') }}</option>
+        <option value="completed">{{ t('grooming.statusCompleted') }}</option>
+        <option value="cancelled">{{ t('grooming.statusCancelled') }}</option>
       </select>
-      <input v-model.trim="search" type="search" placeholder="🔍 Buscar mascota…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <input v-model.trim="search" type="search" :placeholder="t('grooming.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
-    <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando sesiones…</div>
+    <div v-if="loading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('grooming.loading') }}</div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">🐩</span>
-      <p>No hay sesiones de grooming para esta fecha</p>
+      <span class="empty-state__emoji" aria-hidden="true">🐩</span>
+      <p>{{ t('grooming.emptyState') }}</p>
     </div>
 
     <div v-else class="groom-grid">
@@ -57,7 +57,7 @@
         </div>
         <div class="groom-card__body">
           <div class="groom-card__pet">
-            <span class="groom-emoji">{{ petEmoji(g.patient?.species) }}</span>
+            <span class="groom-emoji" aria-hidden="true">{{ petEmoji(g.patient?.species) }}</span>
             <div>
               <strong>{{ g.patient?.name || g.patient_name || '—' }}</strong>
               <span class="sub">{{ g.patient?.owner?.full_name || g.owner_name || '' }}</span>
@@ -67,19 +67,19 @@
             <span v-for="svc in parseServices(g.services)" :key="svc" class="svc-chip">{{ svc }}</span>
           </div>
           <div class="groom-card__row" v-if="g.groomer_name">
-            <span>✂️</span> <span>{{ g.groomer_name }}</span>
+            <span aria-hidden="true">✂️</span> <span>{{ g.groomer_name }}</span>
           </div>
           <div class="groom-card__row" v-if="g.price">
-            <span>💰</span> <span>${{ g.price }}</span>
+            <span aria-hidden="true">💰</span> <span>${{ g.price }}</span>
           </div>
           <div class="groom-card__row" v-if="g.notes">
-            <span>📝</span> <span class="notes-text">{{ g.notes }}</span>
+            <span aria-hidden="true">📝</span> <span class="notes-text">{{ g.notes }}</span>
           </div>
         </div>
         <div class="groom-card__actions">
-          <button v-if="g.status === 'scheduled'" type="button" class="btn-xs btn-xs--yellow" @click="changeStatus(g, 'in_progress')">Iniciar</button>
-          <button v-if="g.status === 'in_progress'" type="button" class="btn-xs btn-xs--green" @click="changeStatus(g, 'completed')">Finalizar</button>
-          <button v-if="g.status !== 'completed' && g.status !== 'cancelled'" type="button" class="btn-xs btn-xs--red" @click="changeStatus(g, 'cancelled')">Cancelar</button>
+          <button v-if="g.status === 'scheduled'" type="button" class="btn-xs btn-xs--yellow" @click="changeStatus(g, 'in_progress')">{{ t('grooming.start') }}</button>
+          <button v-if="g.status === 'in_progress'" type="button" class="btn-xs btn-xs--green" @click="changeStatus(g, 'completed')">{{ t('grooming.finish') }}</button>
+          <button v-if="g.status !== 'completed' && g.status !== 'cancelled'" type="button" class="btn-xs btn-xs--red" @click="changeStatus(g, 'cancelled')">{{ t('common.cancel') }}</button>
         </div>
       </div>
     </div>
@@ -89,30 +89,30 @@
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>✂️ Nueva sesión de grooming</h3>
-            <button type="button" class="modal__close" @click="closeModal()">✕</button>
+            <h3>{{ t('grooming.modalTitle') }}</h3>
+            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">×</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field">
-                  <label>Fecha y hora <span class="req">*</span></label>
+                  <label>{{ t('grooming.scheduledAt') }} <span class="req">*</span></label>
                   <input v-model="form.scheduledAt" type="datetime-local" :disabled="saving" required />
                   <span v-if="fe.scheduledAt" class="field-error">{{ fe.scheduledAt }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Groomer <span class="req">*</span></label>
+                  <label>{{ t('grooming.groomer') }} <span class="req">*</span></label>
                   <select v-model="form.groomerId" :disabled="saving" required>
-                    <option value="">Seleccioná un groomer…</option>
+                    <option value="">{{ t('grooming.selectGroomer') }}</option>
                     <option v-for="g in groomerList" :key="g.id" :value="g.id">{{ g.name }}</option>
                   </select>
                   <span v-if="fe.groomerId" class="field-error">{{ fe.groomerId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Paciente <span class="req">*</span></label>
-                  <input v-model.trim="patientSearch" type="search" placeholder="Buscar paciente por nombre…" :disabled="saving" @input="searchPatients" autocomplete="off" />
-                  <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
-                    <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`Seleccionar ${pt.name}`" @click="selectPatient(pt)">
+                  <label>{{ t('grooming.patient') }} <span class="req">*</span></label>
+                  <input v-model.trim="patientSearch" type="search" :placeholder="t('grooming.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
+                    <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                       🐾 <b>{{ pt.name }}</b>
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
@@ -121,7 +121,7 @@
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Servicios</label>
+                  <label>{{ t('grooming.services') }}</label>
                   <div class="services-check">
                     <label v-for="svc in SERVICES_LIST" :key="svc" class="check-item">
                       <input type="checkbox" v-model="form.services" :value="svc" :disabled="saving" />
@@ -130,20 +130,20 @@
                   </div>
                 </div>
                 <div class="field">
-                  <label>Precio estimado ($)</label>
-                  <input v-model.number="form.price" type="number" min="0" step="0.01" placeholder="2500" :disabled="saving" />
+                  <label>{{ t('grooming.estimatedPrice') }}</label>
+                  <input v-model.number="form.price" type="number" min="0" step="0.01" :placeholder="t('grooming.pricePlaceholder')" :disabled="saving" />
                 </div>
                 <div class="field field--full">
-                  <label>Observaciones</label>
-                  <textarea v-model.trim="form.notes" rows="2" placeholder="Preferencias del dueño, cuidados especiales…" :disabled="saving" />
+                  <label>{{ t('grooming.notes') }}</label>
+                  <textarea v-model.trim="form.notes" rows="2" :placeholder="t('grooming.notesPlaceholder')" :disabled="saving" />
                 </div>
               </div>
             </div>
             <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" /> <span v-else>Agendar sesión</span>
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>{{ t('grooming.scheduleSession') }}</span>
               </button>
             </div>
           </form>
@@ -156,6 +156,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -217,7 +218,15 @@ const dateFilter   = ref(new Date().toISOString().split('T')[0])
 const statusFilter = ref('')
 const kpis = ref({ today: 0, pending: 0, completed: 0, revenue: '$0' })
 
-const STATUS = { scheduled:'Programado', confirmed:'Confirmado', in_progress:'En proceso', ready:'Listo', completed:'Completado', cancelled:'Cancelado', no_show:'No se presentó' }
+const STATUS = {
+  scheduled: t('grooming.statusScheduled'),
+  confirmed: t('grooming.statusConfirmed'),
+  in_progress: t('grooming.statusInProgress'),
+  ready: t('grooming.statusReady'),
+  completed: t('grooming.statusCompleted'),
+  cancelled: t('grooming.statusCancelled'),
+  no_show: t('grooming.statusNoShow'),
+}
 
 // Tipos de servicio desde DB
 const serviceTypesList = ref([])
@@ -267,7 +276,7 @@ async function load() {
     const total = all.filter(g => g.status === 'completed').reduce((s, g) => s + (parseFloat(g.price) || 0), 0)
     kpis.value.revenue = '$' + total.toLocaleString('es-AR')
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las sesiones'
+    error.value = e.response?.data?.message || t('grooming.loadError')
   } finally { loading.value = false }
 }
 
@@ -281,7 +290,7 @@ async function changeStatus(g, status) {
     kpis.value.pending   = items.value.filter(x => x.status === 'scheduled').length
     kpis.value.completed = items.value.filter(x => x.status === 'completed').length
   } catch (e) {
-    alert(e.response?.data?.message || 'No se pudo actualizar')
+    alert(e.response?.data?.message || t('grooming.updateError'))
   }
 }
 
@@ -340,11 +349,11 @@ function resetForm() {
 
 function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!form.scheduledAt)              fe.scheduledAt = 'Requerido'
-  if (!form.patientId)                fe.patientId   = 'Requerido'
-  if (!form.groomerId)                fe.groomerId   = 'Requerido'
-  if (!form.clientId)                 fe.patientId   = (fe.patientId || '') + ' (seleccioná paciente con dueño)'
-  if (!form.selectedServiceIds.length) fe.services   = 'Seleccioná al menos un servicio'
+  if (!form.scheduledAt)              fe.scheduledAt = t('common.required')
+  if (!form.patientId)                fe.patientId   = t('common.required')
+  if (!form.groomerId)                fe.groomerId   = t('common.required')
+  if (!form.clientId)                 fe.patientId   = `${fe.patientId || ''} ${t('grooming.petMustHaveOwner')}`.trim()
+  if (!form.selectedServiceIds.length) fe.services   = t('grooming.selectAtLeastOneService')
   return Object.keys(fe).length === 0
 }
 
@@ -365,7 +374,7 @@ async function handleCreate() {
     await http.post('/grooming/appointments', payload)
     closeModal(); await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || 'No se pudo agendar la sesión'
+    saveError.value = e.response?.data?.message || t('grooming.createError')
   } finally { saving.value = false }
 }
 
@@ -398,7 +407,7 @@ function openRecordModal(appt) {
 }
 
 async function handleRecord() {
-  if (!recordForm.servicesPerformed.length) { recordError.value = 'Indicá los servicios realizados'; return }
+  if (!recordForm.servicesPerformed.length) { recordError.value = t('grooming.indicateServicesPerformed'); return }
   recordSaving.value = true; recordError.value = ''
   try {
     const payload = {
@@ -416,7 +425,7 @@ async function handleRecord() {
     showRecordModal.value = false
     await load()
   } catch (e) {
-    recordError.value = e.response?.data?.error?.message || 'No se pudo guardar el registro'
+    recordError.value = e.response?.data?.error?.message || t('grooming.saveRecordError')
   } finally { recordSaving.value = false }
 }
 

@@ -1,15 +1,15 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
       <div class="page-header__left">
         <span class="page-emoji">💻</span>
         <div>
-          <h2 class="page-title">Telemedicina</h2>
-          <p class="page-sub">Consultas veterinarias a distancia</p>
+          <h2 class="page-title">{{ t('telemedicine.title') }}</h2>
+          <p class="page-sub">{{ t('telemedicine.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openModal()">🐾 Nueva teleconsulta</button>
+      <button type="button" class="btn-primary" @click="openModal()">{{ t('telemedicine.newSession') }}</button>
     </div>
 
     <!-- KPI Stats bar -->
@@ -18,14 +18,14 @@
         <span>💻</span>
         <div>
           <strong>{{ statsData.total }}</strong>
-          <span>Total sesiones</span>
+          <span>{{ t('telemedicine.totalSessions') }}</span>
         </div>
       </div>
       <div class="kpi" style="--c:#D6F3EC;--ct:#1A9E7F">
         <span>✅</span>
         <div>
           <strong>{{ statsData.completed }}</strong>
-          <span>Completadas</span>
+          <span>{{ t('telemedicine.completed') }}</span>
         </div>
       </div>
       <div class="kpi" style="--c:#FFF3CC;--ct:#8A6200">
@@ -39,7 +39,7 @@
         <span>📅</span>
         <div>
           <strong>{{ statsData.today }}</strong>
-          <span>Sesiones hoy</span>
+          <span>{{ t('telemedicine.sessionsToday') }}</span>
         </div>
       </div>
     </div>
@@ -48,7 +48,7 @@
     <div class="info-banner">
       <span>🎥</span>
       <div>
-        <strong>Consultas virtuales disponibles</strong>
+        <strong>{{ t('telemedicine.infoTitle') }}</strong>
         <span>Los dueños reciben un enlace por email para unirse a la videollamada en el horario pactado.</span>
       </div>
     </div>
@@ -57,22 +57,22 @@
     <div class="filters">
       <input v-model="dateFilter" type="date" class="filter-input" @change="load()" />
       <select v-model="statusFilter" class="filter-select" @change="load()">
-        <option value="">Todos los estados</option>
-        <option value="scheduled">Programada</option>
-        <option value="in_progress">En curso</option>
-        <option value="completed">Completada</option>
-        <option value="cancelled">Cancelada</option>
-        <option value="no_show">Ausente</option>
+        <option value="">{{ t('telemedicine.allStatuses') }}</option>
+        <option value="scheduled">{{ t('telemedicine.statusScheduled') }}</option>
+        <option value="in_progress">{{ t('telemedicine.statusInProgress') }}</option>
+        <option value="completed">{{ t('telemedicine.statusCompleted') }}</option>
+        <option value="cancelled">{{ t('telemedicine.statusCancelled') }}</option>
+        <option value="no_show">{{ t('telemedicine.statusNoShow') }}</option>
       </select>
       <input v-model.trim="search" type="search" placeholder="🔍 Buscar paciente…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
-    <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando consultas…</div>
+    <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> {{ t('telemedicine.loading') }}</div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
       <span class="empty-state__emoji">🐱</span>
-      <p>No hay teleconsultas para esta fecha</p>
-      <button type="button" class="btn-ghost" @click="openModal()">Programar consulta</button>
+      <p>{{ t('telemedicine.emptyState') }}</p>
+      <button type="button" class="btn-ghost" @click="openModal()">{{ t('telemedicine.programConsultation') }}</button>
     </div>
 
     <div v-else class="tele-list">
@@ -89,7 +89,7 @@
               <span class="sub">{{ t.patient?.owner?.full_name || t.owner_name || '' }}</span>
             </div>
           </div>
-          <p class="tele-reason">{{ t.reason || t.chief_complaint || 'Consulta general' }}</p>
+          <p class="tele-reason">{{ t.reason || t.chief_complaint || t('telemedicine.generalConsultation') }}</p>
           <p class="tele-vet" v-if="t.vet_name">👨‍⚕️ {{ t.vet_name }}</p>
         </div>
         <div class="tele-card__right">
@@ -106,13 +106,13 @@
             type="button"
             class="btn-xs btn-xs--green"
             @click="changeStatus(t, 'completed')"
-          >Finalizar</button>
+          >{{ t('telemedicine.finish') }}</button>
           <button
             v-if="t.status !== 'completed' && t.status !== 'cancelled'"
             type="button"
             class="btn-xs btn-xs--red"
             @click="changeStatus(t, 'cancelled')"
-          >Cancelar</button>
+          >{{ t('telemedicine.cancelSession') }}</button>
         </div>
       </div>
     </div>
@@ -122,31 +122,31 @@
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>💻 Nueva teleconsulta</h3>
-            <button type="button" class="modal__close" @click="closeModal()">✕</button>
+            <h3>{{ t('telemedicine.modalTitle') }}</h3>
+            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">×</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field">
-                  <label>Fecha y hora <span class="req">*</span></label>
+                  <label>{{ t('telemedicine.scheduledAt') }} <span class="req">*</span></label>
                   <input v-model="form.scheduledDate" type="datetime-local" :disabled="saving" required />
                   <span v-if="fe.scheduledDate" class="field-error">{{ fe.scheduledDate }}</span>
                 </div>
                 <div class="field">
-                  <label>Duración estimada</label>
+                  <label>{{ t('telemedicine.duration') }}</label>
                   <select v-model="form.duration" :disabled="saving">
-                    <option value="15">15 minutos</option>
-                    <option value="30">30 minutos</option>
-                    <option value="45">45 minutos</option>
-                    <option value="60">1 hora</option>
+                    <option value="15">{{ t('telemedicine.duration15') }}</option>
+                    <option value="30">{{ t('telemedicine.duration30') }}</option>
+                    <option value="45">{{ t('telemedicine.duration45') }}</option>
+                    <option value="60">{{ t('telemedicine.duration60') }}</option>
                   </select>
                 </div>
                 <div class="field field--full">
-                  <label>Paciente <span class="req">*</span></label>
-                  <input v-model.trim="patientSearch" type="search" placeholder="Buscar paciente por nombre…" :disabled="saving" @input="searchPatients" autocomplete="off" />
-                  <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
-                    <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`Seleccionar ${pt.name}`" @click="selectPatient(pt)">
+                  <label>{{ t('telemedicine.patient') }} <span class="req">*</span></label>
+                  <input v-model.trim="patientSearch" type="search" :placeholder="t('telemedicine.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
+                    <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                       🐾 <b>{{ pt.name }}</b>
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
@@ -155,32 +155,32 @@
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Veterinario <span class="req">*</span></label>
+                  <label>{{ t('telemedicine.vet') }} <span class="req">*</span></label>
                   <select v-model="form.vetId" :disabled="saving" required>
-                    <option value="">Seleccioná un veterinario…</option>
+                    <option value="">{{ t('telemedicine.selectVet') }}</option>
                     <option v-for="v in vetList" :key="v.id" :value="v.id">{{ v.first_name }} {{ v.last_name }}</option>
                   </select>
                   <span v-if="fe.vetId" class="field-error">{{ fe.vetId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Motivo de la consulta <span class="req">*</span></label>
-                  <textarea v-model.trim="form.reason" rows="2" placeholder="Describa brevemente el problema…" :disabled="saving" required />
+                  <label>{{ t('telemedicine.reason') }} <span class="req">*</span></label>
+                  <textarea v-model.trim="form.reason" rows="2" :placeholder="t('telemedicine.reasonPlaceholder')" :disabled="saving" required />
                   <span v-if="fe.reason" class="field-error">{{ fe.reason }}</span>
                 </div>
                 <div class="field">
-                  <label>Tipo de sesión <span class="req">*</span></label>
+                  <label>{{ t('telemedicine.sessionType') }} <span class="req">*</span></label>
                   <select v-model="form.sessionType" :disabled="saving" required>
-                    <option value="consultation">Consulta</option>
-                    <option value="follow_up">Seguimiento</option>
-                    <option value="second_opinion">Segunda opinión</option>
-                    <option value="emergency">Urgencia</option>
-                    <option value="prescription_renewal">Renovación receta</option>
+                    <option value="consultation">{{ t('telemedicine.typeConsultation') }}</option>
+                    <option value="follow_up">{{ t('telemedicine.typeFollowUp') }}</option>
+                    <option value="second_opinion">{{ t('telemedicine.typeSecondOpinion') }}</option>
+                    <option value="emergency">{{ t('telemedicine.typeEmergency') }}</option>
+                    <option value="prescription_renewal">{{ t('telemedicine.typePrescriptionRenewal') }}</option>
                   </select>
                 </div>
                 <div class="field">
-                  <label>Plataforma</label>
+                  <label>{{ t('telemedicine.platform') }}</label>
                   <select v-model="form.platformId" :disabled="saving">
-                    <option value="">Sin plataforma</option>
+                    <option value="">{{ t('telemedicine.noPlatform') }}</option>
                     <option v-for="p in platformList" :key="p.id" :value="p.id">{{ p.name }}</option>
                   </select>
                 </div>
@@ -188,9 +188,9 @@
             </div>
             <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('telemedicine.cancelSession') }}</button>
               <button type="submit" class="btn-primary" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" /> <span v-else>Programar teleconsulta</span>
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>{{ t('telemedicine.programSession') }}</span>
               </button>
             </div>
           </form>
@@ -205,6 +205,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/client'
 import { adminUsersApi } from '../api/adminUsers'
+import { t } from '../i18n'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -275,7 +276,7 @@ const search  = ref('')
 const dateFilter   = ref(new Date().toISOString().split('T')[0])
 const statusFilter = ref('')
 
-const STATUS = { scheduled:'Programada', in_progress:'En curso', completed:'Completada', cancelled:'Cancelada', no_show:'Ausente' }
+const STATUS = { scheduled: t('telemedicine.statusScheduled'), in_progress: t('telemedicine.statusInProgress'), completed: t('telemedicine.statusCompleted'), cancelled: t('telemedicine.statusCancelled'), no_show: t('telemedicine.statusNoShow') }
 
 function petEmoji(s) {
   const m = { dog:'🐶', cat:'🐱', rabbit:'🐰', bird:'🐦', fish:'🐟', reptile:'🦎' }
@@ -302,7 +303,7 @@ async function load() {
           .some((value) => String(value).toLowerCase().includes(needle)))
       : rows
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las teleconsultas'
+    error.value = e.response?.data?.message || t('telemedicine.loadError')
   } finally { loading.value = false }
 }
 
@@ -322,7 +323,7 @@ async function changeStatus(t, status) {
     await http.patch(`/tele/sessions/${t.id}/status`, { status })
     t.status = status
   } catch (e) {
-    alert(e.response?.data?.message || 'No se pudo actualizar')
+    alert(e.response?.data?.message || t('telemedicine.updateError'))
   }
 }
 
@@ -443,10 +444,10 @@ function resetForm() {
 
 function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!form.scheduledDate) fe.scheduledDate = 'Requerido'
-  if (!form.patientId)     fe.patientId     = 'Requerido'
-  if (!form.vetId)         fe.vetId         = 'Requerido'
-  if (!form.reason)        fe.reason        = 'Requerido'
+  if (!form.scheduledDate) fe.scheduledDate = t('common.required')
+  if (!form.patientId)     fe.patientId     = t('common.required')
+  if (!form.vetId)         fe.vetId         = t('common.required')
+  if (!form.reason)        fe.reason        = t('common.required')
   return Object.keys(fe).length === 0
 }
 
@@ -467,7 +468,7 @@ async function handleCreate() {
     await http.post('/tele/sessions', payload)
     closeModal(); await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || 'No se pudo programar la teleconsulta'
+    saveError.value = e.response?.data?.message || t('telemedicine.createError')
   } finally { saving.value = false }
 }
 
@@ -580,5 +581,6 @@ onMounted(() => { load(); loadStats(); loadVets(); loadPlatforms() })
 .selected-patient { margin-top: 6px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
 .field { position: relative; }
 </style>
+
 
 

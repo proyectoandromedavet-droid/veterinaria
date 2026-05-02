@@ -3,24 +3,24 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">💉</span>
+        <span class="page-emoji" aria-hidden="true">💉</span>
         <div>
-          <h2 class="page-title">Vacunas y Desparasitación</h2>
-          <p class="page-sub">Control y registro del plan sanitario</p>
+          <h2 class="page-title">{{ t('vaccines.title') }}</h2>
+          <p class="page-sub">{{ t('vaccines.subtitle') }}</p>
         </div>
       </div>
       <button type="button" class="btn-primary" @click="openModal()">
-        {{ mainTab === 'vacunas' ? '💉 Registrar vacuna' : '🐛 Registrar desparasitación' }}
+        {{ mainTab === 'vacunas' ? t('vaccines.registerVaccination') : t('vaccines.registerDeworming') }}
       </button>
     </div>
 
     <!-- Tabs principales -->
     <div class="main-tabs">
       <button class="main-tab-btn" :class="{ 'main-tab-btn--active': mainTab === 'vacunas' }" @click="mainTab = 'vacunas'" type="button">
-        💉 Vacunas
+        {{ t('vaccines.tabVaccines') }}
       </button>
       <button class="main-tab-btn" :class="{ 'main-tab-btn--active': mainTab === 'deworming' }" @click="mainTab = 'deworming'" type="button">
-        🐛 Desparasitación
+        {{ t('vaccines.tabDeworming') }}
       </button>
     </div>
 
@@ -31,51 +31,51 @@
       <!-- Stats rápidos -->
       <div class="stats-row">
         <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-          <span class="stat-card__icon">✅</span>
+          <span class="stat-card__icon" aria-hidden="true">✅</span>
           <div>
             <strong>{{ stats.upToDate }}</strong>
-            <span>Al día</span>
+            <span>{{ t('vaccines.upToDate') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-          <span class="stat-card__icon">⚠️</span>
+          <span class="stat-card__icon" aria-hidden="true">⚠️</span>
           <div>
             <strong>{{ stats.dueSoon }}</strong>
-            <span>Vencen pronto</span>
+            <span>{{ t('vaccines.dueSoon') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#FDEAEA;--ct:#c0392b">
-          <span class="stat-card__icon">🔴</span>
+          <span class="stat-card__icon" aria-hidden="true">🔴</span>
           <div>
             <strong>{{ stats.overdue }}</strong>
-            <span>Vencidas</span>
+            <span>{{ t('vaccines.overdue') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-          <span class="stat-card__icon">📋</span>
+          <span class="stat-card__icon" aria-hidden="true">📋</span>
           <div>
             <strong>{{ stats.total }}</strong>
-            <span>Total registros</span>
+            <span>{{ t('vaccines.totalRecords') }}</span>
           </div>
         </div>
       </div>
 
       <!-- Filtros -->
       <div class="filters">
-        <input v-model.trim="search" type="search" placeholder="🔍 Buscar paciente o vacuna…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+        <input v-model.trim="search" type="search" :placeholder="t('vaccines.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
         <select v-model="statusFilter" class="filter-select" @change="load()">
-          <option value="">Todos los estados</option>
-          <option value="up_to_date">Al día</option>
-          <option value="due_soon">Vence pronto</option>
-          <option value="overdue">Vencida</option>
+          <option value="">{{ t('vaccines.allStatuses') }}</option>
+          <option value="up_to_date">{{ t('vaccines.statusUpToDate') }}</option>
+          <option value="due_soon">{{ t('vaccines.statusDueSoon') }}</option>
+          <option value="overdue">{{ t('vaccines.statusOverdue') }}</option>
         </select>
       </div>
 
-      <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> Cargando vacunas…</div>
+      <div v-if="loading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingVaccines') }}</div>
       <div v-else-if="error" class="alert alert--error">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
-        <span class="empty-state__emoji">🐾</span>
-        <p>No hay registros de vacunas</p>
+        <span class="empty-state__emoji" aria-hidden="true">🐾</span>
+        <p>{{ t('vaccines.emptyVaccines') }}</p>
       </div>
 
       <!-- Tabla vacunas -->
@@ -83,12 +83,12 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Paciente</th>
-              <th>Vacuna</th>
-              <th>Fecha de aplicación</th>
-              <th>Próxima dosis</th>
-              <th>Lote</th>
-              <th>Estado</th>
+              <th>{{ t('vaccines.patient') }}</th>
+              <th>{{ t('vaccines.vaccine') }}</th>
+              <th>{{ t('vaccines.applicationDate') }}</th>
+              <th>{{ t('vaccines.nextDose') }}</th>
+              <th>{{ t('vaccines.lot') }}</th>
+              <th>{{ t('vaccines.status') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -104,7 +104,7 @@
               </td>
               <td>
                 <div>
-                  <strong>{{ v.vaccine_name || '—' }}</strong>
+                    <strong>{{ v.vaccine_name || '—' }}</strong>
                   <span class="sub">{{ v.manufacturer || '' }}</span>
                 </div>
               </td>
@@ -119,9 +119,9 @@
 
       <!-- Paginación vacunas -->
       <div v-if="pagination.totalPages > 1" class="pagination">
-        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">{{ t('common.previous') }}</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-        <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+        <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('common.next') }}</button>
       </div>
     </template>
 
@@ -131,14 +131,14 @@
     <template v-if="mainTab === 'deworming'">
       <!-- Filtros deworming -->
       <div class="filters">
-        <input v-model.trim="dewSearch" type="search" placeholder="🔍 Buscar paciente o producto…" class="filter-input filter-input--grow" @input="debouncedLoadDew()" />
+        <input v-model.trim="dewSearch" type="search" :placeholder="t('vaccines.searchDewormingPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoadDew()" />
       </div>
 
-      <div v-if="dewLoading" class="loading-state"><span class="spin spin--dark" /> Cargando desparasitaciones…</div>
+      <div v-if="dewLoading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingDeworming') }}</div>
       <div v-else-if="dewError" class="alert alert--error">{{ dewError }}</div>
       <div v-else-if="dewItems.length === 0" class="empty-state">
-        <span class="empty-state__emoji">🐛</span>
-        <p>No hay registros de desparasitación</p>
+        <span class="empty-state__emoji" aria-hidden="true">🐛</span>
+        <p>{{ t('vaccines.emptyDeworming') }}</p>
       </div>
 
       <!-- Tabla deworming -->
@@ -146,13 +146,13 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Paciente</th>
-              <th>Producto</th>
-              <th>Tipo de parásito</th>
-              <th>Fecha</th>
-              <th>Próxima dosis</th>
-              <th>Peso / Dosis</th>
-              <th>Administrado por</th>
+              <th>{{ t('vaccines.patient') }}</th>
+              <th>{{ t('vaccines.product') }}</th>
+              <th>{{ t('vaccines.parasiteType') }}</th>
+              <th>{{ t('vaccines.date') }}</th>
+              <th>{{ t('vaccines.nextDose') }}</th>
+              <th>{{ t('vaccines.weightDose') }}</th>
+              <th>{{ t('vaccines.administeredBy') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -189,9 +189,9 @@
 
       <!-- Paginación deworming -->
       <div v-if="dewPagination.totalPages > 1" class="pagination">
-        <button type="button" :disabled="dewPagination.page <= 1" @click="loadDew(dewPagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="dewPagination.page <= 1" @click="loadDew(dewPagination.page - 1)">{{ t('common.previous') }}</button>
         <span>{{ dewPagination.page }} / {{ dewPagination.totalPages }}</span>
-        <button :disabled="dewPagination.page >= dewPagination.totalPages" @click="loadDew(dewPagination.page + 1)">Sig. →</button>
+        <button type="button" :disabled="dewPagination.page >= dewPagination.totalPages" @click="loadDew(dewPagination.page + 1)">{{ t('common.next') }}</button>
       </div>
     </template>
 
@@ -202,17 +202,17 @@
       <div v-if="showModal && mainTab === 'vacunas'" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>💉 Registrar vacuna</h3>
-            <button type="button" class="modal__close" @click="closeModal()">✕</button>
+            <h3>{{ t('vaccines.registerVaccination') }}</h3>
+            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">×</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>Paciente <span class="req">*</span></label>
-                  <input v-model.trim="patientSearch" type="search" placeholder="Buscar paciente…" :disabled="saving" @input="searchPatients" autocomplete="off" />
-                  <div v-if="patientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
-                    <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`Seleccionar ${pt.name}`" @click="selectPatient(pt)">
+                  <label>{{ t('vaccines.patient') }} <span class="req">*</span></label>
+                  <input v-model.trim="patientSearch" type="search" :placeholder="t('vaccines.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
+                    <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
@@ -221,37 +221,37 @@
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>Vacuna <span class="req">*</span></label>
+                  <label>{{ t('vaccines.vaccine') }} <span class="req">*</span></label>
                   <select v-model="form.vaccineId" :disabled="saving" required>
-                    <option value="">Seleccioná una vacuna…</option>
+                    <option value="">{{ t('vaccines.selectVaccine') }}</option>
                     <option v-for="vac in vaccineList" :key="vac.id" :value="vac.id">{{ vac.name }}</option>
                   </select>
                   <span v-if="fe.vaccineId" class="field-error">{{ fe.vaccineId }}</span>
                 </div>
                 <div class="field">
-                  <label>Número de lote</label>
-                  <input v-model.trim="form.lotNumber" type="text" placeholder="LOT-001" :disabled="saving" />
+                  <label>{{ t('vaccines.lotNumber') }}</label>
+                  <input v-model.trim="form.lotNumber" type="text" :placeholder="t('vaccines.lotPlaceholder')" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Fecha de aplicación <span class="req">*</span></label>
+                  <label>{{ t('vaccines.applicationDate') }} <span class="req">*</span></label>
                   <input v-model="form.vaccinationDate" type="date" :disabled="saving" required />
                   <span v-if="fe.vaccinationDate" class="field-error">{{ fe.vaccinationDate }}</span>
                 </div>
                 <div class="field">
-                  <label>Próxima dosis</label>
+                  <label>{{ t('vaccines.nextDose') }}</label>
                   <input v-model="form.nextDoseDue" type="date" :disabled="saving" />
                 </div>
                 <div class="field field--full">
-                  <label>Observaciones</label>
-                  <textarea v-model.trim="form.notes" rows="2" placeholder="Reacciones, observaciones…" :disabled="saving" />
+                  <label>{{ t('vaccines.notes') }}</label>
+                  <textarea v-model.trim="form.notes" rows="2" :placeholder="t('vaccines.notesPlaceholder')" :disabled="saving" />
                 </div>
               </div>
             </div>
             <div v-if="saveError" class="alert alert--error mx">{{ saveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" /> <span v-else>Registrar</span>
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>{{ t('common.create') }}</span>
               </button>
             </div>
           </form>
@@ -266,18 +266,18 @@
       <div v-if="showModal && mainTab === 'deworming'" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>🐛 Registrar desparasitación</h3>
-            <button type="button" class="modal__close" @click="closeModal()">✕</button>
+            <h3>{{ t('vaccines.registerDeworming') }}</h3>
+            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">×</button>
           </div>
           <form @submit.prevent="handleCreateDew" novalidate>
             <div class="form-body">
               <div class="form-grid">
                 <!-- Paciente -->
                 <div class="field field--full">
-                  <label>Paciente <span class="req">*</span></label>
-                  <input v-model.trim="dewPatientSearch" type="search" placeholder="Buscar paciente…" :disabled="saving" @input="searchDewPatients" autocomplete="off" />
-                  <div v-if="dewPatientResults.length" class="autocomplete" role="listbox" aria-label="Resultados de pacientes">
-                    <button v-for="pt in dewPatientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`Seleccionar ${pt.name}`" @click="selectDewPatient(pt)">
+                  <label>{{ t('vaccines.patient') }} <span class="req">*</span></label>
+                  <input v-model.trim="dewPatientSearch" type="search" :placeholder="t('vaccines.patientSearch')" :disabled="saving" @input="searchDewPatients" autocomplete="off" />
+                  <div v-if="dewPatientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
+                    <button v-for="pt in dewPatientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectDewPatient(pt)">
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
@@ -288,9 +288,9 @@
 
                 <!-- Producto antiparasitario -->
                 <div class="field field--full">
-                  <label>Producto antiparasitario <span class="req">*</span></label>
+                  <label>{{ t('vaccines.dewormingProduct') }} <span class="req">*</span></label>
                   <select v-model="dewForm.productId" :disabled="saving" required>
-                    <option value="">Seleccioná un producto…</option>
+                    <option value="">{{ t('vaccines.selectProduct') }}</option>
                     <option v-for="p in dewProductList" :key="p.id" :value="p.id">
                       {{ p.name }}{{ p.parasite_type ? ' — ' + p.parasite_type : '' }}
                     </option>
@@ -300,53 +300,53 @@
 
                 <!-- Fecha -->
                 <div class="field">
-                  <label>Fecha de aplicación <span class="req">*</span></label>
+                  <label>{{ t('vaccines.applicationDate') }} <span class="req">*</span></label>
                   <input v-model="dewForm.dewormingDate" type="date" :disabled="saving" required />
                   <span v-if="dewFe.dewormingDate" class="field-error">{{ dewFe.dewormingDate }}</span>
                 </div>
 
                 <!-- Próxima dosis -->
                 <div class="field">
-                  <label>Próxima dosis</label>
+                  <label>{{ t('vaccines.nextDose') }}</label>
                   <input v-model="dewForm.nextDueDate" type="date" :disabled="saving" />
                 </div>
 
                 <!-- Peso al tratamiento -->
                 <div class="field">
-                  <label>Peso al tratamiento (kg)</label>
-                  <input v-model.number="dewForm.weightAtTreatment" type="number" step="0.01" min="0" placeholder="4.50" :disabled="saving" />
+                  <label>{{ t('vaccines.treatmentWeight') }}</label>
+                  <input v-model.number="dewForm.weightAtTreatment" type="number" step="0.01" min="0" :placeholder="`4.50 ${t('common.kg')}`" :disabled="saving" />
                 </div>
 
                 <!-- Dosis administrada -->
                 <div class="field">
-                  <label>Dosis administrada</label>
-                  <input v-model.trim="dewForm.doseAdministered" type="text" placeholder="Ej: 1 comprimido, 2 ml" :disabled="saving" />
+                  <label>{{ t('vaccines.administeredDose') }}</label>
+                  <input v-model.trim="dewForm.doseAdministered" type="text" :placeholder="t('vaccines.dosePlaceholder')" :disabled="saving" />
                 </div>
 
                 <!-- Vía de administración -->
                 <div class="field">
-                  <label>Vía de administración</label>
+                  <label>{{ t('vaccines.administrationRoute') }}</label>
                   <select v-model="dewForm.route" :disabled="saving">
-                    <option value="">Seleccionar…</option>
-                    <option value="oral">Oral</option>
-                    <option value="topical">Tópica</option>
-                    <option value="injectable">Inyectable</option>
-                    <option value="other">Otra</option>
+                    <option value="">{{ t('common.choose') }}</option>
+                    <option value="oral">{{ t('vaccines.routeOral') }}</option>
+                    <option value="topical">{{ t('vaccines.routeTopical') }}</option>
+                    <option value="injectable">{{ t('vaccines.routeInjectable') }}</option>
+                    <option value="other">{{ t('common.other') }}</option>
                   </select>
                 </div>
 
                 <!-- Notas -->
                 <div class="field field--full">
-                  <label>Notas / observaciones</label>
-                  <textarea v-model.trim="dewForm.notes" rows="2" placeholder="Reacciones, observaciones adicionales…" :disabled="saving" />
+                  <label>{{ t('vaccines.notes') }}</label>
+                  <textarea v-model.trim="dewForm.notes" rows="2" :placeholder="t('vaccines.notesAdditionalPlaceholder')" :disabled="saving" />
                 </div>
               </div>
             </div>
             <div v-if="dewSaveError" class="alert alert--error mx">{{ dewSaveError }}</div>
             <div class="modal__actions">
-              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">Cancelar</button>
+              <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('common.cancel') }}</button>
               <button type="submit" class="btn-primary" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" /> <span v-else>Registrar</span>
+                <span v-if="saving" class="spin spin--sm" /> <span v-else>{{ t('common.create') }}</span>
               </button>
             </div>
           </form>
@@ -359,6 +359,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -482,11 +483,11 @@ function vacStatus(v) {
 }
 
 function vacStatusLabel(v) {
-  if (!v.next_dose_due) return 'Aplicada'
+  if (!v.next_dose_due) return t('vaccines.applied')
   const days = (new Date(v.next_dose_due) - Date.now()) / (1000 * 60 * 60 * 24)
-  if (days < 0)  return 'Vencida'
-  if (days < 30) return 'Vence pronto'
-  return 'Al día'
+  if (days < 0)  return t('vaccines.overdue')
+  if (days < 30) return t('vaccines.dueSoon')
+  return t('vaccines.upToDate')
 }
 
 // Patient autocomplete (vacunas)
@@ -540,7 +541,7 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las vacunas'
+    error.value = e.response?.data?.message || t('vaccines.loadVaccinesError')
   } finally { loading.value = false }
 }
 
@@ -566,9 +567,9 @@ function resetForm() {
 
 function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
-  if (!form.patientId)       fe.patientId       = 'Requerido'
-  if (!form.vaccineId)       fe.vaccineId       = 'Requerido'
-  if (!form.vaccinationDate) fe.vaccinationDate  = 'Requerido'
+  if (!form.patientId)       fe.patientId       = t('common.required')
+  if (!form.vaccineId)       fe.vaccineId       = t('common.required')
+  if (!form.vaccinationDate) fe.vaccinationDate  = t('common.required')
   return Object.keys(fe).length === 0
 }
 
@@ -587,7 +588,7 @@ async function handleCreate() {
     await http.post('/vaccinations', payload)
     closeModal(); await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || 'No se pudo registrar la vacuna'
+    saveError.value = e.response?.data?.message || t('vaccines.createVaccinationError')
   } finally { saving.value = false }
 }
 
@@ -625,7 +626,7 @@ async function loadDew(page = 1) {
     dewItems.value = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
     dewPagination.value = { page: safePage, totalPages }
   } catch (e) {
-    dewError.value = e.response?.data?.message || 'No se pudieron cargar las desparasitaciones'
+    dewError.value = e.response?.data?.message || t('vaccines.loadDewormingError')
   } finally { dewLoading.value = false }
 }
 
@@ -671,9 +672,9 @@ function resetDewForm() {
 
 function validateDew() {
   Object.keys(dewFe).forEach(k => delete dewFe[k])
-  if (!dewForm.patientId)    dewFe.patientId    = 'Requerido'
-  if (!dewForm.productId)    dewFe.productId    = 'Requerido'
-  if (!dewForm.dewormingDate) dewFe.dewormingDate = 'Requerido'
+  if (!dewForm.patientId)    dewFe.patientId    = t('common.required')
+  if (!dewForm.productId)    dewFe.productId    = t('common.required')
+  if (!dewForm.dewormingDate) dewFe.dewormingDate = t('common.required')
   return Object.keys(dewFe).length === 0
 }
 
@@ -694,7 +695,7 @@ async function handleCreateDew() {
     await http.post('/vaccinations/deworming', payload)
     closeModal(); await loadDew()
   } catch (e) {
-    dewSaveError.value = e.response?.data?.message || 'No se pudo registrar la desparasitación'
+    dewSaveError.value = e.response?.data?.message || t('vaccines.createDewormingError')
   } finally { saving.value = false }
 }
 

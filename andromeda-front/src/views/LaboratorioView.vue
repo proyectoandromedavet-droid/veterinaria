@@ -133,7 +133,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>{{ t('laboratory.newModalTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showNewOrder = false">✕</BaseButton>
+            <BaseButton type="button" variant="ghost" class="modal__close" :aria-label="t('common.close')" @click="showNewOrder = false">×</BaseButton>
           </div>
 
           <form @submit.prevent="handleCreateOrder" novalidate>
@@ -157,7 +157,7 @@
                     type="button"
                     class="autocomplete__item"
                     role="option"
-                    :aria-label="`Seleccionar ${pt.name}`"
+                    :aria-label="`${t('common.selectPatient')} ${pt.name}`"
                     @click="selectPatient(pt)"
                   >
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
@@ -172,9 +172,9 @@
                 <div class="field">
                   <label>{{ t('laboratory.priorityLabel') }}</label>
                   <select v-model="orderForm.priority" :disabled="saving">
-                    <option value="routine">Rutina</option>
-                    <option value="urgent">Urgente</option>
-                    <option value="emergency">Emergencia</option>
+                    <option value="routine">{{ t('laboratory.priorityRoutine') }}</option>
+                    <option value="urgent">{{ t('laboratory.priorityUrgent') }}</option>
+                    <option value="emergency">{{ t('laboratory.priorityEmergency') }}</option>
                   </select>
                 </div>
                 <div class="field field--full">

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
@@ -87,7 +87,7 @@
                     <label>{{ t('evolutions.patientLabel') }} <span class="req">*</span></label>
                     <input v-model.trim="patientSearch" type="search" :placeholder="t('evolutions.patientSearchPlaceholder')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                     <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
-                      <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`Seleccionar ${pt.name}`" @click="selectPatient(pt)">
+                      <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="t('common.selectPatient')" @click="selectPatient(pt)">
                         {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
                         <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                       </button>
@@ -174,7 +174,7 @@
                   <div class="field">
                     <label>{{ t('evolutions.appetite') }}</label>
                     <select v-model="form.appetite" :disabled="saving">
-                      <option value="">Seleccionar…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="normal">Normal</option>
                       <option value="increased">Aumentado (polifagia)</option>
                       <option value="decreased">Disminuido (hiporexia)</option>
@@ -184,7 +184,7 @@
                   <div class="field">
                     <label>{{ t('evolutions.thirst') }}</label>
                     <select v-model="form.thirst" :disabled="saving">
-                      <option value="">Seleccionar…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="normal">Normal</option>
                       <option value="increased">Aumentada (polidipsia)</option>
                       <option value="decreased">Disminuida</option>
@@ -194,7 +194,7 @@
                   <div class="field">
                     <label>{{ t('evolutions.urination') }}</label>
                     <select v-model="form.urination" :disabled="saving">
-                      <option value="">Seleccionar…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="normal">Normal</option>
                       <option value="increased">Aumentada (poliuria)</option>
                       <option value="decreased">Disminuida (oliguria)</option>
@@ -204,7 +204,7 @@
                   <div class="field">
                     <label>{{ t('evolutions.defecation') }}</label>
                     <select v-model="form.defecation" :disabled="saving">
-                      <option value="">Seleccionar…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="normal">Normal</option>
                       <option value="increased">Aumentada</option>
                       <option value="decreased">Disminuida</option>
@@ -236,7 +236,7 @@
                   <div class="field">
                     <label>{{ t('evolutions.feedingType') }}</label>
                     <select v-model="form.feedingType" :disabled="saving">
-                      <option value="">Seleccionar…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="commercial">Balanceado comercial</option>
                       <option value="homemade">Casero</option>
                       <option value="mixed">Mixto</option>
@@ -250,7 +250,7 @@
                   <div class="field">
                     <label>Ambiente</label>
                     <select v-model="form.environment" :disabled="saving">
-                      <option value="">Seleccionar…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="indoor">Interior</option>
                       <option value="outdoor">Exterior</option>
                       <option value="both">Mixto (interior/exterior)</option>
@@ -269,32 +269,34 @@
                     <textarea v-model.trim="form.dewormingHistory" rows="2" placeholder="Antiparasitarios internos/externos, productos y fechas…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Enfermedades previas</label>
-                    <textarea v-model.trim="form.previousIllnesses" rows="2" placeholder="Enfermedades o condiciones diagnosticadas anteriormente…" :disabled="saving" />
+                  <div class="field field--full">
+                    <label>{{ t('evolutions.previousIllnesses') }}</label>
+                    <textarea v-model.trim="form.previousIllnesses" rows="2" :placeholder="t('evolutions.previousIllnessesPlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Cirugías / procedimientos previos</label>
-                    <textarea v-model.trim="form.previousSurgeries" rows="2" placeholder="Procedimientos quirúrgicos o intervenciones anteriores…" :disabled="saving" />
+                    <label>{{ t('evolutions.previousSurgeries') }}</label>
+                    <textarea v-model.trim="form.previousSurgeries" rows="2" :placeholder="t('evolutions.previousProceduresPlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Medicaciones actuales</label>
-                    <textarea v-model.trim="form.currentMedications" rows="2" placeholder="Medicamentos que recibe actualmente (nombre, dosis, frecuencia)…" :disabled="saving" />
+                    <label>{{ t('evolutions.currentMedications') }}</label>
+                    <textarea v-model.trim="form.currentMedications" rows="2" :placeholder="t('evolutions.currentMedicationsPlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>Observaciones del propietario</label>
-                    <textarea v-model.trim="form.ownerObservations" rows="2" placeholder="Comentarios y preocupaciones adicionales del dueño…" :disabled="saving" />
+                    <label>{{ t('evolutions.ownerObservations') }}</label>
+                    <textarea v-model.trim="form.ownerObservations" rows="2" :placeholder="t('evolutions.ownerObservationsPlaceholder')" :disabled="saving" />
+                  </div>
                   </div>
                 </div>
               </div>
 
               <!-- TAB 2: Examen físico -->
               <div v-show="activeTab === 2">
-                <div class="section-title">Examen físico — valores medidos en consulta</div>
+                <div class="section-title">{{ t('evolutions.physicalExam') }}</div>
                 <div class="form-grid">
                   <div class="field">
                     <label>{{ t('evolutions.mucousMembranes') }}</label>
                     <select v-model="form.mucousMembranes" :disabled="saving">
-                      <option value="">Seleccionar…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="rosadas humidas">Rosadas y húmedas (normal)</option>
                       <option value="palidas">Pálidas</option>
                       <option value="cianoticas">Cianóticas</option>
@@ -306,7 +308,7 @@
                   <div class="field">
                     <label>{{ t('evolutions.hydrationStatus') }}</label>
                     <select v-model="form.hydrationStatus" :disabled="saving">
-                      <option value="">Seleccionar…</option>
+                      <option value="">{{ t('common.choose') }}</option>
                       <option value="normal">Normal (&lt; 5%)</option>
                       <option value="deshidratacion leve 5%">Deshidratación leve 5%</option>
                       <option value="deshidratacion moderada 8%">Deshidratación moderada 8%</option>
@@ -367,73 +369,73 @@
                   </div>
                   <div class="field field--full">
                     <label>Observaciones generales del examen físico</label>
-                    <textarea v-model.trim="form.generalObservations" rows="3" placeholder="Hallazgos adicionales no incluidos en las categorías anteriores…" :disabled="saving" />
+                    <textarea v-model.trim="form.generalObservations" rows="3" :placeholder="t('evolutions.generalObservations')" :disabled="saving" />
                   </div>
                 </div>
               </div>
 
               <!-- TAB 3: Diagnóstico -->
               <div v-show="activeTab === 3">
-                <div class="section-title">Diagnóstico</div>
+                <div class="section-title">{{ t('evolutions.diagnosis') }}</div>
                 <div class="form-grid">
                   <div class="field field--full">
                     <label>Nombre del diagnóstico</label>
-                    <input v-model.trim="form.diagnosisName" type="text" placeholder="Ej: Gastroenteritis aguda, Otitis externa bacteriana…" :disabled="saving" />
+                    <input v-model.trim="form.diagnosisName" type="text" :placeholder="t('evolutions.diagnosisNamePlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field">
                     <label>{{ t('evolutions.diagnosisType') }}</label>
                     <select v-model="form.diagnosisType" :disabled="saving">
-                      <option value="presumptive">Presuntivo</option>
-                      <option value="definitive">Definitivo</option>
-                      <option value="differential">Diferencial</option>
-                      <option value="rule_out">Descarte</option>
+                      <option value="presumptive">{{ t('evolutions.diagnosisTypePresumptive') }}</option>
+                      <option value="definitive">{{ t('evolutions.diagnosisTypeDefinitive') }}</option>
+                      <option value="differential">{{ t('evolutions.diagnosisTypeDifferential') }}</option>
+                      <option value="rule_out">{{ t('evolutions.diagnosisTypeRuleOut') }}</option>
                     </select>
                   </div>
                   <div class="field">
-                    <label>Código diagnóstico (ICD / VeNom)</label>
-                    <input v-model.trim="form.diagnosisCode" type="text" placeholder="Ej: K52.9" :disabled="saving" />
+                    <label>{{ t('evolutions.diagnosisCode') }}</label>
+                    <input v-model.trim="form.diagnosisCode" type="text" :placeholder="t('evolutions.diagnosisCodePlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Pronóstico</label>
+                    <label>{{ t('evolutions.prognosis') }}</label>
                     <select v-model="form.prognosis" :disabled="saving">
-                      <option value="">Seleccionar…</option>
-                      <option value="excellent">Excelente</option>
-                      <option value="good">Bueno</option>
-                      <option value="fair">Regular</option>
-                      <option value="guarded">Reservado</option>
-                      <option value="poor">Malo</option>
-                      <option value="grave">Grave</option>
+                      <option value="">{{ t('common.choose') }}</option>
+                      <option value="excellent">{{ t('evolutions.prognosisExcellent') }}</option>
+                      <option value="good">{{ t('evolutions.prognosisGood') }}</option>
+                      <option value="fair">{{ t('evolutions.prognosisFair') }}</option>
+                      <option value="guarded">{{ t('evolutions.prognosisGuarded') }}</option>
+                      <option value="poor">{{ t('evolutions.prognosisPoor') }}</option>
+                      <option value="grave">{{ t('evolutions.prognosisGrave') }}</option>
                     </select>
                   </div>
                   <div class="field field--full">
                     <label class="checkbox-label" style="flex-direction:row;align-items:center;gap:8px">
                       <input type="checkbox" v-model="form.isPrimary" :disabled="saving" />
-                      Diagnóstico principal (is_primary)
+                      {{ t('evolutions.primaryDiagnosis') }}
                     </label>
                   </div>
                   <div class="field field--full">
                     <label>{{ t('evolutions.diagnosisNotes') }}</label>
-                    <textarea v-model.trim="form.diagnosisNotes" rows="3" placeholder="Justificación del diagnóstico, hallazgos complementarios…" :disabled="saving" />
+                    <textarea v-model.trim="form.diagnosisNotes" rows="3" :placeholder="t('evolutions.diagnosisNotes')" :disabled="saving" />
                   </div>
                 </div>
               </div>
 
               <!-- TAB 4: Tratamientos -->
               <div v-show="activeTab === 4">
-                <div class="section-title">Tratamiento</div>
+                <div class="section-title">{{ t('evolutions.treatment') }}</div>
                 <div class="form-grid">
                   <div class="field">
                     <label>{{ t('evolutions.treatmentType') }}</label>
                     <select v-model="form.treatment.treatmentType" :disabled="saving">
-                      <option value="">Seleccionar…</option>
-                      <option value="medication">Medicación</option>
-                      <option value="procedure">Procedimiento</option>
-                      <option value="surgery_ref">Derivación quirúrgica</option>
-                      <option value="specialist_ref">Derivación a especialista</option>
-                      <option value="diagnostic">Diagnóstico</option>
-                      <option value="nursing">Enfermería</option>
-                      <option value="physical_therapy">Fisioterapia</option>
-                      <option value="other">Otro</option>
+                      <option value="">{{ t('common.choose') }}</option>
+                      <option value="medication">{{ t('evolutions.treatmentTypeMedication') }}</option>
+                      <option value="procedure">{{ t('evolutions.treatmentTypeProcedure') }}</option>
+                      <option value="surgery_ref">{{ t('evolutions.treatmentTypeSurgeryRef') }}</option>
+                      <option value="specialist_ref">{{ t('evolutions.treatmentTypeSpecialistRef') }}</option>
+                      <option value="diagnostic">{{ t('evolutions.treatmentTypeDiagnostic') }}</option>
+                      <option value="nursing">{{ t('evolutions.treatmentTypeNursing') }}</option>
+                      <option value="physical_therapy">{{ t('evolutions.treatmentTypePhysicalTherapy') }}</option>
+                      <option value="other">{{ t('evolutions.other') }}</option>
                     </select>
                   </div>
                   <div class="field">
@@ -445,31 +447,31 @@
                     <textarea v-model.trim="form.treatment.description" rows="2" :placeholder="t('evolutions.treatmentDescription')" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Dosis</label>
-                    <input v-model.trim="form.treatment.dose" type="text" placeholder="Ej: 5 mg/kg, 1 comprimido" :disabled="saving" />
+                    <label>{{ t('evolutions.dose') }}</label>
+                    <input v-model.trim="form.treatment.dose" type="text" :placeholder="t('evolutions.dosePlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Unidad de dosis</label>
-                    <input v-model.trim="form.treatment.doseUnit" type="text" placeholder="Ej: mg, ml, comprimido" :disabled="saving" />
+                    <label>{{ t('evolutions.doseUnit') }}</label>
+                    <input v-model.trim="form.treatment.doseUnit" type="text" :placeholder="t('evolutions.doseUnitPlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Frecuencia</label>
-                    <input v-model.trim="form.treatment.frequency" type="text" placeholder="Ej: cada 12 hs, una vez al día" :disabled="saving" />
+                    <label>{{ t('evolutions.frequency') }}</label>
+                    <input v-model.trim="form.treatment.frequency" type="text" :placeholder="t('evolutions.frequencyPlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field">
-                    <label>Vía de administración</label>
+                    <label>{{ t('evolutions.route') }}</label>
                     <select v-model="form.treatment.route" :disabled="saving">
-                      <option value="">Seleccionar…</option>
-                      <option value="oral">Oral</option>
-                      <option value="iv">Intravenosa (IV)</option>
-                      <option value="im">Intramuscular (IM)</option>
-                      <option value="sc">Subcutánea (SC)</option>
-                      <option value="topical">Tópica</option>
-                      <option value="inhalation">Inhalatoria</option>
-                      <option value="ophthalmic">Oftálmica</option>
-                      <option value="otic">Ótica</option>
-                      <option value="rectal">Rectal</option>
-                      <option value="other">Otra</option>
+                      <option value="">{{ t('common.choose') }}</option>
+                      <option value="oral">{{ t('evolutions.routeOral') }}</option>
+                      <option value="iv">{{ t('evolutions.routeIv') }}</option>
+                      <option value="im">{{ t('evolutions.routeIm') }}</option>
+                      <option value="sc">{{ t('evolutions.routeSc') }}</option>
+                      <option value="topical">{{ t('evolutions.routeTopical') }}</option>
+                      <option value="inhalation">{{ t('evolutions.routeInhalation') }}</option>
+                      <option value="ophthalmic">{{ t('evolutions.routeOphthalmic') }}</option>
+                      <option value="otic">{{ t('evolutions.routeOtic') }}</option>
+                      <option value="rectal">{{ t('evolutions.routeRectal') }}</option>
+                      <option value="other">{{ t('evolutions.routeOther') }}</option>
                     </select>
                   </div>
                   <div class="field">
@@ -478,66 +480,66 @@
                   </div>
                   <div class="field field--full">
                     <label>{{ t('evolutions.treatmentNotes') }}</label>
-                    <textarea v-model.trim="form.treatment.notes" rows="2" placeholder="Indicaciones especiales, advertencias, seguimiento…" :disabled="saving" />
+                    <textarea v-model.trim="form.treatment.notes" rows="2" :placeholder="t('evolutions.treatmentNotes')" :disabled="saving" />
                   </div>
                 </div>
               </div>
 
               <!-- TAB 5: Recetas -->
               <div v-show="activeTab === 5">
-                <div class="section-title">Receta médica</div>
+                <div class="section-title">{{ t('evolutions.prescription') }}</div>
 
                 <!-- Agregar ítem -->
                 <div class="rx-add-item">
                   <div class="form-grid">
                     <div class="field">
-                      <label>Medicamento <span class="req">*</span></label>
-                      <input v-model.trim="newRxItem.medicationName" type="text" placeholder="Nombre del medicamento" :disabled="saving" />
+                      <label>{{ t('evolutions.medicationLabel') }} <span class="req">*</span></label>
+                      <input v-model.trim="newRxItem.medicationName" type="text" :placeholder="t('evolutions.medicationPlaceholder')" :disabled="saving" />
                     </div>
                     <div class="field">
-                      <label>Dosis <span class="req">*</span></label>
-                      <input v-model.trim="newRxItem.dose" type="text" placeholder="Ej: 5 mg/kg" :disabled="saving" />
+                      <label>{{ t('evolutions.dose') }} <span class="req">*</span></label>
+                      <input v-model.trim="newRxItem.dose" type="text" :placeholder="t('evolutions.dosePlaceholder')" :disabled="saving" />
                     </div>
                     <div class="field">
-                      <label>Unidad de dosis</label>
-                      <input v-model.trim="newRxItem.doseUnit" type="text" placeholder="Ej: mg, ml" :disabled="saving" />
+                      <label>{{ t('evolutions.doseUnit') }}</label>
+                      <input v-model.trim="newRxItem.doseUnit" type="text" :placeholder="t('evolutions.doseUnitPlaceholder')" :disabled="saving" />
                     </div>
                     <div class="field">
-                      <label>Frecuencia <span class="req">*</span></label>
-                      <input v-model.trim="newRxItem.frequency" type="text" placeholder="Ej: cada 8 hs" :disabled="saving" />
+                      <label>{{ t('evolutions.frequency') }} <span class="req">*</span></label>
+                      <input v-model.trim="newRxItem.frequency" type="text" :placeholder="t('evolutions.frequencyPlaceholder')" :disabled="saving" />
                     </div>
                     <div class="field">
-                      <label>Vía</label>
-                      <input v-model.trim="newRxItem.route" type="text" placeholder="Ej: oral, tópica" :disabled="saving" />
+                      <label>{{ t('evolutions.route') }}</label>
+                      <input v-model.trim="newRxItem.route" type="text" :placeholder="t('evolutions.routePlaceholder')" :disabled="saving" />
                     </div>
                     <div class="field">
                       <label>{{ t('evolutions.durationDays') }}</label>
                       <input v-model.number="newRxItem.durationDays" type="number" min="1" placeholder="7" :disabled="saving" />
                     </div>
                     <div class="field">
-                      <label>Cantidad</label>
-                      <input v-model.number="newRxItem.quantity" type="number" min="0" step="0.5" placeholder="14" :disabled="saving" />
+                      <label>{{ t('evolutions.quantity') }}</label>
+                      <input v-model.number="newRxItem.quantity" type="number" min="0" step="0.5" :placeholder="t('evolutions.quantityPlaceholder')" :disabled="saving" />
                     </div>
                     <div class="field field--full">
-                      <label>Instrucciones para el propietario</label>
-                      <textarea v-model.trim="newRxItem.instructions" rows="2" placeholder="Indicaciones especiales para administrar en casa…" :disabled="saving" />
+                      <label>{{ t('evolutions.ownerInstructions') }}</label>
+                      <textarea v-model.trim="newRxItem.instructions" rows="2" :placeholder="t('evolutions.ownerInstructionsPlaceholder')" :disabled="saving" />
                     </div>
                   </div>
                   <div style="display:flex;justify-content:flex-end;margin-top:10px">
-                    <button type="button" class="btn-ghost btn-sm" @click="addRxItem()" :disabled="saving">+ Agregar ítem</button>
+                    <button type="button" class="btn-ghost btn-sm" @click="addRxItem()" :disabled="saving">+ {{ t('evolutions.addItem') }}</button>
                   </div>
                 </div>
 
                 <!-- Lista de ítems agregados -->
                 <div v-if="form.prescriptionItems.length > 0" style="margin-top:14px">
-                  <div class="section-title">Ítems de la receta ({{ form.prescriptionItems.length }})</div>
+                  <div class="section-title">{{ t('evolutions.prescriptionItems') }} ({{ form.prescriptionItems.length }})</div>
                   <div class="rx-item-list">
                     <div v-for="(item, idx) in form.prescriptionItems" :key="idx" class="rx-item">
                       <div class="rx-item__info">
                         <strong>{{ item.medicationName }}</strong>
                         <span>{{ item.dose }}{{ item.doseUnit ? ' ' + item.doseUnit : '' }} — {{ item.frequency }}</span>
-                        <span v-if="item.route" class="sub">Vía: {{ item.route }}</span>
-                        <span v-if="item.durationDays" class="sub">{{ item.durationDays }} días</span>
+                        <span v-if="item.route" class="sub">{{ t('evolutions.route') }}: {{ item.route }}</span>
+                        <span v-if="item.durationDays" class="sub">{{ item.durationDays }} {{ t('evolutions.durationDays') }}</span>
                       </div>
                       <button type="button" class="rx-item__remove" @click="removeRxItem(idx)" :disabled="saving" :title="t('evolutions.deleteItem')">✕</button>
                     </div>
@@ -547,8 +549,8 @@
                 <!-- Datos generales de la receta -->
                 <div class="form-grid" style="margin-top:14px">
                   <div class="field">
-                    <label>Cantidad de recargas permitidas</label>
-                    <input v-model.number="form.prescriptionRefills" type="number" min="0" placeholder="0" :disabled="saving" />
+                    <label>{{ t('evolutions.allowedRefills') }}</label>
+                    <input v-model.number="form.prescriptionRefills" type="number" min="0" :placeholder="t('evolutions.allowedRefillsPlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field field--full">
                     <label>{{ t('evolutions.prescriptionNotes') }}</label>
@@ -563,14 +565,14 @@
 
             <div class="modal__actions">
               <div class="tab-nav-btns">
-                <button type="button" class="btn-ghost btn-sm" @click="activeTab = Math.max(0, activeTab - 1)" :disabled="activeTab === 0">← Anterior</button>
-                <button type="button" class="btn-ghost btn-sm" @click="activeTab = Math.min(tabs.length - 1, activeTab + 1)" :disabled="activeTab === tabs.length - 1">Siguiente →</button>
+                <button type="button" class="btn-ghost btn-sm" @click="activeTab = Math.max(0, activeTab - 1)" :disabled="activeTab === 0">{{ t('evolutions.previous') }}</button>
+                <button type="button" class="btn-ghost btn-sm" @click="activeTab = Math.min(tabs.length - 1, activeTab + 1)" :disabled="activeTab === tabs.length - 1">{{ t('evolutions.next') }}</button>
               </div>
               <div style="display:flex;gap:10px">
                 <button type="button" class="btn-ghost" @click="closeModal()" :disabled="saving">{{ t('evolutions.cancel') }}</button>
                 <button type="submit" class="btn-primary" :disabled="saving">
                   <span v-if="saving" class="spin spin--sm" />
-                  <span v-else>💾 Guardar evolución</span>
+                  <span v-else>💾 {{ t('evolutions.saveEvolution') }}</span>
                 </button>
               </div>
             </div>
@@ -584,6 +586,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
+import { t } from '../i18n'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -628,12 +631,12 @@ const dateTo     = ref('')
 const pagination = ref({ page: 1, totalPages: 1 })
 
 const tabs = [
-  { label: 'General',         icon: '📝' },
-  { label: 'Anamnesis',       icon: '🗒️'  },
-  { label: 'Examen físico',   icon: '🔬' },
-  { label: 'Diagnóstico',     icon: '🩺' },
-  { label: 'Tratamientos',    icon: '💊' },
-  { label: 'Recetas',         icon: '📄' },
+  { label: t('evolutions.generalData'), icon: '📝' },
+  { label: t('evolutions.history'), icon: '🗒️'  },
+  { label: t('evolutions.physicalExam'), icon: '🔬' },
+  { label: t('evolutions.diagnosis'), icon: '🩺' },
+  { label: t('evolutions.treatment'), icon: '💊' },
+  { label: t('evolutions.prescription'), icon: '📄' },
 ]
 const activeTab = ref(0)
 
@@ -1115,3 +1118,5 @@ onMounted(load)
   .modal { max-width: 100%; max-height: 100vh; border-radius: 0; }
 }
 </style>
+
+

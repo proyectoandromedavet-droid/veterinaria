@@ -104,9 +104,9 @@
       </div>
 
       <div v-if="pagination.totalPages > 1" class="pagination">
-        <button :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">{{ t('common.previous') }}</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-        <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+        <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('common.next') }}</button>
       </div>
     </template>
 
@@ -168,9 +168,9 @@
           <thead>
             <tr>
               <th>{{ t('common.name') }}</th>
-              <th>CUIT/ID fiscal</th>
+              <th>{{ t('inventory.taxId') }}</th>
               <th>{{ t('inventory.contact') }}</th>
-              <th>Email</th>
+              <th>{{ t('inventory.email') }}</th>
               <th>{{ t('patients.phone') }}</th>
               <th>{{ t('inventory.paymentTerms') }}</th>
               <th>{{ t('inventory.actions') }}</th>
@@ -352,7 +352,7 @@
                   <span v-if="sfe.name" class="field-error">{{ sfe.name }}</span>
                 </div>
                 <div class="field">
-                  <label>CUIT / ID fiscal</label>
+                  <label>{{ t('inventory.taxId') }}</label>
                   <input v-model.trim="supplierForm.taxId" type="text" placeholder="20-12345678-9" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
@@ -360,7 +360,7 @@
                   <input v-model.trim="supplierForm.contactName" type="text" placeholder="Juan Pérez" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
-                  <label>Email</label>
+                  <label>{{ t('inventory.email') }}</label>
                   <input v-model.trim="supplierForm.email" type="email" placeholder="ventas@drogueria.com" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
@@ -372,7 +372,7 @@
                   <input v-model.number="supplierForm.paymentTerms" type="number" min="0" placeholder="30" :disabled="supplierSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Dirección</label>
+                  <label>{{ t('inventory.address') }}</label>
                   <textarea v-model.trim="supplierForm.address" rows="2" placeholder="Av. Corrientes 1234, CABA" :disabled="supplierSaving" />
                 </div>
                 <div class="field field--full">

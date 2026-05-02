@@ -3,7 +3,7 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">ðŸ¥</span>
+        <span class="page-emoji">🏥</span>
         <div>
           <h2 class="page-title">{{ t('hospitalizations.title') }}</h2>
           <p class="page-sub">{{ t('hospitalizations.subtitle') }}</p>
@@ -15,21 +15,21 @@
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span class="stat-card__icon">ðŸ›ï¸</span>
+        <span class="stat-card__icon">🛏️</span>
         <div>
           <strong>{{ stats.active }}</strong>
           <span>{{ t('hospitalizations.activeHospitalized') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span class="stat-card__icon">ðŸšª</span>
+        <span class="stat-card__icon">🚪</span>
         <div>
           <strong>{{ stats.dischargedToday }}</strong>
           <span>{{ t('hospitalizations.dischargeToday') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-        <span class="stat-card__icon">ðŸ“…</span>
+        <span class="stat-card__icon">📅</span>
         <div>
           <strong>{{ stats.avgDays }}</strong>
           <span>{{ t('hospitalizations.averageDays') }}</span>
@@ -40,14 +40,14 @@
     <!-- Toggle de vista -->
     <div class="view-toggle">
       <button type="button" :class="['toggle-btn', { 'toggle-btn--active': viewMode === 'list' }]" @click="viewMode = 'list'">
-        â˜° {{ t('hospitalizations.listView') }}
+        ☰ {{ t('hospitalizations.listView') }}
       </button>
       <button type="button" :class="['toggle-btn', { 'toggle-btn--active': viewMode === 'board' }]" @click="switchToBoard()">
-        ðŸ  {{ t('hospitalizations.boardView') }}
+        🏠 {{ t('hospitalizations.boardView') }}
       </button>
     </div>
 
-    <!-- â”€â”€ VISTA LISTA â”€â”€ -->
+    <!-- ── VISTA LISTA ── -->
     <template v-if="viewMode === 'list'">
       <div class="filters">
         <input
@@ -69,7 +69,7 @@
         <span class="spin spin--dark" /> {{ t('hospitalizations.loading') }}</div>
       <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
-        <span class="empty-state__emoji">ðŸ¥</span>
+        <span class="empty-state__emoji">🏥</span>
         <p>{{ t('hospitalizations.empty') }}</p>
       </div>
 
@@ -92,19 +92,19 @@
                 <div class="pet-cell">
                   <span>{{ petEmoji(h.species) }}</span>
                   <div>
-                    <strong>{{ h.patient_name || 'â€”' }}</strong>
+                    <strong>{{ h.patient_name || '—' }}</strong>
                     <span class="sub">{{ h.admission_reason || '' }}</span>
                   </div>
                 </div>
               </td>
               <td>
-                <strong class="ward-name">{{ h.ward_name || 'â€”' }}</strong>
+                <strong class="ward-name">{{ h.ward_name || '—' }}</strong>
                 <span v-if="h.kennel_number" class="sub">{{ t('hospitalizations.kennelLabel') }} {{ h.kennel_number }}</span>
               </td>
-              <td class="sub">{{ h.attending_vet_name || 'â€”' }}</td>
+              <td class="sub">{{ h.attending_vet_name || '—' }}</td>
               <td class="sub">{{ formatDate(h.admission_date) }}</td>
               <td>
-                <span class="days-badge">{{ h.days_hospitalized ?? 'â€”' }} d</span>
+                <span class="days-badge">{{ h.days_hospitalized ?? '—' }} d</span>
               </td>
               <td>
                 <span class="badge" :class="hospStatusClass(h.status)">{{ hospStatusLabel(h.status) }}</span>
@@ -134,19 +134,19 @@
       </div>
 
       <div v-if="pagination.totalPages > 1" class="pagination">
-        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">â† Ant.</button>
+        <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">{{ t('common.previous') }}</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-        <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. â†’</button>
+        <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('common.next') }}</button>
       </div>
     </template>
 
-    <!-- â”€â”€ VISTA TABLERO â”€â”€ -->
+    <!-- ── VISTA TABLERO ── -->
     <template v-else>
       <div v-if="boardLoading" class="loading-state" role="status" aria-live="polite">
         <span class="spin spin--dark" /> {{ t('hospitalizations.boardLoading') }}</div>
       <div v-else-if="boardError" class="alert alert--error" role="alert">{{ boardError }}</div>
       <div v-else-if="boardData.length === 0" class="empty-state">
-        <span class="empty-state__emoji">ðŸ </span>
+        <span class="empty-state__emoji">🏠</span>
         <p>{{ t('hospitalizations.boardEmpty') }}</p>
       </div>
       <div v-else class="board">
@@ -176,13 +176,13 @@
       </div>
     </template>
 
-    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• MODAL ADMITIR â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══════════════════ MODAL ADMITIR ══════════════════ -->
     <Transition name="modal">
       <div v-if="showAdmit" class="modal-backdrop" @click.self="showAdmit = false">
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>🏥 {{ t('hospitalizations.admitTitle') }}</h3>
-            <button type="button" class="modal__close" @click="showAdmit = false">âœ•</button>
+            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="showAdmit = false">×</button>
           </div>
 
           <form @submit.prevent="handleAdmit" novalidate>
@@ -194,18 +194,18 @@
                 <input
                   v-model.trim="patientSearch"
                   type="search"
-                  placeholder="Buscar por nombreâ€¦"
+                  :placeholder="t('hospitalizations.patientSearchPlaceholder')"
                   :disabled="admitSaving"
                   @input="searchPatients"
                   autocomplete="off"
                 />
                 <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('hospitalizations.searchByName')">
-                  <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`Seleccionar ${pt.name}`" @click="selectPatient(pt)">
+                    <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                    <span class="autocomplete__owner">â€” {{ pt.primary_owner || '' }}</span>
+                    <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                   </button>
                 </div>
-                <div v-if="admitForm.patientId" class="selected-patient">âœ… {{ selectedPatientLabel }}</div>
+                <div v-if="admitForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
                 <span v-if="afe.patientId" class="field-error">{{ afe.patientId }}</span>
               </div>
 
@@ -216,7 +216,7 @@
                   <select v-model="admitForm.wardId" :disabled="admitSaving || wardsLoading" @change="admitForm.kennelId = ''">
                     <option value="">{{ wardsLoading ? t('hospitalizations.wardLoading') : t('hospitalizations.wardPlaceholder') }}</option>
                     <option v-for="w in availableWards" :key="w.id" :value="w.id">
-                      {{ w.name }} ({{ w.available_kennels }} jaulas libres)
+                      {{ w.name }} ({{ w.available_kennels }} {{ t('hospitalizations.free') }})
                     </option>
                   </select>
                   <span v-if="afe.wardId" class="field-error">{{ afe.wardId }}</span>
@@ -241,7 +241,7 @@
                   <input
                     v-model.trim="admitForm.attendingVetId"
                     type="text"
-                    placeholder="ID del veterinario responsableâ€¦"
+                    placeholder="ID del veterinario responsable…"
                     :disabled="admitSaving"
                   />
                   <span v-if="afe.attendingVetId" class="field-error">{{ afe.attendingVetId }}</span>
@@ -267,7 +267,7 @@
               <BaseButton type="button" variant="ghost" @click="showAdmit = false" :disabled="admitSaving">{{ t('common.cancel') }}</BaseButton>
               <button type="submit" class="btn-primary" :disabled="admitSaving">
                 <span v-if="admitSaving" class="spin spin--sm" />
-                <span v-else>ðŸ¥ Admitir</span>
+                <span v-else>🏥 {{ t('hospitalizations.admit') }}</span>
               </button>
             </div>
           </form>
@@ -275,13 +275,13 @@
       </div>
     </Transition>
 
-    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• MODAL VER INTERNACIÃ“N â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══════════════════ MODAL VER INTERNACIÓN ══════════════════ -->
     <Transition name="modal">
       <div v-if="showDetail" class="modal-backdrop" @click.self="showDetail = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>ðŸ¥ {{ t('hospitalizations.detailTitle') }} â€” {{ detailData?.patient_name }}</h3>
-            <button type="button" class="modal__close" @click="showDetail = false">âœ•</button>
+            <h3>🏥 {{ t('hospitalizations.detailTitle') }} — {{ detailData?.patient_name }}</h3>
+            <button type="button" class="modal__close" @click="showDetail = false">✕</button>
           </div>
 
           <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
@@ -293,11 +293,11 @@
               <div class="detail-grid">
                 <div class="detail-item">
                   <span class="detail-label">{{ t('hospitalizations.wardKennelDetail') }}</span>
-                  <span>{{ detailData.ward_name || 'â€”' }}{{ detailData.kennel_number ? ' Â· Jaula ' + detailData.kennel_number : '' }}</span>
+                  <span>{{ detailData.ward_name || '—' }}{{ detailData.kennel_number ? ' · ' + t('hospitalizations.kennelLabel') + ' ' + detailData.kennel_number : '' }}</span>
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">{{ t('hospitalizations.vetLabel') }}</span>
-                  <span>{{ detailData.attending_vet_name || 'â€”' }}</span>
+                  <span>{{ detailData.attending_vet_name || '—' }}</span>
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">{{ t('hospitalizations.admissionDate') }}</span>
@@ -305,11 +305,11 @@
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">{{ t('hospitalizations.daysHospitalized') }}</span>
-                  <span>{{ detailData.days_hospitalized ?? 'â€”' }}</span>
+                  <span>{{ detailData.days_hospitalized ?? '—' }}</span>
                 </div>
                 <div class="detail-item detail-item--full">
                   <span class="detail-label">{{ t('hospitalizations.reason') }}</span>
-                  <span>{{ detailData.admission_reason || 'â€”' }}</span>
+                  <span>{{ detailData.admission_reason || '—' }}</span>
                 </div>
               </div>
             </div>
@@ -317,10 +317,10 @@
             <!-- Tabs -->
             <div class="tabs">
               <button type="button" :class="['tab', { 'tab--active': detailTab === 'monitoring' }]" @click="detailTab = 'monitoring'">
-                ðŸ“Š {{ t('hospitalizations.monitoringLabel') }}
+                📊 {{ t('hospitalizations.monitoringLabel') }}
               </button>
               <button type="button" :class="['tab', { 'tab--active': detailTab === 'medications' }]" @click="detailTab = 'medications'">
-                ðŸ’Š {{ t('hospitalizations.medicationsLabel') }}
+                💊 {{ t('hospitalizations.medicationsLabel') }}
               </button>
             </div>
 
@@ -331,12 +331,12 @@
                 <div v-for="(m, i) in detailData.monitoring" :key="i" class="monitoring-record">
                   <div class="monitoring-record__time sub">{{ formatDate(m.recorded_at || m.created_at) }}</div>
                   <div class="monitoring-chips">
-                    <span v-if="m.heart_rate" class="mon-chip">â¤ï¸ {{ m.heart_rate }} lpm</span>
-                    <span v-if="m.respiratory_rate" class="mon-chip">ðŸ« {{ m.respiratory_rate }} rpm</span>
-                    <span v-if="m.temperature" class="mon-chip">ðŸŒ¡ï¸ {{ m.temperature }}Â°C</span>
-                    <span v-if="m.systolic_bp" class="mon-chip">ðŸ©º {{ m.systolic_bp }} mmHg</span>
+                    <span v-if="m.heart_rate" class="mon-chip">❤️ {{ m.heart_rate }} lpm</span>
+                    <span v-if="m.respiratory_rate" class="mon-chip">🫁 {{ m.respiratory_rate }} rpm</span>
+                    <span v-if="m.temperature" class="mon-chip">🌡️ {{ m.temperature }}°C</span>
+                    <span v-if="m.systolic_bp" class="mon-chip">🩺 {{ m.systolic_bp }} mmHg</span>
                     <span v-if="m.mucous_membranes" class="mon-chip">{{ m.mucous_membranes }}</span>
-                    <span v-if="m.hydration_status" class="mon-chip">ðŸ’§ {{ m.hydration_status }}</span>
+                    <span v-if="m.hydration_status" class="mon-chip">💧 {{ m.hydration_status }}</span>
                     <span v-if="m.consciousness_level" class="mon-chip" :class="consciousnessClass(m.consciousness_level)">
                       {{ consciousnessLabel(m.consciousness_level) }}
                     </span>
@@ -368,16 +368,16 @@
                   </div>
                   <div class="field">
                     <label>{{ t('hospitalizations.mucousMembranes') }}</label>
-                    <input v-model.trim="monForm.mucousMembranes" type="text" placeholder="Rosadas, hÃºmedasâ€¦" :disabled="monSaving" />
+                    <input v-model.trim="monForm.mucousMembranes" type="text" placeholder="Rosadas, húmedas…" :disabled="monSaving" />
                   </div>
                   <div class="field">
                     <label>{{ t('hospitalizations.hydrationStatus') }}</label>
-                    <input v-model.trim="monForm.hydrationStatus" type="text" placeholder="Normotenso, deshidratadoâ€¦" :disabled="monSaving" />
+                    <input v-model.trim="monForm.hydrationStatus" type="text" placeholder="Normotenso, deshidratado…" :disabled="monSaving" />
                   </div>
                   <div class="field">
                     <label>{{ t('hospitalizations.consciousnessLevel') }}</label>
                     <select v-model="monForm.consciousnessLevel" :disabled="monSaving">
-                      <option value="">â€” {{ t('common.none') }} â€”</option>
+                      <option value="">— {{ t('common.none') }} —</option>
                       <option value="alert">{{ t('hospitalizations.consciousnessAlert') }}</option>
                       <option value="lethargic">{{ t('hospitalizations.consciousnessLethargic') }}</option>
                       <option value="stupor">{{ t('hospitalizations.consciousnessStupor') }}</option>
@@ -393,7 +393,7 @@
                 <div style="margin-top:10px;display:flex;justify-content:flex-end">
                   <BaseButton type="button" style="padding:8px 18px;font-size:0.85rem" @click="handleMonitoring" :disabled="monSaving">
                     <span v-if="monSaving" class="spin spin--sm" />
-                    <span v-else>ðŸ’¾ {{ t('hospitalizations.saveMonitoring') }}</span>
+                    <span v-else>💾 {{ t('hospitalizations.saveMonitoring') }}</span>
                   </BaseButton>
                 </div>
               </div>
@@ -409,7 +409,7 @@
                     <span class="badge badge--blue">{{ med.route }}</span>
                     <span class="sub">Cada {{ med.frequency }}</span>
                   </div>
-                  <div class="sub">{{ med.dose }} {{ med.dose_unit }}{{ med.duration_hours ? ' Â· ' + med.duration_hours + 'h' : '' }}</div>
+                  <div class="sub">{{ med.dose }} {{ med.dose_unit }}{{ med.duration_hours ? ' · ' + med.duration_hours + 'h' : '' }}</div>
                   <p v-if="med.notes" class="sub" style="margin-top:3px">{{ med.notes }}</p>
                 </div>
               </div>
@@ -446,7 +446,7 @@
                       <option value="iv">IV</option>
                       <option value="im">IM</option>
                       <option value="sc">SC</option>
-                      <option value="topical">TÃ³pica</option>
+                      <option value="topical">Tópica</option>
                       <option value="other">{{ t('common.other') }}</option>
                     </select>
                     <span v-if="mfe.route" class="field-error">{{ mfe.route }}</span>
@@ -469,7 +469,7 @@
                 <div style="margin-top:10px;display:flex;justify-content:flex-end">
                   <BaseButton type="button" style="padding:8px 18px;font-size:0.85rem" @click="handleMedication" :disabled="medSaving">
                     <span v-if="medSaving" class="spin spin--sm" />
-                    <span v-else>ðŸ’Š {{ t('hospitalizations.prescribe') }}</span>
+                    <span v-else>💊 {{ t('hospitalizations.prescribe') }}</span>
                   </BaseButton>
                 </div>
               </div>
@@ -482,7 +482,7 @@
                 variant="danger"
                 @click="openDischarge(detailData); showDetail = false"
               >
-                ðŸšª {{ t('hospitalizations.discharge') }}
+                🚪 {{ t('hospitalizations.discharge') }}
               </BaseButton>
             <BaseButton type="button" variant="ghost" @click="showDetail = false">{{ t('common.close') }}</BaseButton>
           </div>
@@ -490,13 +490,13 @@
       </div>
     </Transition>
 
-    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• MODAL DAR ALTA â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══════════════════ MODAL DAR ALTA ══════════════════ -->
     <Transition name="modal">
       <div v-if="showDischarge" class="modal-backdrop" @click.self="showDischarge = false">
         <div class="modal modal--sm">
           <div class="modal__header">
-            <h3>ðŸšª {{ t('hospitalizations.dischargeTitle') }} â€” {{ dischargeTarget?.patient_name }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showDischarge = false">âœ•</BaseButton>
+            <h3>🚪 {{ t('hospitalizations.dischargeTitle') }} — {{ dischargeTarget?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showDischarge = false">✕</BaseButton>
           </div>
           <form @submit.prevent="handleDischarge" novalidate>
             <div class="form-body">
@@ -522,7 +522,7 @@
               <BaseButton type="button" variant="ghost" @click="showDischarge = false" :disabled="dischargeSaving">{{ t('common.cancel') }}</BaseButton>
               <BaseButton type="submit" variant="danger" :disabled="dischargeSaving">
                 <span v-if="dischargeSaving" class="spin spin--sm" />
-                <span v-else>ðŸšª {{ t('hospitalizations.confirmDischarge') }}</span>
+                <span v-else>🚪 {{ t('hospitalizations.confirmDischarge') }}</span>
               </BaseButton>
             </div>
           </form>
@@ -589,10 +589,10 @@ function normalizePatient(row) {
   }
 }
 
-// â”€â”€ Vista â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Vista ────────────────────────────────────────────────────────────────────
 const viewMode = ref('list')
 
-// â”€â”€ Lista â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Lista ────────────────────────────────────────────────────────────────────
 const items        = ref([])
 const loading      = ref(false)
 const error        = ref('')
@@ -600,7 +600,7 @@ const search       = ref('')
 const statusFilter = ref('')
 const pagination   = ref({ page: 1, totalPages: 1 })
 
-const stats = reactive({ active: 0, dischargedToday: 0, avgDays: 'â€”' })
+const stats = reactive({ active: 0, dischargedToday: 0, avgDays: '—' })
 
 async function load(page = 1) {
   loading.value = true; error.value = ''
@@ -636,13 +636,13 @@ function computeStats() {
   })
   stats.active = active
   stats.dischargedToday = dischargedToday
-  stats.avgDays = countWithDays ? (totalDays / countWithDays).toFixed(1) : 'â€”'
+  stats.avgDays = countWithDays ? (totalDays / countWithDays).toFixed(1) : '—'
 }
 
 let loadTimer = null
 function debouncedLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(load, 350) }
 
-// â”€â”€ Tablero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Tablero ──────────────────────────────────────────────────────────────────
 const boardData    = ref([])
 const boardLoading = ref(false)
 const boardError   = ref('')
@@ -662,7 +662,7 @@ function switchToBoard() {
   if (boardData.value.length === 0) loadBoard()
 }
 
-// â”€â”€ Salas (para admisiÃ³n) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Salas (para admisión) ────────────────────────────────────────────────────
 const availableWards = ref([])
 const wardsLoading   = ref(false)
 
@@ -682,15 +682,15 @@ const freeKennelsForWard = computed(() => {
   return ward.kennels.filter(k => k.status === 'available' || k.status === 'free')
 })
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function petEmoji(s) {
-  if (!s) return 'ðŸ¾'
-  const m = { perro:'ðŸ¶', dog:'ðŸ¶', gato:'ðŸ±', cat:'ðŸ±', conejo:'ðŸ°', rabbit:'ðŸ°', loro:'ðŸ¦œ', bird:'ðŸ¦œ', pez:'ðŸŸ', fish:'ðŸŸ', tortuga:'ðŸ¢', reptile:'ðŸ¦Ž', hamster:'ðŸ¹' }
-  return m[s.toLowerCase()] || 'ðŸ¾'
+  if (!s) return '🐾'
+  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
+  return m[s.toLowerCase()] || '🐾'
 }
 
 function formatDate(iso) {
-  if (!iso) return 'â€”'
+  if (!iso) return '—'
   return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
@@ -703,7 +703,7 @@ function hospStatusLabel(s) {
     admitted: t('hospitalizations.admittedStatus'),
     discharged: t('hospitalizations.dischargedStatus'),
     transferred: t('hospitalizations.transferredStatus'),
-  }[s] || s || 'â€”'
+  }[s] || s || '—'
 }
 
 function consciousnessClass(c) {
@@ -719,7 +719,7 @@ function consciousnessLabel(c) {
   }[c] || c || ''
 }
 
-// â”€â”€ Autocomplete paciente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Autocomplete paciente ────────────────────────────────────────────────────
 const patientSearch        = ref('')
 const patientResults       = ref([])
 const selectedPatientLabel = ref('')
@@ -740,12 +740,12 @@ async function searchPatients() {
 
 function selectPatient(pt) {
   admitForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' â€” ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 }
 
-// â”€â”€ Modal admitir â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal admitir ────────────────────────────────────────────────────────────
 const showAdmit   = ref(false)
 const admitSaving = ref(false)
 const admitError  = ref('')
@@ -772,10 +772,10 @@ function openAdmit() {
 
 function validateAdmit() {
   Object.keys(afe).forEach(k => delete afe[k])
-  if (!admitForm.patientId)      afe.patientId      = 'SeleccionÃ¡ un paciente'
-  if (!admitForm.wardId)         afe.wardId         = 'SeleccionÃ¡ una sala'
-  if (!admitForm.attendingVetId) afe.attendingVetId = 'IngresÃ¡ el veterinario a cargo'
-  if (!admitForm.admissionReason) afe.admissionReason = 'IngresÃ¡ el motivo de internaciÃ³n'
+  if (!admitForm.patientId)      afe.patientId      = 'Seleccioná un paciente'
+  if (!admitForm.wardId)         afe.wardId         = 'Seleccioná una sala'
+  if (!admitForm.attendingVetId) afe.attendingVetId = 'Ingresá el veterinario a cargo'
+  if (!admitForm.admissionReason) afe.admissionReason = 'Ingresá el motivo de internación'
   return Object.keys(afe).length === 0
 }
 
@@ -798,7 +798,7 @@ async function handleAdmit() {
   } finally { admitSaving.value = false }
 }
 
-// â”€â”€ Modal detalle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal detalle ────────────────────────────────────────────────────────────
 const showDetail   = ref(false)
 const detailLoading = ref(false)
 const detailData   = ref(null)
@@ -818,7 +818,7 @@ async function openHospDetail(hosp) {
   finally { detailLoading.value = false }
 }
 
-// â”€â”€ Monitoreo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Monitoreo ────────────────────────────────────────────────────────────────
 const monSaving = ref(false)
 const monError  = ref('')
 const monForm   = reactive({
@@ -859,7 +859,7 @@ async function handleMonitoring() {
   } finally { monSaving.value = false }
 }
 
-// â”€â”€ Medicamentos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Medicamentos ─────────────────────────────────────────────────────────────
 const medSaving = ref(false)
 const medError  = ref('')
 const mfe       = reactive({})
@@ -885,7 +885,7 @@ function validateMed() {
   if (!medForm.medicationName) mfe.medicationName = 'Requerido'
   if (!medForm.dose)           mfe.dose           = 'Requerido'
   if (!medForm.frequency)      mfe.frequency      = 'Requerido'
-  if (!medForm.route)          mfe.route          = 'SeleccionÃ¡ la vÃ­a'
+  if (!medForm.route)          mfe.route          = 'Seleccioná la vía'
   if (!medForm.startDatetime)  mfe.startDatetime  = 'Requerido'
   return Object.keys(mfe).length === 0
 }
@@ -913,7 +913,7 @@ async function handleMedication() {
   } finally { medSaving.value = false }
 }
 
-// â”€â”€ Modal dar alta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal dar alta ───────────────────────────────────────────────────────────
 const showDischarge    = ref(false)
 const dischargeTarget  = ref(null)
 const dischargeSaving  = ref(false)
@@ -1007,7 +1007,7 @@ onMounted(load)
 .btn-action--danger { background: var(--danger); color: white; border-color: var(--danger); }
 .btn-action--danger:hover { opacity: 0.88; }
 
-/* PaginaciÃ³n */
+/* Paginación */
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
 .pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }
@@ -1124,7 +1124,7 @@ onMounted(load)
 .spin--dark { border-color: rgba(0,0,0,0.1); border-top-color: var(--primary); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* TransiciÃ³n modal */
+/* Transición modal */
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
@@ -1139,5 +1139,6 @@ onMounted(load)
   .table thead th:nth-child(5), .table tbody td:nth-child(5) { display: none; }
 }
 </style>
+
 
 

@@ -110,7 +110,7 @@
                   @click="openAnesthesia(s)"
                   :title="t('surgery.registerAnesthesia')"
                 >
-                  Anestesia
+                  {{ t('surgery.registerAnesthesia') }}
                 </button>
                 <button
                   v-if="s.status === 'scheduled' || s.status === 'in_progress'"
@@ -135,9 +135,9 @@
     </div>
 
     <div v-if="pagination.totalPages > 1" class="pagination">
-      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">← Ant.</button>
+      <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">{{ t('common.previous') }}</button>
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
-      <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
+      <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('common.next') }}</button>
     </div>
 
     <!-- Modal programar cirugía -->
@@ -146,7 +146,7 @@
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>🔪 {{ t('surgery.newModalTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showNew = false">✕</BaseButton>
+            <BaseButton type="button" variant="ghost" class="modal__close" :aria-label="t('common.close')" @click="showNew = false">×</BaseButton>
           </div>
 
           <form @submit.prevent="handleCreate" novalidate>
@@ -170,7 +170,7 @@
                     type="button"
                     class="autocomplete__item"
                     role="option"
-                    :aria-label="`Seleccionar ${pt.name}`"
+                    :aria-label="`${t('common.selectPatient')} ${pt.name}`"
                     @click="selectPatient(pt)"
                   >
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>

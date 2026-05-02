@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
@@ -9,7 +9,7 @@
           <p class="page-sub">{{ t('pathology.subtitle') }}</p>
         </div>
       </div>
-      <button class="btn-primary" @click="openOrderModal()">{{ t('pathology.newOrder') }}</button>
+      <button type="button" class="btn-primary" @click="openOrderModal()">{{ t('pathology.newOrder') }}</button>
     </div>
 
     <!-- KPIs -->
@@ -29,7 +29,7 @@
     <div class="filters">
       <select v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">{{ t('common.allStatuses') }}</option>
-        <option value="pending">{{ t('common.pending') || 'Pendiente' }}</option>
+        <option value="pending">{{ t('common.pending') }}</option>
         <option value="processing">{{ t('pathology.processing') }}</option>
         <option value="reported">{{ t('pathology.reported') }}</option>
       </select>
@@ -132,11 +132,11 @@
                         <label>{{ t('pathology.sampleType') }}</label>
                         <select v-model="s.sampleType" :disabled="saving">
                           <option value="">{{ t('common.none') }}</option>
-                          <option value="biopsy">Biopsia</option>
-                          <option value="cytology">Citología</option>
-                          <option value="fine_needle">Punción con aguja fina</option>
-                          <option value="surgical">Pieza quirúrgica</option>
-                          <option value="necropsy">Necropsico</option>
+                          <option value="biopsy">{{ t('pathology.sampleBiopsy') }}</option>
+                          <option value="cytology">{{ t('pathology.sampleCytology') }}</option>
+                          <option value="fine_needle">{{ t('pathology.sampleFineNeedle') }}</option>
+                          <option value="surgical">{{ t('pathology.sampleSurgical') }}</option>
+                          <option value="necropsy">{{ t('pathology.sampleNecropsy') }}</option>
                           <option value="other">Otro</option>
                         </select>
                       </div>
@@ -152,9 +152,9 @@
                         <label>{{ t('pathology.fixationMethod') }}</label>
                         <select v-model="s.fixationMethod" :disabled="saving">
                           <option value="">{{ t('common.none') }}</option>
-                          <option value="formalin_10">Formol 10%</option>
-                          <option value="fresh">En fresco</option>
-                          <option value="alcohol">Alcohol</option>
+                          <option value="formalin_10">{{ t('pathology.fixationFormalin10') }}</option>
+                          <option value="fresh">{{ t('pathology.fixationFresh') }}</option>
+                          <option value="alcohol">{{ t('pathology.fixationAlcohol') }}</option>
                           <option value="other">Otro</option>
                         </select>
                       </div>
@@ -273,12 +273,12 @@
                   <label>{{ t('pathology.behavior') }}</label>
                   <select v-model="resultForm.behavior" :disabled="resultSaving">
                     <option value="">{{ t('common.none') }}</option>
-                    <option value="benign">Benigno</option>
-                    <option value="malignant">Maligno</option>
-                    <option value="borderline">Borderline</option>
-                    <option value="inflammatory">Inflamatorio</option>
-                    <option value="reactive">Reactivo</option>
-                    <option value="normal">Normal</option>
+                    <option value="benign">{{ t('pathology.resultBenign') }}</option>
+                    <option value="malignant">{{ t('pathology.resultMalignant') }}</option>
+                    <option value="borderline">{{ t('pathology.resultBorderline') }}</option>
+                    <option value="inflammatory">{{ t('pathology.resultInflammatory') }}</option>
+                    <option value="reactive">{{ t('pathology.resultReactive') }}</option>
+                    <option value="normal">{{ t('pathology.resultNormal') }}</option>
                   </select>
                 </div>
                 <div class="field">
@@ -286,15 +286,15 @@
                   <input v-model.trim="resultForm.tnmStage" type="text" placeholder="Ej: III" :disabled="resultSaving" />
                 </div>
                 <div class="field">
-                  <label>T</label>
+                  <label>{{ t('pathology.tLabel') }}</label>
                   <input v-model.trim="resultForm.tnmT" type="text" placeholder="T0, T1…" :disabled="resultSaving" />
                 </div>
                 <div class="field">
-                  <label>N</label>
+                  <label>{{ t('pathology.nLabel') }}</label>
                   <input v-model.trim="resultForm.tnmN" type="text" placeholder="N0, N1…" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>M</label>
+                  <label>{{ t('pathology.mLabel') }}</label>
                   <input v-model.trim="resultForm.tnmM" type="text" placeholder="M0, M1…" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
@@ -307,7 +307,7 @@
                 </div>
                 <div class="field field--full">
                   <label>{{ t('pathology.detailIHC') }}</label>
-                  <textarea v-model.trim="resultForm.ihcResults" rows="2" placeholder="Marcadores, resultados…" :disabled="resultSaving" />
+                  <textarea v-model.trim="resultForm.ihcResults" rows="2" :placeholder="t('pathology.ihcPlaceholder')" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
                   <label>{{ t('pathology.detailSpecialStains') }}</label>
@@ -388,7 +388,14 @@ const statusFilter = ref('')
 const kpis = ref({ pending: 0, processing: 0, reported: 0 })
 
 const STATUS   = { pending: 'Pendiente', processing: 'En proceso', reported: 'Informado' }
-const BEHAVIOR = { benign: 'Benigno', malignant: 'Maligno', borderline: 'Borderline', inflammatory: 'Inflamatorio', reactive: 'Reactivo', normal: 'Normal' }
+const BEHAVIOR = {
+  benign: t('pathology.resultBenign'),
+  malignant: t('pathology.resultMalignant'),
+  borderline: t('pathology.resultBorderline'),
+  inflammatory: t('pathology.resultInflammatory'),
+  reactive: t('pathology.resultReactive'),
+  normal: t('pathology.resultNormal'),
+}
 
 function behaviorClass(b) {
   return { benign: 'beh--benign', malignant: 'beh--malignant', borderline: 'beh--borderline' }[b] || ''
@@ -690,3 +697,4 @@ onMounted(() => { load(); loadTypes() })
 .result-section { background: #F0FFF8; border-radius: var(--radius); padding: 14px; border: 1px solid #b2e4d0; }
 .no-result-note { font-size: 0.85rem; color: var(--text-3); padding: 12px 0; font-style: italic; }
 </style>
+
