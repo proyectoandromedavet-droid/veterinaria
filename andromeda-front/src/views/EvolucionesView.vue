@@ -293,7 +293,6 @@
                     <label>{{ t('evolutions.ownerObservations') }}</label>
                     <textarea v-model.trim="form.ownerObservations" rows="2" :placeholder="t('evolutions.ownerObservationsPlaceholder')" :disabled="saving" />
                   </div>
-                  </div>
                 </div>
               </div>
 
