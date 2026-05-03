@@ -82,18 +82,7 @@ router.post('/',
         }
       );
       return R.created(res, { id: r.insertId });
-    } catch (e) {
-    console.error('[vaccinations:create] failed', {
-    message: e.message,
-    code: e.code,
-    errno: e.errno,
-    sqlState: e.sqlState,
-    sqlMessage: e.sqlMessage,
-    user: req.user,
-    body: req.body,
-    });
-    next(e);
-    }
+    } catch (e) { next(e); }
   }
 );
 
