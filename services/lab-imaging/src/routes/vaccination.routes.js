@@ -5,51 +5,132 @@ const { body, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R  = require('../../../../shared/response');
 
-const router   = Router();
+const router = Router();
+
 const validate = (req, res, next) => {
   const e = validationResult(req);
   if (!e.isEmpty()) return R.badRequest(res, 'Validation failed', e.array());
   next();
 };
 
-// GET /vaccinations?patientId=&branchId=
+const getRows = async (sql, params = {}) => {
+  const result = await db.query(sql, params);
+  return Array.isArray(result?.[0]) ? result[0] : result;
+};
+
+const getInsertResult = async (sql, params = {}) => {
+  const result = await db.query(sql, params);
+  return Array.isArray(result) ? result[0] : result;
+};
+
+const resolveBranchFromPatient = async (req, patientId) => {
+  const userBranchId = req.user?.branchId || null;
+
+  const patients = await getRows(
+    userBranchId
+      ? `SELECT id, branch_id
+         FROM patients
+         WHERE id = :patientId
+           AND branch_id = :branchId
+         LIMIT 1`
+      : `SELECT id, branch_id
+         FROM patients
+         WHERE id = :patientId
+         LIMIT 1`,
+    userBranchId
+      ? { patientId, branchId: userBranchId }
+      : { patientId }
+  );
+
+  const patient = patients[0];
+
+  if (!patient) {
+    return { error: 'Paciente no encontrado' };
+  }
+
+  const branchId = userBranchId || patient.branch_id || null;
+
+  if (!branchId) {
+    return { error: 'Paciente sin sucursal asignada' };
+  }
+
+  return { patient, branchId };
+};
+
+// GET /vaccinations?patientId=&upcoming=
 router.get('/', async (req, res, next) => {
   try {
     const { patientId, upcoming, page = 1, limit = 30 } = req.query;
-    const offset = (page - 1) * limit;
-    const conds = ['v.branch_id = :bid'];
-    const p     = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
-    if (patientId) { conds.push('v.patient_id = :pid'); p.pid = patientId; }
-    if (upcoming === 'true') conds.push('v.next_due_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 DAY)');
+    const offset = (Number(page) - 1) * Number(limit);
 
-    const rows = await db.query(
+    let branchId = req.user?.branchId || null;
+
+    if (!branchId && patientId) {
+      const resolved = await resolveBranchFromPatient(req, patientId);
+      if (resolved.error) return R.badRequest(res, resolved.error);
+      branchId = resolved.branchId;
+    }
+
+    if (!branchId) {
+      return R.badRequest(res, 'No se pudo determinar la sucursal');
+    }
+
+    const conds = ['v.branch_id = :bid'];
+    const p = {
+      bid: branchId,
+      limit: Number(limit),
+      offset: Number(offset),
+    };
+
+    if (patientId) {
+      conds.push('v.patient_id = :pid');
+      p.pid = patientId;
+    }
+
+    if (upcoming === 'true') {
+      conds.push('v.next_due_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 DAY)');
+    }
+
+    const rows = await getRows(
       `SELECT v.id, v.vaccination_date, v.next_due_date, v.batch_number, v.notes,
               vac.name AS vaccine_name, vac.disease_covered, vac.manufacturer,
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS administered_by
        FROM vaccinations v
-       JOIN vaccines vac ON v.vaccine_id   = vac.id
-       JOIN patients p   ON v.patient_id   = p.id
-       JOIN species  sp  ON p.species_id   = sp.id
-       JOIN users    u   ON v.administered_by = u.id
+       JOIN vaccines vac ON v.vaccine_id = vac.id
+       JOIN patients p   ON v.patient_id = p.id
+       JOIN species sp   ON p.species_id = sp.id
+       JOIN users u      ON v.administered_by = u.id
        WHERE ${conds.join(' AND ')}
        ORDER BY v.vaccination_date DESC
        LIMIT :limit OFFSET :offset`,
       p
     );
+
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
-// GET /vaccinations/alerts (due/overdue)
+// GET /vaccinations/alerts
 router.get('/alerts', async (req, res, next) => {
   try {
-    const rows = await db.query(
+    const branchId = req.user?.branchId || null;
+
+    if (!branchId) {
+      return R.badRequest(res, 'No se pudo determinar la sucursal');
+    }
+
+    const rows = await getRows(
       `SELECT * FROM v_vaccination_alerts WHERE branch_id = :bid ORDER BY next_due_date`,
-      { bid: req.user.branchId }
+      { bid: branchId }
     );
+
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // POST /vaccinations
@@ -61,38 +142,25 @@ router.post('/',
   async (req, res, next) => {
     try {
       const {
-        patientId, vaccineId, vaccinationDate,
-        batchNumber, expiryDate, dose, route, site,
-        nextDueDate, notes, medicalRecordId,
+        patientId,
+        vaccineId,
+        vaccinationDate,
+        batchNumber,
+        expiryDate,
+        dose,
+        route,
+        site,
+        nextDueDate,
+        notes,
+        medicalRecordId,
       } = req.body;
 
-      const userBranchId = req.user.branchId || null;
+      const resolved = await resolveBranchFromPatient(req, patientId);
+      if (resolved.error) return R.badRequest(res, resolved.error);
 
-      const [patients] = await db.query(
-        userBranchId
-          ? `SELECT id, branch_id
-             FROM patients
-             WHERE id = :patientId
-               AND branch_id = :branchId
-             LIMIT 1`
-          : `SELECT id, branch_id
-             FROM patients
-             WHERE id = :patientId
-             LIMIT 1`,
-        userBranchId
-          ? { patientId, branchId: userBranchId }
-          : { patientId }
-      );
+      const { branchId } = resolved;
 
-      const patient = patients[0];
-
-      if (!patient?.branch_id) {
-        return R.badRequest(res, 'Paciente no encontrado o sin sucursal asignada');
-      }
-
-      const branchId = userBranchId || patient.branch_id;
-
-      const [r] = await db.query(
+      const r = await getInsertResult(
         `INSERT INTO vaccinations
            (branch_id, patient_id, vaccine_id, medical_record_id,
             vaccination_date, batch_number, expiry_date,
@@ -100,13 +168,22 @@ router.post('/',
             next_due_date, notes, administered_by)
          VALUES (:bid,:pid,:vid,:mid,:date,:batch,:exp,:dose,:route,:site,:next,:notes,:uid)`,
         {
-          bid: branchId, pid: patientId, vid: vaccineId,
-          mid: medicalRecordId || null, date: vaccinationDate,
-          batch: batchNumber || null, exp: expiryDate || null,
-          dose: dose || null, route: route || null, site: site || null,
-          next: nextDueDate || null, notes: notes || null, uid: req.user.userId,
+          bid: branchId,
+          pid: patientId,
+          vid: vaccineId,
+          mid: medicalRecordId || null,
+          date: vaccinationDate,
+          batch: batchNumber || null,
+          exp: expiryDate || null,
+          dose: dose || null,
+          route: route || null,
+          site: site || null,
+          next: nextDueDate || null,
+          notes: notes || null,
+          uid: req.user.userId,
         }
       );
+
       return R.created(res, { id: r.insertId });
     } catch (e) {
       console.error('[vaccinations:create] failed', {
@@ -127,36 +204,40 @@ router.post('/',
 router.get('/vaccines', async (req, res, next) => {
   try {
     const { speciesId } = req.query;
+
     const where = speciesId
       ? `WHERE (v.target_species LIKE :s OR v.target_species = 'all') AND v.is_active = TRUE`
       : `WHERE v.is_active = TRUE`;
-    const rows = await db.query(
+
+    const rows = await getRows(
       `SELECT v.*, vm.name AS manufacturer_name
        FROM vaccines v
        LEFT JOIN vaccine_manufacturers vm ON v.manufacturer_id = vm.id
-       ${where} ORDER BY v.name`,
+       ${where}
+       ORDER BY v.name`,
       speciesId ? { s: `%${speciesId}%` } : {}
     );
+
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // ── Deworming ─────────────────────────────────────────────────────────────────
 
+// GET /vaccinations/deworming?patientId=
 const getDeworming = [async (req, res, next) => {
   try {
     const { patientId, page = 1, limit = 30 } = req.query;
-    const offset = (page - 1) * limit;
+    const offset = (Number(page) - 1) * Number(limit);
 
-    let branchId = req.user.branchId || null;
+    let branchId = req.user?.branchId || null;
 
-    // 🔥 si no hay branch en user, lo buscamos desde el paciente
     if (!branchId && patientId) {
-      const [patients] = await db.query(
-        `SELECT branch_id FROM patients WHERE id = :patientId LIMIT 1`,
-        { patientId }
-      );
-      branchId = patients[0]?.branch_id || null;
+      const resolved = await resolveBranchFromPatient(req, patientId);
+      if (resolved.error) return R.badRequest(res, resolved.error);
+      branchId = resolved.branchId;
     }
 
     if (!branchId) {
@@ -164,24 +245,28 @@ const getDeworming = [async (req, res, next) => {
     }
 
     const conds = ['dr.branch_id = :bid'];
-    const p = { bid: branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p = {
+      bid: branchId,
+      limit: Number(limit),
+      offset: Number(offset),
+    };
 
     if (patientId) {
       conds.push('dr.patient_id = :pid');
       p.pid = patientId;
     }
 
-    const rows = await db.query(
+    const rows = await getRows(
       `SELECT dr.id, dr.deworming_date, dr.next_due_date, dr.weight_at_treatment,
               dr.dose_administered, dr.notes,
               ap.name AS product_name, ap.parasite_type, ap.active_ingredient,
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS administered_by
        FROM deworming_records dr
-       JOIN antiparasitic_products ap ON dr.product_id  = ap.id
-       JOIN patients p                ON dr.patient_id  = p.id
-       JOIN species  sp               ON p.species_id   = sp.id
-       JOIN users    u                ON dr.administered_by = u.id
+       JOIN antiparasitic_products ap ON dr.product_id = ap.id
+       JOIN patients p                ON dr.patient_id = p.id
+       JOIN species sp                ON p.species_id = sp.id
+       JOIN users u                   ON dr.administered_by = u.id
        WHERE ${conds.join(' AND ')}
        ORDER BY dr.deworming_date DESC
        LIMIT :limit OFFSET :offset`,
@@ -189,26 +274,32 @@ const getDeworming = [async (req, res, next) => {
     );
 
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 }];
 
+// GET /vaccinations/deworming/alerts
 const getDewormingAlerts = [async (req, res, next) => {
   try {
-    let branchId = req.user.branchId || null;
+    const branchId = req.user?.branchId || null;
 
     if (!branchId) {
       return R.badRequest(res, 'No se pudo determinar la sucursal');
     }
 
-    const rows = await db.query(
+    const rows = await getRows(
       `SELECT * FROM v_deworming_alerts WHERE branch_id = :bid ORDER BY next_due_date`,
       { bid: branchId }
     );
 
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 }];
 
+// POST /vaccinations/deworming
 const postDeworming = [
   body('patientId').isInt(),
   body('productId').isInt(),
@@ -217,37 +308,31 @@ const postDeworming = [
   async (req, res, next) => {
     try {
       const {
-        patientId, productId, dewormingDate,
-        weightAtTreatment, doseAdministered, route, nextDueDate, notes,
+        patientId,
+        productId,
+        dewormingDate,
+        weightAtTreatment,
+        doseAdministered,
+        route,
+        nextDueDate,
+        notes,
       } = req.body;
 
-      const userBranchId = req.user.branchId || null;
+      const resolved = await resolveBranchFromPatient(req, patientId);
+      if (resolved.error) return R.badRequest(res, resolved.error);
 
-      const [patients] = await db.query(
-        userBranchId
-          ? `SELECT id, branch_id
-             FROM patients
-             WHERE id = :patientId
-               AND branch_id = :branchId
-             LIMIT 1`
-          : `SELECT id, branch_id
-             FROM patients
-             WHERE id = :patientId
-             LIMIT 1`,
-        userBranchId
-          ? { patientId, branchId: userBranchId }
-          : { patientId }
+      const { branchId } = resolved;
+
+      const products = await getRows(
+        `SELECT id FROM antiparasitic_products WHERE id = :productId LIMIT 1`,
+        { productId }
       );
 
-      const patient = patients[0];
-
-      if (!patient?.branch_id) {
-        return R.badRequest(res, 'Paciente no encontrado o sin sucursal asignada');
+      if (!products[0]) {
+        return R.badRequest(res, 'Producto antiparasitario no encontrado');
       }
 
-      const branchId = userBranchId || patient.branch_id;
-
-      const [r] = await db.query(
+      const r = await getInsertResult(
         `INSERT INTO deworming_records
            (branch_id, patient_id, product_id,
             deworming_date, weight_at_treatment, dose_administered,
@@ -283,25 +368,25 @@ const postDeworming = [
   },
 ];
 
+// GET /vaccinations/deworming/products
 const getDewormingProducts = [async (_req, res, next) => {
   try {
-    const rows = await db.query(
-      `SELECT * FROM antiparasitic_products WHERE is_active = TRUE ORDER BY parasite_type, name`
+    const rows = await getRows(
+      `SELECT *
+       FROM antiparasitic_products
+       WHERE is_active = TRUE
+       ORDER BY parasite_type, name`
     );
+
     return R.ok(res, rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 }];
 
-// GET /vaccinations/deworming?patientId=
 router.get('/deworming', ...getDeworming);
-
-// GET /vaccinations/deworming/alerts
 router.get('/deworming/alerts', ...getDewormingAlerts);
-
-// POST /vaccinations/deworming
 router.post('/deworming', ...postDeworming);
-
-// GET /vaccinations/deworming/products
 router.get('/deworming/products', ...getDewormingProducts);
 
 module.exports = router;
