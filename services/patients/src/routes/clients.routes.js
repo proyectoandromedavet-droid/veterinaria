@@ -162,10 +162,17 @@ router.post('/',
       const schema = await getClientSchema();
       const clientCols = schema.clients || new Set();
 
+      // Admin users may have no branchId — fall back to org's first branch
+      let branchId = req.user.branchId || null;
+      if (!branchId && req.user.orgId) {
+        const br = await db.queryOne('SELECT id FROM branches WHERE organization_id = :orgId ORDER BY id LIMIT 1', { orgId: req.user.orgId });
+        branchId = br?.id || null;
+      }
+
       const columns = ['branch_id', 'first_name', 'last_name', 'phone'];
       const values = [':branchId', ':fn', ':ln', ':phone'];
       const params = {
-        branchId: req.user.branchId,
+        branchId,
         orgId: req.user.orgId,
         fn: firstName,
         ln: lastName,

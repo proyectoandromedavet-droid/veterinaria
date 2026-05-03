@@ -123,6 +123,13 @@ router.post('/',
       }
 
       if (!appointmentId) {
+        // Admin users may have no branchId — use the creating user's branch
+        let branchId = req.user.branchId || null;
+        if (!branchId && req.user.userId) {
+          const u = await db.queryOne('SELECT branch_id FROM users WHERE id = :uid', { uid: req.user.userId });
+          branchId = u?.branch_id || null;
+        }
+
         // Crear cita walk-in
         const [apptResult] = await db.query(
           `INSERT INTO appointments
@@ -131,7 +138,7 @@ router.post('/',
            VALUES (:bid, :pid, :uid, NOW(), 30,
                    'in_progress', :reason, NULL, 0)`,
           {
-            bid:    req.user.branchId,
+            bid:    branchId,
             pid:    patientId,
             uid:    req.user.userId,
             reason: encrypt(chiefComplaint),

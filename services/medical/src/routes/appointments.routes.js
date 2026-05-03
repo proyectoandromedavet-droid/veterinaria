@@ -124,13 +124,20 @@ router.post('/',
         appointmentTypeId, reason, notes, isEmergency = false,
       } = req.body;
 
+      // Admin users may have no branchId — use the vet's branch in that case
+      let branchId = req.user.branchId || null;
+      if (!branchId && vetId) {
+        const vet = await db.queryOne('SELECT branch_id FROM users WHERE id = :vid', { vid: vetId });
+        branchId = vet?.branch_id || null;
+      }
+
       const [r] = await db.query(
         `INSERT INTO appointments
            (branch_id, patient_id, vet_id, scheduled_date, duration_minutes,
             appointment_type_id, reason, notes, is_emergency, status)
          VALUES (:bid, :pid, :vid, :date, :dur, :typeId, :reason, :notes, :emerg, 'scheduled')`,
         {
-          bid: req.user.branchId, pid: patientId, vid: vetId,
+          bid: branchId, pid: patientId, vid: vetId,
           date: scheduledDate, dur: durationMinutes,
           typeId: appointmentTypeId || null, reason: reason || null,
           notes: notes || null, emerg: isEmergency ? 1 : 0,

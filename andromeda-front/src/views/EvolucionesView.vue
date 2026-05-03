@@ -261,21 +261,29 @@
                     <input v-model.trim="form.recentTravel" type="text" placeholder="Destino y fecha aproximada…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>{{ t('evolutions.vaccinationHistory') }}</label>
-                    <textarea v-model.trim="form.vaccinationHistory" rows="2" placeholder="Vacunas aplicadas, fechas y laboratorio…" :disabled="saving" />
+                    <label>{{ t('evolutions.vaccinationHistory') }}
+                      <span v-if="loadingHistory" class="history-loading">⏳ cargando…</span>
+                      <span v-else-if="form.patientId && !form.vaccinationHistory" class="history-empty">sin registros</span>
+                    </label>
+                    <textarea v-model.trim="form.vaccinationHistory" rows="3" placeholder="Vacunas aplicadas, fechas y laboratorio…" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>{{ t('evolutions.dewormingHistory') }}</label>
-                    <textarea v-model.trim="form.dewormingHistory" rows="2" placeholder="Antiparasitarios internos/externos, productos y fechas…" :disabled="saving" />
+                    <label>{{ t('evolutions.dewormingHistory') }}
+                      <span v-if="loadingHistory" class="history-loading">⏳ cargando…</span>
+                      <span v-else-if="form.patientId && !form.dewormingHistory" class="history-empty">sin registros</span>
+                    </label>
+                    <textarea v-model.trim="form.dewormingHistory" rows="3" placeholder="Antiparasitarios internos/externos, productos y fechas…" :disabled="saving" />
                   </div>
-                  <div class="field field--full">
                   <div class="field field--full">
                     <label>{{ t('evolutions.previousIllnesses') }}</label>
                     <textarea v-model.trim="form.previousIllnesses" rows="2" :placeholder="t('evolutions.previousIllnessesPlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field field--full">
-                    <label>{{ t('evolutions.previousSurgeries') }}</label>
-                    <textarea v-model.trim="form.previousSurgeries" rows="2" :placeholder="t('evolutions.previousProceduresPlaceholder')" :disabled="saving" />
+                    <label>{{ t('evolutions.previousSurgeries') }}
+                      <span v-if="loadingHistory" class="history-loading">⏳ cargando…</span>
+                      <span v-else-if="form.patientId && !form.previousSurgeries" class="history-empty">sin cirugías</span>
+                    </label>
+                    <textarea v-model.trim="form.previousSurgeries" rows="3" :placeholder="t('evolutions.previousProceduresPlaceholder')" :disabled="saving" />
                   </div>
                   <div class="field field--full">
                     <label>{{ t('evolutions.currentMedications') }}</label>
@@ -656,6 +664,7 @@ function statusLabel(s) {
 const patientSearch        = ref('')
 const patientResults       = ref([])
 const selectedPatientLabel = ref('')
+const loadingHistory       = ref(false)
 let patientTimer = null
 
 async function searchPatients() {
@@ -671,11 +680,51 @@ async function searchPatients() {
   }, 300)
 }
 
-function selectPatient(pt) {
+function fmtDate(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+async function selectPatient(pt) {
   form.patientId = pt.id
   selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
+
+  // Pre-cargar historial del paciente desde la DB
+  loadingHistory.value = true
+  try {
+    const [vacRes, dewRes, surgRes] = await Promise.allSettled([
+      http.get('/vaccinations', { params: { patientId: pt.id, limit: 50 } }),
+      http.get('/vaccinations/deworming', { params: { patientId: pt.id, limit: 50 } }),
+      http.get('/surgeries', { params: { patientId: pt.id, limit: 20 } }),
+    ])
+
+    const asArr = r => (r.status === 'fulfilled' ? (Array.isArray(r.value?.data?.data) ? r.value.data.data : []) : [])
+
+    const vacunas = asArr(vacRes)
+    if (vacunas.length) {
+      form.vaccinationHistory = vacunas
+        .map(v => `${fmtDate(v.vaccination_date)} — ${v.vaccine_name}${v.disease_covered ? ' (' + v.disease_covered + ')' : ''}${v.next_due_date ? ' · próximo: ' + fmtDate(v.next_due_date) : ''}`)
+        .join('\n')
+    }
+
+    const desparasitaciones = asArr(dewRes)
+    if (desparasitaciones.length) {
+      form.dewormingHistory = desparasitaciones
+        .map(d => `${fmtDate(d.deworming_date)} — ${d.product_name}${d.parasite_type ? ' (' + d.parasite_type + ')' : ''}${d.next_due_date ? ' · próximo: ' + fmtDate(d.next_due_date) : ''}`)
+        .join('\n')
+    }
+
+    const cirugias = asArr(surgRes)
+    if (cirugias.length) {
+      form.previousSurgeries = cirugias
+        .filter(s => s.status === 'completed')
+        .map(s => `${fmtDate(s.scheduled_date)} — ${s.surgery_type} (${s.surgery_category}) · ${s.lead_surgeon}`)
+        .join('\n')
+    }
+  } catch { /* historial opcional — no bloquea el formulario */ }
+  finally { loadingHistory.value = false }
 }
 
 function formatDate(iso) {
@@ -1098,6 +1147,8 @@ onMounted(load)
 .autocomplete__item:hover { background: var(--surface-2); }
 .autocomplete__owner { font-size: 0.78rem; color: var(--text-3); }
 .selected-patient { margin-top: 5px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
+.history-loading { margin-left: 8px; font-size: 0.75rem; color: var(--text-3); font-weight: 400; }
+.history-empty   { margin-left: 8px; font-size: 0.75rem; color: var(--text-3); font-style: italic; font-weight: 400; }
 
 /* Receta */
 .rx-add-item { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; }

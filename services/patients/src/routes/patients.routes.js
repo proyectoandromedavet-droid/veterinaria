@@ -477,15 +477,20 @@ router.post('/',
       const ownerCols = schema.patient_owners || new Set();
 
       await db.transaction(async (conn) => {
-        const owner = await conn.queryOne(
-          `SELECT id
-           FROM clients
-           WHERE id = :clientId
-             AND branch_id = :branchId
-             ${clientCols.has('organization_id') ? 'AND organization_id = :orgId' : ''}`,
-          { clientId: primaryOwnerId, branchId: req.user.branchId, orgId: req.user.orgId }
-        );
+        // Admin users may have no branchId — look up client in the org without branch filter
+        const userBranchId = req.user.branchId || null;
+        let ownerQuery, ownerParams;
+        if (userBranchId) {
+          ownerQuery = `SELECT id, branch_id FROM clients WHERE id = :clientId AND branch_id = :branchId ${clientCols.has('organization_id') ? 'AND organization_id = :orgId' : ''}`;
+          ownerParams = { clientId: primaryOwnerId, branchId: userBranchId, orgId: req.user.orgId };
+        } else {
+          ownerQuery = `SELECT id, branch_id FROM clients WHERE id = :clientId ${clientCols.has('organization_id') ? 'AND organization_id = :orgId' : ''}`;
+          ownerParams = { clientId: primaryOwnerId, orgId: req.user.orgId };
+        }
+        const owner = await conn.queryOne(ownerQuery, ownerParams);
         if (!owner) throw new Error('Primary owner not found in current organization/branch');
+
+        const branchId = userBranchId || owner.branch_id || null;
 
         const columns = ['name', 'species_id'];
         const values = [':name', ':speciesId'];
@@ -506,7 +511,7 @@ router.post('/',
           photoUrl: photoUrl || null,
           notes: notes || null,
           orgId: req.user.orgId,
-          branchId: req.user.branchId,
+          branchId,
         };
 
         if (patientCols.has('organization_id')) { columns.push('organization_id'); values.push(':orgId'); }
