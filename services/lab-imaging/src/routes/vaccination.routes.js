@@ -66,6 +66,32 @@ router.post('/',
         nextDueDate, notes, medicalRecordId,
       } = req.body;
 
+      const userBranchId = req.user.branchId || null;
+
+      const [patients] = await db.query(
+        userBranchId
+          ? `SELECT id, branch_id
+             FROM patients
+             WHERE id = :patientId
+               AND branch_id = :branchId
+             LIMIT 1`
+          : `SELECT id, branch_id
+             FROM patients
+             WHERE id = :patientId
+             LIMIT 1`,
+        userBranchId
+          ? { patientId, branchId: userBranchId }
+          : { patientId }
+      );
+
+      const patient = patients[0];
+
+      if (!patient?.branch_id) {
+        return R.badRequest(res, 'Paciente no encontrado o sin sucursal asignada');
+      }
+
+      const branchId = userBranchId || patient.branch_id;
+
       const [r] = await db.query(
         `INSERT INTO vaccinations
            (branch_id, patient_id, vaccine_id, medical_record_id,
@@ -74,7 +100,7 @@ router.post('/',
             next_due_date, notes, administered_by)
          VALUES (:bid,:pid,:vid,:mid,:date,:batch,:exp,:dose,:route,:site,:next,:notes,:uid)`,
         {
-          bid: req.user.branchId, pid: patientId, vid: vaccineId,
+          bid: branchId, pid: patientId, vid: vaccineId,
           mid: medicalRecordId || null, date: vaccinationDate,
           batch: batchNumber || null, exp: expiryDate || null,
           dose: dose || null, route: route || null, site: site || null,
@@ -83,16 +109,16 @@ router.post('/',
       );
       return R.created(res, { id: r.insertId });
     } catch (e) {
-    console.error('[vaccinations:create] failed', {
-    message: e.message,
-    code: e.code,
-    errno: e.errno,
-    sqlState: e.sqlState,
-    sqlMessage: e.sqlMessage,
-    user: req.user,
-    body: req.body,
-    });
-    next(e);
+      console.error('[vaccinations:create] failed', {
+        message: e.message,
+        code: e.code,
+        errno: e.errno,
+        sqlState: e.sqlState,
+        sqlMessage: e.sqlMessage,
+        user: req.user,
+        body: req.body,
+      });
+      next(e);
     }
   }
 );
@@ -121,9 +147,29 @@ const getDeworming = [async (req, res, next) => {
   try {
     const { patientId, page = 1, limit = 30 } = req.query;
     const offset = (page - 1) * limit;
+
+    let branchId = req.user.branchId || null;
+
+    // 🔥 si no hay branch en user, lo buscamos desde el paciente
+    if (!branchId && patientId) {
+      const [patients] = await db.query(
+        `SELECT branch_id FROM patients WHERE id = :patientId LIMIT 1`,
+        { patientId }
+      );
+      branchId = patients[0]?.branch_id || null;
+    }
+
+    if (!branchId) {
+      return R.badRequest(res, 'No se pudo determinar la sucursal');
+    }
+
     const conds = ['dr.branch_id = :bid'];
-    const p     = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
-    if (patientId) { conds.push('dr.patient_id = :pid'); p.pid = patientId; }
+    const p = { bid: branchId, limit: parseInt(limit), offset: parseInt(offset) };
+
+    if (patientId) {
+      conds.push('dr.patient_id = :pid');
+      p.pid = patientId;
+    }
 
     const rows = await db.query(
       `SELECT dr.id, dr.deworming_date, dr.next_due_date, dr.weight_at_treatment,
@@ -141,16 +187,24 @@ const getDeworming = [async (req, res, next) => {
        LIMIT :limit OFFSET :offset`,
       p
     );
+
     return R.ok(res, rows);
   } catch (e) { next(e); }
 }];
 
 const getDewormingAlerts = [async (req, res, next) => {
   try {
+    let branchId = req.user.branchId || null;
+
+    if (!branchId) {
+      return R.badRequest(res, 'No se pudo determinar la sucursal');
+    }
+
     const rows = await db.query(
       `SELECT * FROM v_deworming_alerts WHERE branch_id = :bid ORDER BY next_due_date`,
-      { bid: req.user.branchId }
+      { bid: branchId }
     );
+
     return R.ok(res, rows);
   } catch (e) { next(e); }
 }];
@@ -167,6 +221,32 @@ const postDeworming = [
         weightAtTreatment, doseAdministered, route, nextDueDate, notes,
       } = req.body;
 
+      const userBranchId = req.user.branchId || null;
+
+      const [patients] = await db.query(
+        userBranchId
+          ? `SELECT id, branch_id
+             FROM patients
+             WHERE id = :patientId
+               AND branch_id = :branchId
+             LIMIT 1`
+          : `SELECT id, branch_id
+             FROM patients
+             WHERE id = :patientId
+             LIMIT 1`,
+        userBranchId
+          ? { patientId, branchId: userBranchId }
+          : { patientId }
+      );
+
+      const patient = patients[0];
+
+      if (!patient?.branch_id) {
+        return R.badRequest(res, 'Paciente no encontrado o sin sucursal asignada');
+      }
+
+      const branchId = userBranchId || patient.branch_id;
+
       const [r] = await db.query(
         `INSERT INTO deworming_records
            (branch_id, patient_id, product_id,
@@ -174,14 +254,32 @@ const postDeworming = [
             route, next_due_date, notes, administered_by)
          VALUES (:bid,:pid,:prod,:date,:wt,:dose,:route,:next,:notes,:uid)`,
         {
-          bid: req.user.branchId, pid: patientId, prod: productId,
-          date: dewormingDate, wt: weightAtTreatment || null,
-          dose: doseAdministered || null, route: route || null,
-          next: nextDueDate || null, notes: notes || null, uid: req.user.userId,
+          bid: branchId,
+          pid: patientId,
+          prod: productId,
+          date: dewormingDate,
+          wt: weightAtTreatment || null,
+          dose: doseAdministered || null,
+          route: route || null,
+          next: nextDueDate || null,
+          notes: notes || null,
+          uid: req.user.userId,
         }
       );
+
       return R.created(res, { id: r.insertId });
-    } catch (e) { next(e); }
+    } catch (e) {
+      console.error('[deworming:create] failed', {
+        message: e.message,
+        code: e.code,
+        errno: e.errno,
+        sqlState: e.sqlState,
+        sqlMessage: e.sqlMessage,
+        user: req.user,
+        body: req.body,
+      });
+      next(e);
+    }
   },
 ];
 
