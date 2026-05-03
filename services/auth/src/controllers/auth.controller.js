@@ -450,7 +450,15 @@ async function refresh(req, res) {
        AND s.is_revoked = FALSE 
        AND s.expires_at > NOW()`,
     { hash: tokenHash }
-  ); 
+  );
+
+  if (!session) {
+    clearSessionCookies(res);
+    logAuth401(req, 'POST /auth/refresh', {
+      reason: 'refresh_session_not_found',
+    });
+    return R.unauthorized(res, 'Refresh session not found');
+  }
 
   // Revoke old access JTI
   await runRedis('refresh.revoke-old-jti', (redis) =>
