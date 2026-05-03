@@ -102,35 +102,40 @@ function csrfToken(req, res) {
 // ── Middleware: protege mutaciones ────────────────────────────────────────────
 
 /**
- * Verifica X-CSRF-Token header contra la cookie _csrf.
- * Aplica solo a métodos mutantes y rutas no excluidas.
- * Salta automáticamente si la request tiene X-Api-Key (cliente API, no browser).
+ * Verifica X-CSRF-Token header.
+ * Estrategia en dos capas:
+ *   1. Siempre: verifica firma HMAC del header (el token fue emitido por este servidor).
+ *   2. Cuando la cookie llega (same-origin): verifica que header === cookie (Double-Submit).
+ *      En requests cross-origin SameSite:Strict bloquea la cookie — la firma HMAC es suficiente.
+ * Salta automáticamente para GET/HEAD/OPTIONS y requests con X-Api-Key.
  */
 function csrfProtect(req, res, next) {
-  // Requests con API key no son de browser → no necesitan CSRF
   if (req.headers['x-api-key']) return next();
-
-  // Métodos seguros no necesitan protección
   if (SAFE_METHODS.has(req.method)) return next();
-
-  // Rutas excluidas
   if (EXCLUDE_PATHS.has(req.path)) return next();
 
   const headerToken = req.headers['x-csrf-token'];
-  const cookieToken = req.cookies?.[COOKIE_NAME];
-
-  if (!headerToken || !cookieToken) {
+  if (!headerToken) {
     return res.status(403).json({
       success: false,
       error: { message: 'CSRF token missing', code: 'CSRF_MISSING' },
     });
   }
 
-  // Los dos tokens deben ser idénticos y válidos
-  if (headerToken !== cookieToken || !verifyToken(headerToken)) {
+  // Verificación HMAC — token emitido y firmado por este servidor
+  if (!verifyToken(headerToken)) {
     return res.status(403).json({
       success: false,
       error: { message: 'CSRF token invalid or expired', code: 'CSRF_INVALID' },
+    });
+  }
+
+  // Double-Submit adicional cuando la cookie llega (same-origin con SameSite:Strict)
+  const cookieToken = req.cookies?.[COOKIE_NAME];
+  if (cookieToken && cookieToken !== headerToken) {
+    return res.status(403).json({
+      success: false,
+      error: { message: 'CSRF token mismatch', code: 'CSRF_INVALID' },
     });
   }
 

@@ -392,7 +392,7 @@ async function handleCreate() {
   saveError.value = ''
   try {
     const payload = {
-      scheduledDate:     form.scheduledDate,
+      scheduledDate:     form.scheduledDate ? new Date(form.scheduledDate).toISOString() : form.scheduledDate,
       patientId:         parseInt(form.patientId),
       vetId:             parseInt(form.vetId),
       appointmentTypeId: parseInt(form.appointmentTypeId),
