@@ -437,17 +437,20 @@ async function refresh(req, res) {
 
   // ── Normal lookup ──────────────────────────────────────────────────────────
   const session = await db.queryOne(
-    `SELECT s.*, u.email, u.first_name, u.last_name, b.organization_id
+    `SELECT s.*, 
+          u.email, 
+          u.first_name, 
+          u.last_name,
+          u.branch_id,
+          b.organization_id
      FROM sessions s
      JOIN users u ON s.user_id = u.id
      JOIN branches b ON u.branch_id = b.id
-     WHERE s.session_token = :hash AND s.is_revoked = FALSE AND s.expires_at > NOW()`,
+     WHERE s.session_token = :hash 
+       AND s.is_revoked = FALSE 
+       AND s.expires_at > NOW()`,
     { hash: tokenHash }
-  );
-  if (!session) {
-    logAuth401(req, 'POST /auth/refresh', { reason: 'refresh_token_not_found_or_expired' });
-    return R.unauthorized(res, 'Refresh token not found or expired');
-  }
+  ); 
 
   // Revoke old access JTI
   await runRedis('refresh.revoke-old-jti', (redis) =>
