@@ -385,7 +385,7 @@ function normalizeVaccine(row) {
     id: row.id ?? row.vaccine_id ?? row.vaccineId ?? null,
     name: row.name ?? row.vaccine_name ?? row.vaccineName ?? '',
     manufacturer: row.manufacturer ?? row.brand ?? '',
-    next_dose_due: row.next_dose_due ?? row.nextDoseDue ?? null,
+    next_dose_due: row.next_dose_due ?? row.next_due_date ?? row.nextDoseDue ?? row.nextDueDate ?? null,
     patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
   }
 }
@@ -582,8 +582,8 @@ async function handleCreate() {
       vaccineId:       parseInt(form.vaccineId),
       vaccinationDate: form.vaccinationDate,
     }
-    if (form.lotNumber)   payload.lotNumber   = form.lotNumber
-    if (form.nextDoseDue) payload.nextDoseDue = form.nextDoseDue
+    if (form.lotNumber)   payload.batchNumber = form.lotNumber
+    if (form.nextDoseDue) payload.nextDueDate = form.nextDoseDue
     if (form.notes)       payload.notes       = form.notes
     await http.post('/vaccinations', payload)
     closeModal(); await load()

@@ -463,6 +463,193 @@ paths:
       responses:
         '204': { description: Usuario desactivado }
 
+  # ── AUTH ADMIN — RBAC ──────────────────────────────────────────────────────
+  /auth/admin/rbac/roles:
+    get:
+      tags: [Auth]
+      summary: Listar roles RBAC disponibles
+      responses:
+        '200': { description: Lista de roles }
+
+  /auth/admin/rbac/orgs/{orgId}/overrides:
+    get:
+      tags: [Auth]
+      summary: Obtener overrides de roles para una organización
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Overrides de la organización }
+
+  /auth/admin/rbac/orgs/{orgId}/roles/{role}:
+    put:
+      tags: [Auth]
+      summary: Asignar override de rol a organización
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: role
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '204': { description: Override asignado }
+    delete:
+      tags: [Auth]
+      summary: Eliminar override de rol de organización
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: role
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Override eliminado }
+
+  /auth/admin/rbac/orgs/{orgId}/sync:
+    post:
+      tags: [Auth]
+      summary: Sincronizar roles de organización
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: Roles sincronizados }
+
+  /auth/admin/rbac/security-alerts:
+    get:
+      tags: [Auth]
+      summary: Listar alertas de seguridad
+      responses:
+        '200': { description: Lista de alertas de seguridad }
+
+  /auth/admin/rbac/security-alerts/{id}/acknowledge:
+    post:
+      tags: [Auth]
+      summary: Reconocer alerta de seguridad
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: Alerta reconocida }
+
+  # ── AUTH ADMIN — POLICY ────────────────────────────────────────────────────
+  /auth/admin/auth/policy:
+    get:
+      tags: [Auth]
+      summary: Obtener política de autenticación
+      responses:
+        '200': { description: Política de autenticación actual }
+    patch:
+      tags: [Auth]
+      summary: Actualizar política de autenticación
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                passwordMinLength: { type: integer }
+                requireMfa:        { type: boolean }
+                sessionTimeoutMin: { type: integer }
+      responses:
+        '200': { description: Política actualizada }
+
+  # ── AUTH AUDIT ─────────────────────────────────────────────────────────────
+  /auth/audit/export:
+    get:
+      tags: [Auth]
+      summary: Exportar logs de auditoría
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: format
+          schema: { type: string, enum: [json, csv] }
+        - in: query
+          name: userId
+          schema: { type: integer }
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        '200': { description: Logs de auditoría exportados }
+
+  /auth/audit/alerts:
+    get:
+      tags: [Auth]
+      summary: Listar alertas de auditoría de seguridad
+      responses:
+        '200': { description: Lista de alertas }
+
+  /auth/audit/alerts/scan:
+    post:
+      tags: [Auth]
+      summary: Ejecutar escaneo de patrones sospechosos de acceso
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                windowMinutes: { type: integer }
+      responses:
+        '200': { description: Escaneo completado }
+
+  # ── AUTH ADMIN — TABLE PREVIEW ─────────────────────────────────────────────
+  /auth/admin/preview:
+    get:
+      tags: [Auth]
+      summary: Listar tablas disponibles para preview de datos
+      responses:
+        '200': { description: Lista de tablas con metadatos }
+
+  /auth/admin/preview/{tableName}:
+    get:
+      tags: [Auth]
+      summary: Preview de una tabla (columnas + 10 filas)
+      parameters:
+        - in: path
+          name: tableName
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Esquema y datos de la tabla }
+        '404': { description: Tabla no disponible }
+
   /patients:
     get:
       tags: [Patients]
@@ -884,6 +1071,40 @@ paths:
       description: Auto-detecta valores críticos y dispara alertas. Busca rangos de referencia por especie/sexo.
       responses:
         '201': { description: Resultados cargados. Alertas generadas si hay valores críticos. }
+
+  /lab/orders/{id}:
+    get:
+      tags: [Lab]
+      summary: Obtener detalle de una orden de laboratorio
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Orden con items y resultados }
+        '404': { description: Orden no encontrada }
+
+  /lab/tests:
+    get:
+      tags: [Lab]
+      summary: Catálogo de análisis de laboratorio disponibles
+      parameters:
+        - in: query
+          name: categoryId
+          schema: { type: integer }
+        - in: query
+          name: search
+          schema: { type: string }
+      responses:
+        '200': { description: Lista de análisis activos con categoría y precio }
+
+  /lab/panels:
+    get:
+      tags: [Lab]
+      summary: Paneles de análisis (conjuntos predefinidos)
+      responses:
+        '200': { description: Lista de paneles activos con análisis incluidos }
 
   # ── IMAGING ────────────────────────────────────────────────────────────────
   /pathology/orders:
