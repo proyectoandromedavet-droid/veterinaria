@@ -24,22 +24,26 @@ const getInsertResult = async (sql, params = {}) => {
 };
 
 const resolveBranchFromPatient = async (req, patientId) => {
-  const userBranchId = req.user?.branchId || null;
+  let userBranchId = req.user?.branchId || null;
+
+  if (!userBranchId && req.user?.userId) {
+    const users = await getRows(
+      `SELECT branch_id
+       FROM users
+       WHERE id = :userId
+       LIMIT 1`,
+      { userId: req.user.userId }
+    );
+
+    userBranchId = users[0]?.branch_id || null;
+  }
 
   const patients = await getRows(
-    userBranchId
-      ? `SELECT id, branch_id
-         FROM patients
-         WHERE id = :patientId
-           AND branch_id = :branchId
-         LIMIT 1`
-      : `SELECT id, branch_id
-         FROM patients
-         WHERE id = :patientId
-         LIMIT 1`,
-    userBranchId
-      ? { patientId, branchId: userBranchId }
-      : { patientId }
+    `SELECT id
+     FROM patients
+     WHERE id = :patientId
+     LIMIT 1`,
+    { patientId }
   );
 
   const patient = patients[0];
@@ -48,13 +52,11 @@ const resolveBranchFromPatient = async (req, patientId) => {
     return { error: 'Paciente no encontrado' };
   }
 
-  const branchId = userBranchId || patient.branch_id || null;
-
-  if (!branchId) {
-    return { error: 'Paciente sin sucursal asignada' };
+  if (!userBranchId) {
+    return { error: 'Usuario sin sucursal asignada' };
   }
 
-  return { patient, branchId };
+  return { patient, branchId: userBranchId };
 };
 
 // GET /vaccinations?patientId=&upcoming=
