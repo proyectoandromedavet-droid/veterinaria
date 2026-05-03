@@ -1365,50 +1365,46 @@ paths:
         '201': { description: Pago registrado }
 
   # ── INVENTORY ──────────────────────────────────────────────────────────────
-  /inventory:
+    /inventory:
     get:
       tags: [Inventory]
       summary: Listar inventario/farmacia
       parameters:
-       - in: query
-         name: page
-         required: false
-         schema:
-          type: integer
-          minimum: 1
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
 
-      - in: query
-        name: limit
-        required: false
-        schema:
-          type: integer
-          minimum: 1
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
 
-      - in: query
-        name: search
-        required: false
-        schema:
-          type: string
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
 
-      - in: query
-        name: itemType
-        required: false
-        schema:
-          type: string
+        - in: query
+          name: itemType
+          required: false
+          schema:
+            type: string
 
-      - in: query
-        name: stockStatus
-        required: false
-        schema:
-          type: string
-          enum: [all, low, zero]
-
-    responses:
-      '200':
-        description: Lista de items con stock
-
-
-  /inventory/movements:
+        - in: query
+          name: stockStatus
+          required: false
+          schema:
+            type: string
+            enum: [all, low, zero]
+      responses:
+        '200':
+          description: Lista de items con stock  /inventory/movements:
     post:
       tags: [Inventory]
       summary: Registrar movimiento de inventario
