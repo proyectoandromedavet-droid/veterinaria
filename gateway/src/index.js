@@ -280,6 +280,18 @@ if (process.env.OPENAPI_VALIDATE !== 'false') {
           error:   { message: 'Request validation failed', code: 'VALIDATION_ERROR', details: err.errors },
         });
       }
+      if (err.status === 405) {
+        return res.status(405).json({
+          success: false,
+          error:   { message: err.message || 'Method not allowed', code: 'METHOD_NOT_ALLOWED' },
+        });
+      }
+      if (err.status === 404) {
+        return res.status(404).json({
+          success: false,
+          error:   { message: 'Not found', code: 'NOT_FOUND' },
+        });
+      }
       next(err);
     });
     logger.info('OpenAPI request validation enabled');
