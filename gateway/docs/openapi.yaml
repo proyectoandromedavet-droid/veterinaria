@@ -1365,7 +1365,8 @@ paths:
         '201': { description: Pago registrado }
 
   # ── INVENTORY ──────────────────────────────────────────────────────────────
-    /inventory:
+
+  /inventory:
     get:
       tags: [Inventory]
       summary: Listar inventario/farmacia
@@ -1404,12 +1405,15 @@ paths:
             enum: [all, low, zero]
       responses:
         '200':
-          description: Lista de items con stock  /inventory/movements:
+          description: Lista de items con stock
+
+  /inventory/movements:
     post:
       tags: [Inventory]
       summary: Registrar movimiento de inventario
       responses:
-        '201': { description: Movimiento registrado. Alerta si stock bajo. }
+        '201':
+          description: Movimiento registrado. Alerta si stock bajo.
 
   # ── TELEMEDICINE ───────────────────────────────────────────────────────────
   /tele/sessions:
