@@ -216,6 +216,8 @@ function registerProxies(app) {
   registerVersioned(app, 'use', 'payments',             authMiddleware, tenantLimiter, makeServiceProxy('billing'));
   registerVersioned(app, 'use', 'price-lists',          authMiddleware, tenantLimiter, makeServiceProxy('billing'));
   registerVersioned(app, 'use', 'inventory',            authMiddleware, tenantLimiter, makeServiceProxy('billing'));
+  registerVersioned(app, 'use', 'suppliers',            authMiddleware, tenantLimiter, makeServiceProxy('billing'));
+  registerVersioned(app, 'use', 'purchase-orders',      authMiddleware, tenantLimiter, makeServiceProxy('billing'));
 
   // ── TELEMEDICINE ─────────────────────────────────────────────────────────
   registerVersioned(app, 'use', 'tele',     authMiddleware, tenantLimiter, makeServiceProxy('telemedicine'));

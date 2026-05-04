@@ -1415,6 +1415,170 @@ paths:
         '201':
           description: Movimiento registrado. Alerta si stock bajo.
 
+  /inventory/alerts:
+    get:
+      tags: [Inventory]
+      summary: Listar alertas de stock bajo o vencimiento
+      parameters:
+        - in: query
+          name: resolved
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+      responses:
+        '200':
+          description: Lista de alertas de stock
+
+  /inventory/alerts/{id}/resolve:
+    patch:
+      tags: [Inventory]
+      summary: Marcar alerta como resuelta
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Alerta resuelta }
+
+  /inventory/alerts/check:
+    post:
+      tags: [Inventory]
+      summary: Generar alertas de stock (cron o manual)
+      responses:
+        '200': { description: Alertas generadas }
+
+  /inventory/items:
+    post:
+      tags: [Inventory]
+      summary: Crear item de inventario
+      responses:
+        '201': { description: Item creado }
+
+  /inventory/items/{id}:
+    put:
+      tags: [Inventory]
+      summary: Actualizar item de inventario
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Item actualizado }
+
+  /inventory/batches:
+    get:
+      tags: [Inventory]
+      summary: Listar lotes de inventario
+      parameters:
+        - in: query
+          name: itemId
+          schema: { type: integer }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: Lista de lotes }
+    post:
+      tags: [Inventory]
+      summary: Registrar lote de inventario
+      responses:
+        '201': { description: Lote registrado }
+
+  /suppliers:
+    get:
+      tags: [Inventory]
+      summary: Listar proveedores
+      responses:
+        '200': { description: Lista de proveedores }
+    post:
+      tags: [Inventory]
+      summary: Crear proveedor
+      responses:
+        '201': { description: Proveedor creado }
+
+  /suppliers/{id}:
+    put:
+      tags: [Inventory]
+      summary: Actualizar proveedor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Proveedor actualizado }
+    delete:
+      tags: [Inventory]
+      summary: Eliminar proveedor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Proveedor eliminado }
+
+  /purchase-orders:
+    get:
+      tags: [Inventory]
+      summary: Listar órdenes de compra
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: Lista de órdenes de compra }
+    post:
+      tags: [Inventory]
+      summary: Crear orden de compra
+      responses:
+        '201': { description: Orden de compra creada }
+
+  /purchase-orders/{id}/send:
+    patch:
+      tags: [Inventory]
+      summary: Enviar orden de compra al proveedor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Orden enviada }
+
+  /purchase-orders/{id}/receive:
+    post:
+      tags: [Inventory]
+      summary: Registrar recepción de orden de compra
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Recepción registrada }
+
+  /purchase-orders/{id}/cancel:
+    patch:
+      tags: [Inventory]
+      summary: Cancelar orden de compra
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Orden cancelada }
+
   # ── TELEMEDICINE ───────────────────────────────────────────────────────────
   /tele/sessions:
     get:
