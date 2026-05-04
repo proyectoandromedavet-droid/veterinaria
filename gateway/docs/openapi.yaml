@@ -1543,6 +1543,18 @@ paths:
       responses:
         '201': { description: Orden de compra creada }
 
+  /purchase-orders/{id}:
+    get:
+      tags: [Inventory]
+      summary: Obtener orden de compra por ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: OK }
+
   /purchase-orders/{id}/send:
     patch:
       tags: [Inventory]

@@ -281,6 +281,7 @@ if (process.env.OPENAPI_VALIDATE !== 'false') {
         });
       }
       if (err.status === 405) {
+        logger.warn('OpenAPI 405 method not allowed', { method: _req.method, path: _req.originalUrl });
         return res.status(405).json({
           success: false,
           error:   { message: err.message || 'Method not allowed', code: 'METHOD_NOT_ALLOWED' },
