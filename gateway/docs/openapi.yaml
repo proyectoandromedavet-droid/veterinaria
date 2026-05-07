@@ -2018,6 +2018,19 @@ paths:
     get:
       tags: [Notifications]
       summary: Listar notificaciones del usuario
+      parameters:
+        - in: query
+          name: unreadOnly
+          required: false
+          schema: { type: string, enum: ['true', 'false'] }
+        - in: query
+          name: page
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Notificaciones }
 
@@ -2058,6 +2071,23 @@ paths:
     get:
       tags: [Notifications]
       summary: Listar recordatorios
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema: { type: string }
+        - in: query
+          name: type
+          required: false
+          schema: { type: string }
+        - in: query
+          name: page
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Recordatorios }
 
@@ -2098,8 +2128,28 @@ paths:
     get:
       tags: [Notifications]
       summary: Listar mensajes enviados
+      parameters:
+        - in: query
+          name: channel
+          required: false
+          schema: { type: string }
+        - in: query
+          name: page
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Mensajes }
+
+  /notifications/retries:
+    get:
+      tags: [Notifications]
+      summary: Listar jobs de reintento
+      responses:
+        '200': { description: Reintentos }
 
   /notifications/fcm/register:
     post:

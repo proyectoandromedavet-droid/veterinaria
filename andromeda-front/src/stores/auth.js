@@ -71,7 +71,9 @@ export const useAuthStore = defineStore('auth', () => {
     // superadmin puede todo
     if (roles.value.includes('superadmin')) return true
     const perms = user.value?.permissions || []
-    return perms.includes(permission) || perms.includes('*')
+    if (perms.includes(permission) || perms.includes('*')) return true
+    const [resource] = String(permission || '').split(':')
+    return resource ? perms.includes(`${resource}:*`) : false
   }
 
   function setTokens(at) {

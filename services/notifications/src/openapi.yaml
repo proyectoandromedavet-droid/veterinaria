@@ -12,6 +12,19 @@ paths:
           description: OK
   /notifications:
     get:
+      parameters:
+        - in: query
+          name: unreadOnly
+          required: false
+          schema: { type: string, enum: ['true', 'false'] }
+        - in: query
+          name: page
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200':
           description: OK
@@ -42,6 +55,23 @@ paths:
           description: OK
   /notifications/reminders:
     get:
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema: { type: string }
+        - in: query
+          name: type
+          required: false
+          schema: { type: string }
+        - in: query
+          name: page
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200':
           description: OK
@@ -71,6 +101,24 @@ paths:
         '200':
           description: OK
   /notifications/messages:
+    get:
+      parameters:
+        - in: query
+          name: channel
+          required: false
+          schema: { type: string }
+        - in: query
+          name: page
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: OK
+  /notifications/retries:
     get:
       responses:
         '200':

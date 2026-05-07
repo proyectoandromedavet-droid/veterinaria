@@ -670,6 +670,11 @@ async function loadFeatureFlags() {
     featureDefinitions.value = definitions
     aiFeatures.value = definitions.filter((item) => item.category === 'ai')
   } catch (error) {
+    if (error.response?.status === 404) {
+      featureDefinitions.value = []
+      aiFeatures.value = []
+      return
+    }
     featureFlagsError.value = error.response?.data?.error?.message || 'No se pudieron cargar los feature flags.'
   } finally {
     featureFlagsLoading.value = false
@@ -688,6 +693,10 @@ async function toggleFeatureFlag(key, enabled) {
     for (const [flagKey, value] of Object.entries(flags)) featureFlags[flagKey] = Boolean(value)
   } catch (error) {
     featureFlags[key] = previous
+    if (error.response?.status === 404) {
+      featureFlagsError.value = 'Este ambiente todavia no tiene feature flags desplegados.'
+      return
+    }
     featureFlagsError.value = error.response?.data?.error?.message || 'No se pudo actualizar el feature flag.'
   } finally {
     savingFeatureKey.value = ''

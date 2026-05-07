@@ -47,6 +47,20 @@ router.get('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /surgeries/types/all
+router.get('/types/all', async (_req, res, next) => {
+  try {
+    const rows = await db.query(
+      `SELECT st.id, st.name, st.description, st.estimated_duration_minutes,
+              sc.name AS category
+       FROM surgery_types st
+       JOIN surgery_categories sc ON st.category_id = sc.id
+       WHERE st.is_active = TRUE ORDER BY sc.name, st.name`
+    );
+    return R.ok(res, rows);
+  } catch (e) { next(e); }
+});
+
 // GET /surgeries/:id
 router.get('/:id', async (req, res, next) => {
   try {
@@ -191,19 +205,5 @@ router.post('/:id/anesthesia',
     } catch (e) { next(e); }
   }
 );
-
-// GET /surgeries/types
-router.get('/types/all', async (_req, res, next) => {
-  try {
-    const rows = await db.query(
-      `SELECT st.id, st.name, st.description, st.estimated_duration_minutes,
-              sc.name AS category
-       FROM surgery_types st
-       JOIN surgery_categories sc ON st.category_id = sc.id
-       WHERE st.is_active = TRUE ORDER BY sc.name, st.name`
-    );
-    return R.ok(res, rows);
-  } catch (e) { next(e); }
-});
 
 module.exports = router;
