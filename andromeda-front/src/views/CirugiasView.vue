@@ -1,9 +1,9 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">🔪</span>
+        <span class="page-emoji">ðŸ”ª</span>
         <div>
           <h2 class="page-title">{{ t('surgery.title') }}</h2>
           <p class="page-sub">{{ t('surgery.subtitle') }}</p>
@@ -15,21 +15,21 @@
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span class="stat-card__icon">📅</span>
+        <span class="stat-card__icon">ðŸ“…</span>
         <div>
           <strong>{{ stats.scheduled }}</strong>
           <span>{{ t('surgery.scheduled') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-        <span class="stat-card__icon">⚡</span>
+        <span class="stat-card__icon">âš¡</span>
         <div>
           <strong>{{ stats.inProgress }}</strong>
           <span>{{ t('surgery.inProgress') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span class="stat-card__icon">✅</span>
+        <span class="stat-card__icon">âœ…</span>
         <div>
           <strong>{{ stats.completedToday }}</strong>
           <span>{{ t('surgery.completedToday') }}</span>
@@ -61,7 +61,7 @@
     </div>
     <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">🔪</span>
+      <span class="empty-state__emoji">ðŸ”ª</span>
       <p>{{ t('surgery.empty') }}</p>
     </div>
 
@@ -84,24 +84,24 @@
               <div class="pet-cell">
                 <span>{{ petEmoji(s.species) }}</span>
                 <div>
-                  <strong>{{ s.patient_name || '—' }}</strong>
+                  <strong>{{ s.patient_name || 'â€”' }}</strong>
                   <span class="sub">{{ s.vet_name || '' }}</span>
                 </div>
               </div>
             </td>
             <td>
               <div>
-                <strong class="type-name">{{ s.surgery_type_name || '—' }}</strong>
+                <strong class="type-name">{{ s.surgery_type_name || 'â€”' }}</strong>
                 <div class="sub">{{ s.category_name || '' }}</div>
               </div>
             </td>
-            <td class="sub">{{ s.surgeon_name || '—' }}</td>
+            <td class="sub">{{ s.surgeon_name || 'â€”' }}</td>
             <td>
               <span class="badge" :class="surgeryStatusClass(s.status)">{{ surgeryStatusLabel(s.status) }}</span>
-              <span v-if="s.complications" class="badge badge--red" style="margin-left:4px" :title="t('surgery.complicationsLabel')">⚠</span>
+              <span v-if="s.complications" class="badge badge--red" style="margin-left:4px" :title="t('surgery.complicationsLabel')">âš </span>
             </td>
             <td class="sub">{{ formatDate(s.scheduled_date) }}</td>
-            <td class="sub">{{ s.duration_minutes ? s.duration_minutes + ' min' : '—' }}</td>
+            <td class="sub">{{ s.duration_minutes ? s.duration_minutes + ' min' : 'â€”' }}</td>
             <td>
               <div class="action-btns">
                 <button
@@ -140,13 +140,13 @@
       <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('common.next') }}</button>
     </div>
 
-    <!-- Modal programar cirugía -->
+    <!-- Modal programar cirugÃ­a -->
     <Transition name="modal">
       <div v-if="showNew" class="modal-backdrop" @click.self="showNew = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>🔪 {{ t('surgery.newModalTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" :aria-label="t('common.close')" @click="showNew = false">×</BaseButton>
+            <h3>ðŸ”ª {{ t('surgery.newModalTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" :aria-label="t('common.close')" @click="showNew = false">Ã—</BaseButton>
           </div>
 
           <form @submit.prevent="handleCreate" novalidate>
@@ -174,14 +174,14 @@
                     @click="selectPatient(pt)"
                   >
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                    <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                    <span class="autocomplete__owner">â€” {{ pt.primary_owner || '' }}</span>
                   </button>
                 </div>
-                <div v-if="newForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                <div v-if="newForm.patientId" class="selected-patient">âœ… {{ selectedPatientLabel }}</div>
                 <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
               </div>
 
-              <!-- Tipo de cirugía -->
+              <!-- Tipo de cirugÃ­a -->
               <div class="field field--full">
                 <label>{{ t('surgery.typeLabel') }} <span class="req">*</span></label>
                 <select v-model="newForm.surgeryTypeId" :disabled="saving || typesLoading">
@@ -189,8 +189,8 @@
                   <optgroup v-for="(types, cat) in groupedTypes" :key="cat" :label="cat">
                     <option v-for="t in types" :key="t.id" :value="t.id">
                       {{ t.name }}
-                      <template v-if="t.risk_level"> · Riesgo {{ riskLabel(t.risk_level) }}</template>
-                      <template v-if="t.estimated_duration_minutes"> · {{ t.estimated_duration_minutes }} min est.</template>
+                      <template v-if="t.risk_level"> Â· Riesgo {{ riskLabel(t.risk_level) }}</template>
+                      <template v-if="t.estimated_duration_minutes"> Â· {{ t.estimated_duration_minutes }} min est.</template>
                     </option>
                   </optgroup>
                 </select>
@@ -216,6 +216,14 @@
                 <div class="field">
                   <label>{{ t('surgery.durationLabel') }}</label>
                   <input v-model.number="newForm.estimatedDurationMinutes" type="number" min="1" max="600" placeholder="ej: 90" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Urgencia</label>
+                  <select v-model="newForm.urgency" :disabled="saving">
+                    <option value="routine">Rutina</option>
+                    <option value="urgent">Urgente</option>
+                    <option value="emergency">Emergencia</option>
+                  </select>
                 </div>
 
                 <div class="field field--full">
@@ -250,8 +258,8 @@
       <div v-if="showAnesthesia" class="modal-backdrop" @click.self="showAnesthesia = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>💉 {{ t('surgery.anesthesiaTitle') }} — {{ selectedSurgery?.patient_name }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showAnesthesia = false">✕</BaseButton>
+            <h3>ðŸ’‰ {{ t('surgery.anesthesiaTitle') }} â€” {{ selectedSurgery?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showAnesthesia = false">âœ•</BaseButton>
           </div>
 
           <form @submit.prevent="handleAnesthesia" novalidate>
@@ -280,7 +288,7 @@
                   <textarea
                     v-model.trim="aneForm.anestheticAgents"
                     rows="2"
-                    :placeholder="t('surgery.agentsPlaceholder') || 'Propofol, isoflurano, ketamina…'"
+                    :placeholder="t('surgery.agentsPlaceholder') || 'Propofol, isoflurano, ketaminaâ€¦'"
                     :disabled="aneSaving"
                   />
                   <span v-if="afe.anestheticAgents" class="field-error">{{ afe.anestheticAgents }}</span>
@@ -301,7 +309,7 @@
                   <textarea
                     v-model.trim="aneForm.monitoringNotes"
                     rows="2"
-                    placeholder="Saturación, frecuencia cardíaca, PA durante el procedimiento…"
+                    placeholder="SaturaciÃ³n, frecuencia cardÃ­aca, PA durante el procedimientoâ€¦"
                     :disabled="aneSaving"
                   />
                 </div>
@@ -346,12 +354,12 @@
       <div v-if="showStatus" class="modal-backdrop" @click.self="showStatus = false">
         <div class="modal modal--sm">
           <div class="modal__header">
-            <h3>🔄 {{ t('surgery.statusTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showStatus = false">✕</BaseButton>
+            <h3>ðŸ”„ {{ t('surgery.statusTitle') }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showStatus = false">âœ•</BaseButton>
           </div>
           <div class="form-body">
             <p class="sub" style="margin-bottom:8px">
-              {{ t('surgery.generalData') }}: <strong>{{ selectedSurgery?.surgery_type_name }}</strong> — {{ selectedSurgery?.patient_name }}
+              {{ t('surgery.generalData') }}: <strong>{{ selectedSurgery?.surgery_type_name }}</strong> â€” {{ selectedSurgery?.patient_name }}
             </p>
             <div class="status-options">
               <button
@@ -361,7 +369,7 @@
                 @click="changeStatus('in_progress')"
                 :disabled="statusSaving"
               >
-                ⚡ {{ t('surgery.statusScheduled') }}
+                âš¡ {{ t('surgery.statusScheduled') }}
               </button>
               <button
                 v-if="selectedSurgery?.status === 'scheduled' || selectedSurgery?.status === 'in_progress'"
@@ -370,7 +378,7 @@
                 @click="changeStatus('completed')"
                 :disabled="statusSaving"
               >
-                ✅ {{ t('surgery.statusCompleted') }}
+                âœ… {{ t('surgery.statusCompleted') }}
               </button>
               <button
                 v-if="selectedSurgery?.status === 'scheduled'"
@@ -379,7 +387,7 @@
                 @click="changeStatus('postponed')"
                 :disabled="statusSaving"
               >
-                📌 {{ t('surgery.statusPostponed') }}
+                ðŸ“Œ {{ t('surgery.statusPostponed') }}
               </button>
               <button
                 v-if="selectedSurgery?.status !== 'cancelled' && selectedSurgery?.status !== 'completed'"
@@ -388,7 +396,7 @@
                 @click="changeStatus('cancelled')"
                 :disabled="statusSaving"
               >
-                ✕ {{ t('surgery.statusCancelled') }}
+                âœ• {{ t('surgery.statusCancelled') }}
               </button>
             </div>
           </div>
@@ -405,8 +413,8 @@
       <div v-if="showDetail" class="modal-backdrop" @click.self="showDetail = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>🔪 {{ t('surgery.detailTitle') }} — {{ detailData?.patient_name }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showDetail = false">✕</BaseButton>
+            <h3>ðŸ”ª {{ t('surgery.detailTitle') }} â€” {{ detailData?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showDetail = false">âœ•</BaseButton>
           </div>
           <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
             <span class="spin spin--dark" /> {{ t('surgery.detailLoading') }}
@@ -423,11 +431,11 @@
               </div>
               <div class="detail-item">
                 <span class="detail-label">{{ t('surgery.detailCategory') }}</span>
-                <span>{{ detailData.category_name || '—' }}</span>
+                <span>{{ detailData.category_name || 'â€”' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">{{ t('surgery.detailSurgeon') }}</span>
-                <span>{{ detailData.surgeon_name || '—' }}</span>
+                <span>{{ detailData.surgeon_name || 'â€”' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">{{ t('surgery.tableStatus') }}</span>
@@ -439,11 +447,43 @@
               </div>
               <div class="detail-item">
                 <span class="detail-label">{{ t('surgery.detailDuration') }}</span>
-                <span>{{ detailData.duration_minutes ? detailData.duration_minutes + ' min' : '—' }}</span>
+                <span>{{ detailData.duration_minutes ? detailData.duration_minutes + ' min' : 'â€”' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">{{ t('surgery.detailComplications') }}</span>
-                <span>{{ detailData.complications ? '⚠ Sí' : 'No' }}</span>
+                <span>{{ detailData.complications ? 'Si' : 'No' }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Urgencia</span>
+                <span>{{ detailData.urgency || '-' }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Inicio / fin</span>
+                <span>{{ formatDate(detailData.start_time) }} / {{ formatDate(detailData.end_time) }}</span>
+              </div>
+              <div v-if="detailData.medical_record_id" class="detail-item">
+                <span class="detail-label">Ficha medica</span>
+                <span>#{{ detailData.medical_record_id }}</span>
+              </div>
+              <div v-if="detailData.assistant_surgeon_name || detailData.assistant_surgeon_id" class="detail-item">
+                <span class="detail-label">Cirujano asistente</span>
+                <span>{{ detailData.assistant_surgeon_name || ('#' + detailData.assistant_surgeon_id) }}</span>
+              </div>
+              <div v-if="detailData.anesthesiologist_name || detailData.anesthesiologist_id" class="detail-item">
+                <span class="detail-label">Anestesiologo</span>
+                <span>{{ detailData.anesthesiologist_name || ('#' + detailData.anesthesiologist_id) }}</span>
+              </div>
+              <div v-if="detailData.surgical_nurse_name || detailData.surgical_nurse_id" class="detail-item">
+                <span class="detail-label">Instrumentador/a</span>
+                <span>{{ detailData.surgical_nurse_name || ('#' + detailData.surgical_nurse_id) }}</span>
+              </div>
+              <div v-if="detailData.preoperative_diagnosis" class="detail-item detail-item--full">
+                <span class="detail-label">Diagnostico preoperatorio</span>
+                <span>{{ detailData.preoperative_diagnosis }}</span>
+              </div>
+              <div v-if="detailData.surgical_approach" class="detail-item detail-item--full">
+                <span class="detail-label">Abordaje quirurgico</span>
+                <span>{{ detailData.surgical_approach }}</span>
               </div>
               <div v-if="detailData.notes" class="detail-item detail-item--full">
                 <span class="detail-label">{{ t('surgery.notesLabel') }}</span>
@@ -461,7 +501,7 @@
               >
                 <div class="ane-record__header">
                   <span class="badge badge--blue">{{ aneTypeLabel(rec.anesthesia_type) }}</span>
-                  <span v-if="rec.complications" class="badge badge--red">⚠ {{ t('surgery.detailComplications') }}</span>
+                  <span v-if="rec.complications" class="badge badge--red">âš  {{ t('surgery.detailComplications') }}</span>
                   <span class="sub">{{ rec.total_duration_minutes ? rec.total_duration_minutes + ' min' : '' }}</span>
                 </div>
                 <p class="sub" style="margin-top:4px">{{ t('surgery.agentsLabel') }}: {{ rec.anesthetic_agents }}</p>
@@ -533,7 +573,7 @@ function normalizePatient(row) {
   }
 }
 
-// ── Lista ────────────────────────────────────────────────────────────────────
+// â”€â”€ Lista â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const items        = ref([])
 const loading      = ref(false)
 const error        = ref('')
@@ -563,7 +603,7 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las cirugías'
+    error.value = e.response?.data?.message || 'No se pudieron cargar las cirugÃ­as'
   } finally { loading.value = false }
 }
 
@@ -583,15 +623,15 @@ function computeStats() {
 let loadTimer = null
 function debouncedLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(load, 350) }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function petEmoji(s) {
-  if (!s) return '🐾'
-  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
-  return m[s.toLowerCase()] || '🐾'
+  if (!s) return 'ðŸ¾'
+  const m = { perro:'ðŸ¶', dog:'ðŸ¶', gato:'ðŸ±', cat:'ðŸ±', conejo:'ðŸ°', rabbit:'ðŸ°', loro:'ðŸ¦œ', bird:'ðŸ¦œ', pez:'ðŸŸ', fish:'ðŸŸ', tortuga:'ðŸ¢', reptile:'ðŸ¦Ž', hamster:'ðŸ¹' }
+  return m[s.toLowerCase()] || 'ðŸ¾'
 }
 
 function formatDate(iso) {
-  if (!iso) return '—'
+  if (!iso) return 'â€”'
   return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
@@ -600,7 +640,7 @@ function surgeryStatusClass(s) {
 }
 
 function surgeryStatusLabel(s) {
-  return { scheduled: 'Programada', in_progress: 'En curso', completed: 'Completada', cancelled: 'Cancelada', postponed: 'Postergada' }[s] || s || '—'
+  return { scheduled: 'Programada', in_progress: 'En curso', completed: 'Completada', cancelled: 'Cancelada', postponed: 'Postergada' }[s] || s || 'â€”'
 }
 
 function riskClass(r) {
@@ -608,14 +648,14 @@ function riskClass(r) {
 }
 
 function riskLabel(r) {
-  return { low: 'Bajo', medium: 'Medio', high: 'Alto', critical: 'Crítico' }[r] || r || '—'
+  return { low: 'Bajo', medium: 'Medio', high: 'Alto', critical: 'CrÃ­tico' }[r] || r || 'â€”'
 }
 
 function aneTypeLabel(t) {
-  return { general: 'General', local: 'Local', regional: 'Regional', sedation: 'Sedación' }[t] || t || '—'
+  return { general: 'General', local: 'Local', regional: 'Regional', sedation: 'SedaciÃ³n' }[t] || t || 'â€”'
 }
 
-// ── Tipos de cirugía ─────────────────────────────────────────────────────────
+// â”€â”€ Tipos de cirugÃ­a â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const allTypes   = ref([])
 const typesLoading = ref(false)
 
@@ -643,7 +683,7 @@ async function loadTypes() {
   finally { typesLoading.value = false }
 }
 
-// ── Autocomplete paciente ────────────────────────────────────────────────────
+// â”€â”€ Autocomplete paciente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const patientSearch        = ref('')
 const patientResults       = ref([])
 const selectedPatientLabel = ref('')
@@ -664,12 +704,12 @@ async function searchPatients() {
 
 function selectPatient(pt) {
   newForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' â€” ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 }
 
-// ── Modal nueva cirugía ──────────────────────────────────────────────────────
+// â”€â”€ Modal nueva cirugÃ­a â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showNew   = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
@@ -680,11 +720,12 @@ const newForm = reactive({
   surgeryTypeId: '',
   scheduledDate: '',
   estimatedDurationMinutes: null,
+  urgency: 'routine',
   preOpNotes: '',
 })
 
 function openNewSurgery() {
-  Object.assign(newForm, { patientId: '', surgeryTypeId: '', scheduledDate: '', estimatedDurationMinutes: null, preOpNotes: '' })
+  Object.assign(newForm, { patientId: '', surgeryTypeId: '', scheduledDate: '', estimatedDurationMinutes: null, urgency: 'routine', preOpNotes: '' })
   patientSearch.value = ''
   patientResults.value = []
   selectedPatientLabel.value = ''
@@ -712,16 +753,17 @@ async function handleCreate() {
       scheduledDate: newForm.scheduledDate,
     }
     if (newForm.estimatedDurationMinutes) payload.estimatedDurationMinutes = newForm.estimatedDurationMinutes
+    if (newForm.urgency)                  payload.urgency                  = newForm.urgency
     if (newForm.preOpNotes)               payload.preOpNotes               = newForm.preOpNotes
     await http.post('/surgeries', payload)
     showNew.value = false
     await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo programar la cirugía'
+    saveError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo programar la cirugÃ­a'
   } finally { saving.value = false }
 }
 
-// ── Modal anestesia ──────────────────────────────────────────────────────────
+// â”€â”€ Modal anestesia â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showAnesthesia  = ref(false)
 const selectedSurgery = ref(null)
 const aneSaving       = ref(false)
@@ -780,7 +822,7 @@ async function handleAnesthesia() {
   } finally { aneSaving.value = false }
 }
 
-// ── Modal cambiar estado ─────────────────────────────────────────────────────
+// â”€â”€ Modal cambiar estado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showStatus   = ref(false)
 const statusSaving = ref(false)
 const statusError  = ref('')
@@ -802,7 +844,7 @@ async function changeStatus(newStatus) {
   } finally { statusSaving.value = false }
 }
 
-// ── Modal detalle ────────────────────────────────────────────────────────────
+// â”€â”€ Modal detalle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showDetail   = ref(false)
 const detailLoading = ref(false)
 const detailData   = ref(null)
@@ -875,7 +917,7 @@ onMounted(load)
 .btn-action--primary { background: var(--primary); color: white; border-color: var(--primary); }
 .btn-action--primary:hover { opacity: 0.88; }
 
-/* Paginación */
+/* PaginaciÃ³n */
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
 .pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }
@@ -920,7 +962,7 @@ onMounted(load)
 .autocomplete__owner { font-size: 0.78rem; color: var(--text-3); }
 .selected-patient { margin-top: 5px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
 
-/* Tipo de cirugía info */
+/* Tipo de cirugÃ­a info */
 .type-info { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .type-info__desc { font-size: 0.84rem; color: var(--text-2); }
 .type-info__badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -966,7 +1008,7 @@ onMounted(load)
 .spin--dark { border-color: rgba(0,0,0,0.1); border-top-color: var(--primary); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Transición modal */
+/* TransiciÃ³n modal */
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 

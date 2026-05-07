@@ -82,6 +82,7 @@
               <th>{{ t('hospitalizations.veterinarian') }}</th>
               <th>{{ t('hospitalizations.admission') }}</th>
               <th>{{ t('hospitalizations.days') }}</th>
+              <th>Clinica</th>
               <th>{{ t('hospitalizations.status') }}</th>
               <th>{{ t('hospitalizations.actions') }}</th>
             </tr>
@@ -105,6 +106,11 @@
               <td class="sub">{{ formatDate(h.admission_date) }}</td>
               <td>
                 <span class="days-badge">{{ h.days_hospitalized ?? '—' }} d</span>
+              </td>
+              <td class="sub">
+                <span v-if="h.estimated_discharge_date">Alta {{ formatDate(h.estimated_discharge_date) }}</span>
+                <span v-if="h.last_temp"> · {{ h.last_temp }} °C</span>
+                <span v-if="h.last_hr"> · {{ h.last_hr }} lpm</span>
               </td>
               <td>
                 <span class="badge" :class="hospStatusClass(h.status)">{{ hospStatusLabel(h.status) }}</span>
@@ -257,6 +263,26 @@
                   />
                   <span v-if="afe.admissionReason" class="field-error">{{ afe.admissionReason }}</span>
                 </div>
+                <div class="field">
+                  <label>Ficha medica</label>
+                  <input v-model.trim="admitForm.medicalRecordId" type="number" min="1" placeholder="ID de ficha" :disabled="admitSaving" />
+                </div>
+                <div class="field">
+                  <label>Peso ingreso</label>
+                  <input v-model.number="admitForm.admissionWeight" type="number" min="0" step="0.01" placeholder="ej: 12.4" :disabled="admitSaving" />
+                </div>
+                <div class="field">
+                  <label>Alta estimada</label>
+                  <input v-model="admitForm.estimatedDischargeDate" type="date" :disabled="admitSaving" />
+                </div>
+                <div class="field field--full">
+                  <label>Diagnostico de ingreso</label>
+                  <textarea v-model.trim="admitForm.admissionDiagnosis" rows="2" placeholder="Diagnostico inicial" :disabled="admitSaving" />
+                </div>
+                <div class="field field--full">
+                  <label>Indicaciones especiales</label>
+                  <textarea v-model.trim="admitForm.specialInstructions" rows="2" placeholder="Cuidados, aislamiento, dieta..." :disabled="admitSaving" />
+                </div>
               </div>
 
             </div>
@@ -307,9 +333,33 @@
                   <span class="detail-label">{{ t('hospitalizations.daysHospitalized') }}</span>
                   <span>{{ detailData.days_hospitalized ?? '—' }}</span>
                 </div>
+                <div v-if="detailData.estimated_discharge_date" class="detail-item">
+                  <span class="detail-label">Alta estimada</span>
+                  <span>{{ formatDate(detailData.estimated_discharge_date) }}</span>
+                </div>
+                <div v-if="detailData.last_temp || detailData.last_hr" class="detail-item">
+                  <span class="detail-label">Ultimos controles</span>
+                  <span>{{ detailData.last_temp ? detailData.last_temp + ' °C' : '—' }}{{ detailData.last_hr ? ' · ' + detailData.last_hr + ' lpm' : '' }}</span>
+                </div>
                 <div class="detail-item detail-item--full">
                   <span class="detail-label">{{ t('hospitalizations.reason') }}</span>
                   <span>{{ detailData.admission_reason || '—' }}</span>
+                </div>
+                <div v-if="detailData.admission_diagnosis" class="detail-item detail-item--full">
+                  <span class="detail-label">Diagnostico de ingreso</span>
+                  <span>{{ detailData.admission_diagnosis }}</span>
+                </div>
+                <div v-if="detailData.admission_weight" class="detail-item">
+                  <span class="detail-label">Peso ingreso</span>
+                  <span>{{ detailData.admission_weight }} kg</span>
+                </div>
+                <div v-if="detailData.medical_record_id" class="detail-item">
+                  <span class="detail-label">Ficha medica</span>
+                  <span>#{{ detailData.medical_record_id }}</span>
+                </div>
+                <div v-if="detailData.special_instructions" class="detail-item detail-item--full">
+                  <span class="detail-label">Indicaciones especiales</span>
+                  <span>{{ detailData.special_instructions }}</span>
                 </div>
               </div>
             </div>
@@ -558,6 +608,13 @@ function normalizeHospitalization(row) {
     status: row.status ?? '',
     discharge_date: row.discharge_date ?? row.dischargeDate ?? null,
     days_hospitalized: row.days_hospitalized ?? row.daysHospitalized ?? null,
+    estimated_discharge_date: row.estimated_discharge_date ?? row.estimatedDischargeDate ?? null,
+    last_temp: row.last_temp ?? row.lastTemp ?? null,
+    last_hr: row.last_hr ?? row.lastHr ?? null,
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
+    admission_diagnosis: row.admission_diagnosis ?? row.admissionDiagnosis ?? '',
+    admission_weight: row.admission_weight ?? row.admissionWeight ?? null,
+    special_instructions: row.special_instructions ?? row.specialInstructions ?? '',
   }
 }
 
@@ -757,10 +814,18 @@ const admitForm = reactive({
   kennelId: '',
   attendingVetId: '',
   admissionReason: '',
+  medicalRecordId: '',
+  admissionDiagnosis: '',
+  admissionWeight: null,
+  estimatedDischargeDate: '',
+  specialInstructions: '',
 })
 
 function openAdmit() {
-  Object.assign(admitForm, { patientId: '', wardId: '', kennelId: '', attendingVetId: '', admissionReason: '' })
+  Object.assign(admitForm, {
+    patientId: '', wardId: '', kennelId: '', attendingVetId: '', admissionReason: '',
+    medicalRecordId: '', admissionDiagnosis: '', admissionWeight: null, estimatedDischargeDate: '', specialInstructions: ''
+  })
   patientSearch.value = ''
   patientResults.value = []
   selectedPatientLabel.value = ''
@@ -790,6 +855,11 @@ async function handleAdmit() {
       admissionReason: admitForm.admissionReason,
     }
     if (admitForm.kennelId) payload.kennelId = admitForm.kennelId
+    if (admitForm.medicalRecordId) payload.medicalRecordId = admitForm.medicalRecordId
+    if (admitForm.admissionDiagnosis) payload.admissionDiagnosis = admitForm.admissionDiagnosis
+    if (admitForm.admissionWeight) payload.admissionWeight = admitForm.admissionWeight
+    if (admitForm.estimatedDischargeDate) payload.estimatedDischargeDate = admitForm.estimatedDischargeDate
+    if (admitForm.specialInstructions) payload.specialInstructions = admitForm.specialInstructions
     await http.post('/hospitalizations', payload)
     showAdmit.value = false
     await load()
@@ -1139,6 +1209,3 @@ onMounted(load)
   .table thead th:nth-child(5), .table tbody td:nth-child(5) { display: none; }
 }
 </style>
-
-
-

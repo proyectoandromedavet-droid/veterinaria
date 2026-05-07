@@ -1,9 +1,9 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji" aria-hidden="true">✂️</span>
+        <span class="page-emoji" aria-hidden="true">âœ‚ï¸</span>
         <div>
           <h2 class="page-title">{{ t('grooming.title') }}</h2>
           <p class="page-sub">{{ t('grooming.subtitle') }}</p>
@@ -15,16 +15,16 @@
     <!-- KPIs -->
     <div class="kpi-row">
       <div class="kpi" style="--c:#FFE4D6;--ct:#c0392b">
-        <span aria-hidden="true">✂️</span><div><strong>{{ kpis.today }}</strong><span>{{ t('common.today') }}</span></div>
+        <span aria-hidden="true">âœ‚ï¸</span><div><strong>{{ kpis.today }}</strong><span>{{ t('common.today') }}</span></div>
       </div>
       <div class="kpi" style="--c:#FFF3CC;--ct:#8A6200">
-        <span aria-hidden="true">⏳</span><div><strong>{{ kpis.pending }}</strong><span>{{ t('common.pending') }}</span></div>
+        <span aria-hidden="true">â³</span><div><strong>{{ kpis.pending }}</strong><span>{{ t('common.pending') }}</span></div>
       </div>
       <div class="kpi" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span aria-hidden="true">✅</span><div><strong>{{ kpis.completed }}</strong><span>{{ t('grooming.completed') }}</span></div>
+        <span aria-hidden="true">âœ…</span><div><strong>{{ kpis.completed }}</strong><span>{{ t('grooming.completed') }}</span></div>
       </div>
       <div class="kpi" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span aria-hidden="true">💰</span><div><strong>{{ kpis.revenue }}</strong><span>{{ t('grooming.revenueToday') }}</span></div>
+        <span aria-hidden="true">ðŸ’°</span><div><strong>{{ kpis.revenue }}</strong><span>{{ t('grooming.revenueToday') }}</span></div>
       </div>
     </div>
 
@@ -43,7 +43,7 @@
     <div v-if="loading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('grooming.loading') }}</div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji" aria-hidden="true">🐩</span>
+      <span class="empty-state__emoji" aria-hidden="true">ðŸ©</span>
       <p>{{ t('grooming.emptyState') }}</p>
     </div>
 
@@ -59,7 +59,7 @@
           <div class="groom-card__pet">
             <span class="groom-emoji" aria-hidden="true">{{ petEmoji(g.patient?.species) }}</span>
             <div>
-              <strong>{{ g.patient?.name || g.patient_name || '—' }}</strong>
+              <strong>{{ g.patient?.name || g.patient_name || 'â€”' }}</strong>
               <span class="sub">{{ g.patient?.owner?.full_name || g.owner_name || '' }}</span>
             </div>
           </div>
@@ -67,13 +67,29 @@
             <span v-for="svc in parseServices(g.services)" :key="svc" class="svc-chip">{{ svc }}</span>
           </div>
           <div class="groom-card__row" v-if="g.groomer_name">
-            <span aria-hidden="true">✂️</span> <span>{{ g.groomer_name }}</span>
+            <span aria-hidden="true">Groomer</span> <span>{{ g.groomer_name }}</span>
+          </div>
+          <div class="groom-card__row" v-if="g.phone">
+            <span aria-hidden="true">Tel</span> <span>{{ g.phone }}</span>
+          </div>
+          <div class="groom-card__row" v-if="g.estimated_duration_minutes">
+            <span aria-hidden="true">Dur</span> <span>{{ g.estimated_duration_minutes }} min</span>
           </div>
           <div class="groom-card__row" v-if="g.price">
-            <span aria-hidden="true">💰</span> <span>${{ g.price }}</span>
+            <span aria-hidden="true">Est</span> <span>${{ g.price }}</span>
+          </div>
+          <div class="groom-card__row" v-if="g.final_price">
+            <span aria-hidden="true">Fin</span> <span>Final ${{ g.final_price }}</span>
+          </div>
+          <div class="groom-card__services" v-if="g.pickup_required || g.delivery_required">
+            <span v-if="g.pickup_required" class="svc-chip">Retiro</span>
+            <span v-if="g.delivery_required" class="svc-chip">Entrega</span>
+          </div>
+          <div class="groom-card__row" v-if="g.pickup_address || g.delivery_address">
+            <span aria-hidden="true">Dir</span> <span>{{ g.pickup_address || g.delivery_address }}</span>
           </div>
           <div class="groom-card__row" v-if="g.notes">
-            <span aria-hidden="true">📝</span> <span class="notes-text">{{ g.notes }}</span>
+            <span aria-hidden="true">Obs</span> <span class="notes-text">{{ g.notes }}</span>
           </div>
         </div>
         <div class="groom-card__actions">
@@ -90,7 +106,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>{{ t('grooming.modalTitle') }}</h3>
-            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">×</button>
+            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">Ã—</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -113,11 +129,11 @@
                   <input v-model.trim="patientSearch" type="search" :placeholder="t('grooming.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                   <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
-                      🐾 <b>{{ pt.name }}</b>
-                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                      ðŸ¾ <b>{{ pt.name }}</b>
+                      <span class="autocomplete__owner">â€” {{ pt.primary_owner || '' }}</span>
                     </button>
                   </div>
-                  <div v-if="form.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                  <div v-if="form.patientId" class="selected-patient">âœ… {{ selectedPatientLabel }}</div>
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
@@ -132,6 +148,30 @@
                 <div class="field">
                   <label>{{ t('grooming.estimatedPrice') }}</label>
                   <input v-model.number="form.price" type="number" min="0" step="0.01" :placeholder="t('grooming.pricePlaceholder')" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Duracion estimada</label>
+                  <input v-model.number="form.estimatedDurationMinutes" type="number" min="0" step="1" placeholder="ej: 90" :disabled="saving" />
+                </div>
+                <div class="field field--full">
+                  <label class="check-item">
+                    <input type="checkbox" v-model="form.pickupRequired" :disabled="saving" />
+                    <span>Requiere retiro</span>
+                  </label>
+                </div>
+                <div v-if="form.pickupRequired" class="field field--full">
+                  <label>Direccion de retiro</label>
+                  <input v-model.trim="form.pickupAddress" type="text" placeholder="Direccion de retiro" :disabled="saving" />
+                </div>
+                <div class="field field--full">
+                  <label class="check-item">
+                    <input type="checkbox" v-model="form.deliveryRequired" :disabled="saving" />
+                    <span>Requiere entrega</span>
+                  </label>
+                </div>
+                <div v-if="form.deliveryRequired" class="field field--full">
+                  <label>Direccion de entrega</label>
+                  <input v-model.trim="form.deliveryAddress" type="text" placeholder="Direccion de entrega" :disabled="saving" />
                 </div>
                 <div class="field field--full">
                   <label>{{ t('grooming.notes') }}</label>
@@ -177,6 +217,13 @@ function normalizeGrooming(row) {
     scheduled_date: row.scheduled_date ?? row.scheduledAt ?? row.start_time ?? null,
     start_time: row.start_time ?? row.scheduled_date ?? null,
     price: row.price ?? row.estimated_price ?? row.estimatedPrice ?? null,
+    final_price: row.final_price ?? row.finalPrice ?? null,
+    estimated_duration_minutes: row.estimated_duration_minutes ?? row.estimatedDurationMinutes ?? null,
+    pickup_required: row.pickup_required ?? row.pickupRequired ?? false,
+    pickup_address: row.pickup_address ?? row.pickupAddress ?? '',
+    delivery_required: row.delivery_required ?? row.deliveryRequired ?? false,
+    delivery_address: row.delivery_address ?? row.deliveryAddress ?? '',
+    phone: row.phone ?? row.client_phone ?? row.clientPhone ?? '',
     patient: row.patient ?? null,
   }
 }
@@ -240,8 +287,8 @@ async function loadServiceTypes() {
 const SERVICES_LIST = computed(() => serviceTypesList.value.map((svc) => svc.name).filter(Boolean))
 
 function petEmoji(s) {
-  const m = { dog:'🐶', cat:'🐱', rabbit:'🐰', bird:'🐦' }
-  return m[s] || '🐾'
+  const m = { dog:'ðŸ¶', cat:'ðŸ±', rabbit:'ðŸ°', bird:'ðŸ¦' }
+  return m[s] || 'ðŸ¾'
 }
 
 function parseServices(s) {
@@ -251,7 +298,7 @@ function parseServices(s) {
 }
 
 function formatTime(dt) {
-  if (!dt) return '—'
+  if (!dt) return 'â€”'
   return new Date(dt).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' })
 }
 
@@ -333,7 +380,10 @@ const saving    = ref(false)
 const saveError = ref('')
 const fe        = reactive({})
 // form usa serviceTypeId objects: { serviceTypeId, priceCharged }
-const form = reactive({ scheduledAt:'', patientId:'', clientId:'', groomerId:'', selectedServiceIds:[], price:'', notes:'' })
+const form = reactive({
+  scheduledAt:'', patientId:'', clientId:'', groomerId:'', selectedServiceIds:[], price:'', notes:'',
+  estimatedDurationMinutes:null, pickupRequired:false, pickupAddress:'', deliveryRequired:false, deliveryAddress:''
+})
 
 function openModal()  {
   resetForm()
@@ -344,6 +394,7 @@ function closeModal() { showModal.value = false; resetForm() }
 function resetForm() {
   form.scheduledAt = ''; form.patientId = ''; form.clientId = ''; form.groomerId = ''
   form.selectedServiceIds = []; form.price = ''; form.notes = ''
+  form.estimatedDurationMinutes = null; form.pickupRequired = false; form.pickupAddress = ''; form.deliveryRequired = false; form.deliveryAddress = ''
   saveError.value = ''; Object.keys(fe).forEach(k => delete fe[k])
 }
 
@@ -370,6 +421,11 @@ async function handleCreate() {
       services,
     }
     if (form.price) payload.estimatedPrice = parseFloat(form.price)
+    if (form.estimatedDurationMinutes) payload.estimatedDurationMinutes = parseInt(form.estimatedDurationMinutes)
+    if (form.pickupRequired) payload.pickupRequired = true
+    if (form.pickupAddress) payload.pickupAddress = form.pickupAddress
+    if (form.deliveryRequired) payload.deliveryRequired = true
+    if (form.deliveryAddress) payload.deliveryAddress = form.deliveryAddress
     if (form.notes) payload.notes          = form.notes
     await http.post('/grooming/appointments', payload)
     closeModal(); await load()
@@ -378,7 +434,7 @@ async function handleCreate() {
   } finally { saving.value = false }
 }
 
-// ── Registro de resultado (grooming_records) ──────────────────────────────────
+// â”€â”€ Registro de resultado (grooming_records) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showRecordModal  = ref(false)
 const recordApptId     = ref(null)
 const recordSaving     = ref(false)

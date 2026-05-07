@@ -73,6 +73,7 @@
             <th>{{ t('laboratory.tablePriority') }}</th>
             <th>{{ t('laboratory.tableStatus') }}</th>
             <th>{{ t('laboratory.tableDate') }}</th>
+            <th>Reporte</th>
             <th>{{ t('laboratory.tableActions') }}</th>
           </tr>
         </thead>
@@ -97,6 +98,7 @@
               <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span>
             </td>
             <td class="sub">{{ formatDate(order.requested_at) }}</td>
+            <td class="sub"><span v-if="order.reported_at">{{ formatDate(order.reported_at) }}</span><span v-else>â€”</span><span v-if="order.results_count != null"> · {{ order.results_count }} res.</span></td>
             <td>
               <div class="action-btns">
                   <BaseButton
@@ -255,6 +257,17 @@
           </div>
           <form v-else @submit.prevent="handleSubmitResults" novalidate>
             <div class="form-body">
+              <div v-if="orderDetail" class="result-item" style="margin-bottom:16px">
+                <div class="result-item__header">
+                  <strong>{{ orderDetail.order_number || ('Orden #' + selectedOrder?.id) }}</strong>
+                  <span class="sub">{{ orderDetail.ordered_by || orderDetail.vet_name || '' }}</span>
+                </div>
+                <div class="sub">
+                  {{ formatDate(orderDetail.ordered_at || orderDetail.requested_at) }}
+                  <span v-if="orderDetail.reported_at"> · Reportado {{ formatDate(orderDetail.reported_at) }}</span>
+                </div>
+                <p v-if="orderDetail.clinical_notes" class="sub" style="margin-top:6px">{{ orderDetail.clinical_notes }}</p>
+              </div>
               <div v-if="orderDetail && orderDetail.items && orderDetail.items.length > 0">
                 <div
                   v-for="item in orderDetail.items"
@@ -342,9 +355,13 @@ function normalizeOrder(row) {
     species: row.species ?? row.species_name ?? row.speciesName ?? '',
     priority: row.priority ?? 'routine',
     status: row.status ?? 'pending',
-    requested_at: row.requested_at ?? row.requestedAt ?? null,
+    requested_at: row.requested_at ?? row.ordered_at ?? row.requestedAt ?? row.orderedAt ?? null,
+    ordered_at: row.ordered_at ?? row.requested_at ?? row.orderedAt ?? row.requestedAt ?? null,
+    reported_at: row.reported_at ?? row.reportedAt ?? null,
     clinical_notes: row.clinical_notes ?? row.clinicalNotes ?? '',
+    ordered_by: row.ordered_by ?? row.orderedBy ?? '',
     test_count: row.test_count ?? row.testCount ?? row.tests?.length ?? 0,
+    results_count: row.results_count ?? row.resultsCount ?? null,
   }
 }
 

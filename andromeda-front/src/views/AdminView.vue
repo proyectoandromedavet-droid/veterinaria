@@ -125,6 +125,40 @@
     <section class="panel panel--stacked">
       <header class="section-head">
         <div>
+          <h3>Features de acceso</h3>
+          <p>Controla features por organizacion sin tocar el RBAC base.</p>
+        </div>
+      </header>
+
+      <div v-if="featureFlagsLoading" class="table-loading" role="status">
+        <span class="spinner spinner--dark" />
+        <span>{{ t('common.loading') }}</span>
+      </div>
+
+      <div v-else class="feature-grid">
+        <article v-for="feature in aiFeatures" :key="feature.key" class="feature-card">
+          <div class="feature-card__body">
+            <strong>{{ feature.label }}</strong>
+            <p>{{ feature.description }}</p>
+            <span class="feature-card__key">{{ feature.key }}</span>
+          </div>
+          <label class="policy-switch">
+            <input
+              type="checkbox"
+              :checked="Boolean(featureFlags[feature.key])"
+              :disabled="savingFeatureKey === feature.key"
+              @change="toggleFeatureFlag(feature.key, $event.target.checked)"
+            />
+            <span>{{ featureFlags[feature.key] ? t('admin.enabled') : t('admin.disabled') }}</span>
+          </label>
+        </article>
+      </div>
+      <div v-if="featureFlagsError" class="alert alert--error" role="alert">{{ featureFlagsError }}</div>
+    </section>
+
+    <section class="panel panel--stacked">
+      <header class="section-head">
+        <div>
           <h3>{{ t('admin.roleOverrides') }}</h3>
           <p>{{ t('admin.roleOverridesHelp') }}</p>
         </div>
@@ -428,6 +462,11 @@ const authPolicy = reactive({
 })
 const savingAuthPolicy = ref(false)
 const authPolicyError = ref('')
+const featureFlags = reactive({})
+const featureDefinitions = ref([])
+const featureFlagsLoading = ref(false)
+const featureFlagsError = ref('')
+const savingFeatureKey = ref('')
 
 const ROLES = [
   { value: 'org_admin', label: 'Administrador de organizacion' },
@@ -474,6 +513,7 @@ const dbSelectedTable = ref('')
 const dbPreview       = ref(null)
 const dbLoading       = ref(false)
 const dbError         = ref('')
+const aiFeatures = ref([])
 
 function openModal() {
   resetForm()
@@ -616,6 +656,44 @@ async function toggleTwoFactorPolicy(enabled) {
   }
 }
 
+async function loadFeatureFlags() {
+  if (!auth.orgId) return
+  featureFlagsLoading.value = true
+  featureFlagsError.value = ''
+  try {
+    const { data } = await adminUsersApi.getFeatureFlags(auth.orgId)
+    const payload = data?.data || {}
+    const flags = payload.flags || {}
+    const definitions = payload.definitions || []
+    for (const key of Object.keys(featureFlags)) delete featureFlags[key]
+    for (const [key, value] of Object.entries(flags)) featureFlags[key] = Boolean(value)
+    featureDefinitions.value = definitions
+    aiFeatures.value = definitions.filter((item) => item.category === 'ai')
+  } catch (error) {
+    featureFlagsError.value = error.response?.data?.error?.message || 'No se pudieron cargar los feature flags.'
+  } finally {
+    featureFlagsLoading.value = false
+  }
+}
+
+async function toggleFeatureFlag(key, enabled) {
+  if (!auth.orgId) return
+  savingFeatureKey.value = key
+  featureFlagsError.value = ''
+  const previous = Boolean(featureFlags[key])
+  featureFlags[key] = enabled
+  try {
+    const { data } = await adminUsersApi.updateFeatureFlags(auth.orgId, { [key]: enabled })
+    const flags = data?.data?.flags || {}
+    for (const [flagKey, value] of Object.entries(flags)) featureFlags[flagKey] = Boolean(value)
+  } catch (error) {
+    featureFlags[key] = previous
+    featureFlagsError.value = error.response?.data?.error?.message || 'No se pudo actualizar el feature flag.'
+  } finally {
+    savingFeatureKey.value = ''
+  }
+}
+
 async function saveOverride() {
   if (!overrideForm.role) {
     overrideError.value = t('admin.roleRequired')
@@ -749,6 +827,7 @@ function logBadgeClass(action) {
 onMounted(async () => {
   await loadPage()
   await loadAuthPolicy()
+  await loadFeatureFlags()
   await loadOverrides()
   await loadLogs()
   await loadDbTableList()
@@ -1206,6 +1285,41 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-2);
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.feature-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-light, #eef2f4);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.feature-card__body {
+  display: grid;
+  gap: 6px;
+}
+
+.feature-card__body p {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.feature-card__key {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: var(--text-3);
 }
 
 @media (max-width: 900px) {

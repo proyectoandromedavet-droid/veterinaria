@@ -150,6 +150,25 @@ export const reportsApi = {
   staff:     (p) => http.get('/reports/staff',     { params: p }),
 }
 
+export const notificationsApi = {
+  inbox:      (p)             => http.get('/notifications', { params: p }),
+  markRead:   (id)            => http.patch(`/notifications/${id}/read`),
+  markAll:    ()              => http.patch('/notifications/read-all'),
+  reminders:  (p)             => http.get('/notifications/reminders', { params: p }),
+  messages:   (p)             => http.get('/notifications/messages', { params: p }),
+  retries:    ()              => http.get('/notifications/retries'),
+}
+
+export const aiApi = {
+  diagnosis:   (d)            => http.post('/ai/diagnosis', d),
+  analyze:     (d)            => http.post('/ai/images/analyze', d),
+  chatStart:   (d)            => http.post('/ai/chat', d),
+  chatGet:     (sessionId)    => http.get(`/ai/chat/${sessionId}`),
+  chatReply:   (sessionId, d) => http.post(`/ai/chat/${sessionId}/messages`, d),
+  risk:        (patientId)    => http.get(`/ai/patients/${patientId}/risk`),
+  riskHistory: (patientId)    => http.get(`/ai/patients/${patientId}/risk/history`),
+}
+
 export const adminApi = {
   users: {
     list:    (p)     => http.get('/auth/admin/users', { params: p }),

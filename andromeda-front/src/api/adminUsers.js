@@ -11,4 +11,6 @@ export const adminUsersApi = {
   getAlerts:       ()       => http.get('/auth/audit/alerts'),
   getTableList:    ()       => http.get('/auth/admin/preview'),
   getTablePreview: (table)  => http.get(`/auth/admin/preview/${table}`),
+  getFeatureFlags: (orgId)  => http.get(`/auth/admin/features/orgs/${orgId}`),
+  updateFeatureFlags: (orgId, flags) => http.patch(`/auth/admin/features/orgs/${orgId}`, { flags }),
 }

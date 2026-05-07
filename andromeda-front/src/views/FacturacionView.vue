@@ -91,6 +91,8 @@
               <th>{{ t('billing.clientPatient') }}</th>
               <th>{{ t('billing.issueDate') }}</th>
               <th>{{ t('billing.dueDate') }}</th>
+              <th>Moneda</th>
+              <th>Pagado</th>
               <th>{{ t('billing.total') }}</th>
               <th>{{ t('billing.status') }}</th>
               <th></th>
@@ -107,6 +109,8 @@
               </td>
               <td class="sub">{{ formatDate(inv.issued_date) }}</td>
               <td :class="dueDateClass(inv.due_date)">{{ formatDate(inv.due_date) }}</td>
+              <td class="sub">{{ inv.currency || '—' }}</td>
+              <td class="sub">${{ formatMoney(inv.paid_amount) }}</td>
               <td><strong>${{ formatMoney(inv.total_amount) }}</strong></td>
               <td><span class="badge" :class="`inv-${inv.status}`">{{ invoiceStatusLabel(inv.status) }}</span></td>
               <td>
@@ -220,8 +224,16 @@
                   <input v-model.trim="form.patientId" type="text" :placeholder="t('billing.patientIdLabel')" :disabled="saving" />
                 </div>
                 <div class="field">
+                  <label>Turno ID</label>
+                  <input v-model.trim="form.appointmentId" type="text" placeholder="Opcional" :disabled="saving" />
+                </div>
+                <div class="field">
                   <label>{{ t('billing.dueDateLabel') }}</label>
                   <input v-model="form.dueDate" type="date" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Moneda ID</label>
+                  <input v-model.trim="form.currencyId" type="text" placeholder="1" :disabled="saving" />
                 </div>
                 <div class="field">
                   <label>{{ t('billing.paymentMethodLabel') }}</label>
@@ -244,9 +256,12 @@
                 </div>
                 <div class="items-list">
                   <div v-for="(item, idx) in form.items" :key="idx" class="item-row">
+                    <input v-model.trim="item.serviceId" type="text" placeholder="Srv ID" class="item-svc" :disabled="saving" />
                     <input v-model.trim="item.description" type="text" :placeholder="t('billing.descriptionPlaceholder')" class="item-desc" :disabled="saving" />
                     <input v-model.number="item.quantity"  type="number" min="1" :placeholder="t('billing.quantityPlaceholder')" class="item-qty" :disabled="saving" />
                     <input v-model.number="item.unit_price" type="number" min="0" step="0.01" :placeholder="t('billing.unitPricePlaceholder')" class="item-price" :disabled="saving" />
+                    <input v-model.number="item.tax_pct" type="number" min="0" step="0.01" placeholder="% IVA" class="item-tax" :disabled="saving" />
+                    <input v-model.number="item.discount_pct" type="number" min="0" step="0.01" placeholder="% Desc." class="item-tax" :disabled="saving" />
                     <span class="item-total">${{ ((item.quantity || 0) * (item.unit_price || 0)).toFixed(2) }}</span>
                     <button type="button" class="btn-del-item" @click="removeItem(idx)" :disabled="form.items.length <= 1">✕</button>
                   </div>
@@ -305,9 +320,25 @@
                   <span class="detail-label">{{ t('billing.clientLabel') }}</span>
                   <span class="detail-value">{{ detailInvoice.client_name || '—' }}</span>
                 </div>
+                <div class="detail-field" v-if="detailInvoice.email">
+                  <span class="detail-label">Email</span>
+                  <span class="detail-value">{{ detailInvoice.email }}</span>
+                </div>
+                <div class="detail-field" v-if="detailInvoice.phone">
+                  <span class="detail-label">Teléfono</span>
+                  <span class="detail-value">{{ detailInvoice.phone }}</span>
+                </div>
+                <div class="detail-field" v-if="detailInvoice.tax_id">
+                  <span class="detail-label">CUIT / Doc.</span>
+                  <span class="detail-value">{{ detailInvoice.tax_id }}</span>
+                </div>
                 <div class="detail-field">
                   <span class="detail-label">{{ t('billing.patientLabel') }}</span>
                   <span class="detail-value">{{ detailInvoice.patient_name || '—' }}</span>
+                </div>
+                <div class="detail-field" v-if="detailInvoice.species">
+                  <span class="detail-label">Especie</span>
+                  <span class="detail-value">{{ detailInvoice.species }}</span>
                 </div>
                 <div class="detail-field">
                   <span class="detail-label">{{ t('billing.issuedDateLabel') }}</span>
@@ -320,6 +351,22 @@
                 <div v-if="detailInvoice.paid_amount != null" class="detail-field">
                   <span class="detail-label">{{ t('billing.amountPaidLabel') }}</span>
                   <span class="detail-value">${{ formatMoney(detailInvoice.paid_amount) }}</span>
+                </div>
+                <div class="detail-field">
+                  <span class="detail-label">Moneda</span>
+                  <span class="detail-value">{{ detailInvoice.currency || '—' }}</span>
+                </div>
+                <div class="detail-field">
+                  <span class="detail-label">Subtotal</span>
+                  <span class="detail-value">${{ formatMoney(detailInvoice.subtotal) }}</span>
+                </div>
+                <div class="detail-field">
+                  <span class="detail-label">Impuestos</span>
+                  <span class="detail-value">${{ formatMoney(detailInvoice.tax_amount) }}</span>
+                </div>
+                <div class="detail-field">
+                  <span class="detail-label">Descuento</span>
+                  <span class="detail-value">${{ formatMoney(detailInvoice.discount_amount) }}</span>
                 </div>
               </div>
 
@@ -347,6 +394,30 @@
                       <td style="text-align:right">{{ it.quantity }}</td>
                       <td style="text-align:right">${{ formatMoney(it.unit_price) }}</td>
                       <td style="text-align:right"><strong>${{ formatMoney(it.total) }}</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div v-if="detailInvoice.payments && detailInvoice.payments.length" class="detail-items">
+                <div class="detail-label" style="margin-bottom:8px">Pagos registrados</div>
+                <table class="table table--compact">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Método</th>
+                      <th>Referencia</th>
+                      <th>Estado</th>
+                      <th style="text-align:right">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="payment in detailInvoice.payments" :key="payment.id || payment.reference || payment.paid_at">
+                      <td>{{ formatDate(payment.paid_at) }}</td>
+                      <td>{{ payment.payment_method || '—' }}</td>
+                      <td>{{ payment.reference || '—' }}</td>
+                      <td>{{ payment.payment_status || '—' }}</td>
+                      <td style="text-align:right"><strong>${{ formatMoney(payment.amount) }}</strong></td>
                     </tr>
                   </tbody>
                 </table>
@@ -466,9 +537,11 @@ function normalizeInvoice(row) {
     client_name: row.client_name ?? row.client?.name ?? row.clientName ?? '',
     patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
     email: row.email ?? row.client?.email ?? '',
+    currency: row.currency ?? row.currency_code ?? '',
     status: row.status ?? 'draft',
     issued_date: row.issued_date ?? row.issuedDate ?? null,
     due_date: row.due_date ?? row.dueDate ?? null,
+    paid_amount: row.paid_amount ?? row.paidAmount ?? 0,
     total_amount: row.total_amount ?? row.totalAmount ?? 0,
   }
 }
@@ -493,6 +566,14 @@ function normalizeInvoiceDetail(detail) {
     status: detail.status ?? 'draft',
     client_name: detail.client_name ?? detail.client?.name ?? detail.clientName ?? '',
     patient_name: detail.patient_name ?? detail.patient?.name ?? detail.patientName ?? '',
+    email: detail.email ?? detail.client_email ?? detail.client?.email ?? '',
+    phone: detail.phone ?? detail.client_phone ?? detail.client?.phone ?? '',
+    tax_id: detail.tax_id ?? detail.client?.tax_id ?? '',
+    species: detail.species ?? '',
+    currency: detail.currency ?? detail.currency_code ?? '',
+    subtotal: detail.subtotal ?? 0,
+    tax_amount: detail.tax_amount ?? detail.taxAmount ?? 0,
+    discount_amount: detail.discount_amount ?? detail.discountAmount ?? 0,
     total_amount: detail.total_amount ?? detail.totalAmount ?? 0,
     paid_amount: detail.paid_amount ?? detail.paidAmount ?? null,
     items: asArray(detail.items ?? detail.invoice_items ?? detail.invoiceItems).map((it) => ({
@@ -501,6 +582,14 @@ function normalizeInvoiceDetail(detail) {
       quantity: it.quantity ?? 0,
       unit_price: it.unit_price ?? it.unitPrice ?? 0,
       total: it.total ?? it.line_total ?? it.lineTotal ?? 0,
+    })),
+    payments: asArray(detail.payments).map((payment) => ({
+      ...payment,
+      amount: payment.amount ?? 0,
+      payment_method: payment.payment_method ?? payment.paymentMethod ?? '',
+      payment_status: payment.payment_status ?? payment.paymentStatus ?? '',
+      reference: payment.reference ?? '',
+      paid_at: payment.paid_at ?? payment.paidAt ?? null,
     })),
   }
 }
@@ -559,8 +648,8 @@ const saveError = ref('')
 const fe        = reactive({})
 
 const form = reactive({
-  clientId: '', patientId: '', dueDate: '', paymentMethod: '',
-  items: [{ description: '', quantity: 1, unit_price: '' }],
+  clientId: '', patientId: '', appointmentId: '', dueDate: '', currencyId: '1', paymentMethod: '',
+  items: [{ serviceId: '', description: '', quantity: 1, unit_price: '', tax_pct: '', discount_pct: '' }],
   notes: '',
 })
 
@@ -568,14 +657,14 @@ const invoiceTotal = computed(() =>
   form.items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0)
 )
 
-function addItem()        { form.items.push({ description: '', quantity: 1, unit_price: '' }) }
+function addItem()        { form.items.push({ serviceId: '', description: '', quantity: 1, unit_price: '', tax_pct: '', discount_pct: '' }) }
 function removeItem(idx)  { form.items.splice(idx, 1) }
 function openModal()      { resetForm(); showModal.value = true }
 function closeModal()     { showModal.value = false; resetForm() }
 
 function resetForm() {
-  form.clientId = ''; form.patientId = ''; form.dueDate = ''; form.paymentMethod = ''
-  form.items = [{ description: '', quantity: 1, unit_price: '' }]; form.notes = ''
+  form.clientId = ''; form.patientId = ''; form.appointmentId = ''; form.dueDate = ''; form.currencyId = '1'; form.paymentMethod = ''
+  form.items = [{ serviceId: '', description: '', quantity: 1, unit_price: '', tax_pct: '', discount_pct: '' }]; form.notes = ''
   saveError.value = ''; Object.keys(fe).forEach(k => delete fe[k])
 }
 
@@ -591,14 +680,18 @@ async function handleCreate() {
   try {
     const payload = {
       clientId:   parseInt(form.clientId),
-      currencyId: 1,
+      currencyId: parseInt(form.currencyId || '1'),
       items: form.items.filter(i => i.description).map(i => ({
+        ...(i.serviceId ? { serviceId: parseInt(i.serviceId) } : {}),
         description: i.description,
         quantity:    i.quantity || 1,
         unitPrice:   parseFloat(i.unit_price) || 0,
+        ...(i.tax_pct !== '' ? { taxPct: parseFloat(i.tax_pct) || 0 } : {}),
+        ...(i.discount_pct !== '' ? { discountPct: parseFloat(i.discount_pct) || 0 } : {}),
       })),
     }
     if (form.patientId) payload.patientId = parseInt(form.patientId)
+    if (form.appointmentId) payload.appointmentId = parseInt(form.appointmentId)
     if (form.dueDate)   payload.dueDate   = form.dueDate
     if (form.notes)     payload.notes     = form.notes
     const { data: created } = await http.post('/invoices', payload)
@@ -911,5 +1004,4 @@ onMounted(load)
   .detail-amount { font-size: 1.35rem; }
 }
 </style>
-
 

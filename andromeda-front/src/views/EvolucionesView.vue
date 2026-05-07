@@ -51,6 +51,9 @@
           <span>👨‍⚕️ {{ ev.vet_name }}</span>
           <span class="evol-status" :class="`status--${ev.status}`">{{ statusLabel(ev.status) }}</span>
         </div>
+        <div class="appt-card__actions">
+          <button type="button" class="btn-xs btn-xs--blue" @click="openDetail(ev)">Ver detalle</button>
+        </div>
       </div>
     </div>
 
@@ -59,6 +62,76 @@
       <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
       <button :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">Sig. →</button>
     </div>
+
+    <Transition name="modal">
+      <div v-if="showDetail" class="modal-backdrop" @click.self="closeDetail()">
+        <div class="modal modal--wide">
+          <div class="modal__header">
+            <h3>📋 Detalle evolución</h3>
+            <button type="button" class="modal__close" @click="closeDetail()">✕</button>
+          </div>
+          <div v-if="detailLoading" class="loading-state">
+            <span class="spin spin--dark" /> {{ t('evolutions.loading') }}
+          </div>
+          <div v-else-if="detailError" class="alert alert--error">{{ detailError }}</div>
+          <div v-else-if="detailRecord" class="form-body">
+            <div class="detail-row"><b>Paciente:</b> {{ detailRecord.patient_name || '—' }}</div>
+            <div class="detail-row"><b>Especie:</b> {{ detailRecord.species || '—' }}</div>
+            <div class="detail-row"><b>Veterinario:</b> {{ detailRecord.vet_name || '—' }}</div>
+            <div class="detail-row"><b>Motivo principal:</b> {{ detailRecord.chief_complaint || '—' }}</div>
+            <div class="detail-row"><b>Fecha visita:</b> {{ formatDate(detailRecord.visit_date || detailRecord.opened_at) }}</div>
+            <div class="detail-row"><b>Estado:</b> {{ statusLabel(detailRecord.status) }}</div>
+            <div class="detail-row"><b>Firmada:</b> {{ detailRecord.signed_at ? formatDate(detailRecord.signed_at) : '—' }}</div>
+            <div class="detail-row"><b>Peso:</b> {{ detailRecord.weight_kg ? detailRecord.weight_kg + ' kg' : '—' }}</div>
+            <div class="detail-row"><b>Temperatura:</b> {{ detailRecord.temperature_celsius ? detailRecord.temperature_celsius + '°C' : '—' }}</div>
+            <div class="detail-row" v-if="detailRecord.notes"><b>Notas:</b> {{ detailRecord.notes }}</div>
+
+            <div v-if="detailRecord.anamnesisText" class="detail-block">
+              <b>Anamnesis</b>
+              <pre class="detail-pre">{{ detailRecord.anamnesisText }}</pre>
+            </div>
+
+            <div v-if="detailRecord.physicalExamText" class="detail-block">
+              <b>Examen físico</b>
+              <pre class="detail-pre">{{ detailRecord.physicalExamText }}</pre>
+            </div>
+
+            <div v-if="detailRecord.diagnoses?.length" class="detail-block">
+              <b>Diagnósticos</b>
+              <ul class="detail-list">
+                <li v-for="diag in detailRecord.diagnoses" :key="diag.id || diag.diagnosis_name">
+                  {{ diag.diagnosis_name || diag.name || '—' }}
+                  <span class="sub">{{ [diag.diagnosis_type, diag.diagnosis_code, diag.prognosis].filter(Boolean).join(' · ') || 'sin detalle' }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <div v-if="detailRecord.treatments?.length" class="detail-block">
+              <b>Tratamientos</b>
+              <ul class="detail-list">
+                <li v-for="tx in detailRecord.treatments" :key="tx.id || tx.treatment_name">
+                  {{ tx.treatment_name || tx.name || '—' }}
+                  <span class="sub">{{ [tx.route, tx.frequency, tx.duration_days ? tx.duration_days + ' días' : ''].filter(Boolean).join(' · ') || 'sin detalle' }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <div v-if="detailRecord.prescriptions?.length" class="detail-block">
+              <b>Recetas</b>
+              <ul class="detail-list">
+                <li v-for="rx in detailRecord.prescriptions" :key="rx.id || rx.medication_name">
+                  {{ rx.medication_name || '—' }}
+                  <span class="sub">{{ [rx.dose, rx.frequency, rx.route].filter(Boolean).join(' · ') || 'sin detalle' }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal__actions">
+            <button type="button" class="btn-ghost" @click="closeDetail()">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Modal nueva evolución -->
     <Transition name="modal">
@@ -603,6 +676,8 @@ function asArray(value) {
 
 function normalizeMedicalRecord(row) {
   if (!row || typeof row !== 'object') return null
+  const anamnesis = row.anamnesis ?? row.history ?? null
+  const physicalExam = row.physicalExam ?? row.physical_exam ?? null
   return {
     ...row,
     id: row.id ?? row.record_id ?? row.recordId ?? null,
@@ -615,6 +690,13 @@ function normalizeMedicalRecord(row) {
     status: row.status ?? '',
     weight_kg: row.weight_kg ?? row.weightKg ?? null,
     temperature_celsius: row.temperature_celsius ?? row.temperatureCelsius ?? null,
+    signed_at: row.signed_at ?? row.signedAt ?? null,
+    notes: row.notes ?? '',
+    diagnoses: asArray(row.diagnoses),
+    treatments: asArray(row.treatments),
+    prescriptions: asArray(row.prescriptions),
+    anamnesisText: stringifyClinicalBlock(anamnesis),
+    physicalExamText: stringifyClinicalBlock(physicalExam),
   }
 }
 
@@ -632,6 +714,10 @@ function normalizePatient(row) {
 const items      = ref([])
 const loading    = ref(false)
 const error      = ref('')
+const showDetail = ref(false)
+const detailLoading = ref(false)
+const detailError = ref('')
+const detailRecord = ref(null)
 const search     = ref('')
 const dateFrom   = ref('')
 const dateTo     = ref('')
@@ -657,6 +743,23 @@ function petEmoji(s) {
 function statusLabel(s) {
   const map = { open: 'Abierta', signed: 'Firmada', amended: 'Enmendada' }
   return map[s] || s || '—'
+}
+
+function stringifyClinicalBlock(block) {
+  if (!block) return ''
+  if (typeof block === 'string') return block
+  if (typeof block !== 'object') return ''
+  return Object.entries(block)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([key, value]) => `${labelizeKey(key)}: ${Array.isArray(value) ? value.join(', ') : value}`)
+    .join('\n')
+}
+
+function labelizeKey(key) {
+  return String(key)
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .replace(/^\w/, (m) => m.toUpperCase())
 }
 
 // Patient autocomplete
@@ -759,6 +862,27 @@ async function load(page = 1) {
   } catch (e) {
     error.value = e.response?.data?.message || 'No se pudieron cargar las evoluciones'
   } finally { loading.value = false }
+}
+
+async function openDetail(record) {
+  showDetail.value = true
+  detailLoading.value = true
+  detailError.value = ''
+  detailRecord.value = normalizeMedicalRecord(record)
+  try {
+    const { data } = await http.get(`/medical-records/${record.id}`)
+    detailRecord.value = normalizeMedicalRecord(data?.data || data)
+  } catch (e) {
+    detailError.value = e.response?.data?.message || 'No se pudo cargar el detalle de la ficha'
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function closeDetail() {
+  showDetail.value = false
+  detailError.value = ''
+  detailRecord.value = null
 }
 
 let timer = null
@@ -1168,5 +1292,3 @@ onMounted(load)
   .modal { max-width: 100%; max-height: 100vh; border-radius: 0; }
 }
 </style>
-
-

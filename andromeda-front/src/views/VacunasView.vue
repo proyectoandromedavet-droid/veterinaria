@@ -1,9 +1,9 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji" aria-hidden="true">💉</span>
+        <span class="page-emoji" aria-hidden="true">ðŸ’‰</span>
         <div>
           <h2 class="page-title">{{ t('vaccines.title') }}</h2>
           <p class="page-sub">{{ t('vaccines.subtitle') }}</p>
@@ -25,34 +25,34 @@
     </div>
 
     <!-- ==============================
-         SECCIÓN VACUNAS
+         SECCIÃ“N VACUNAS
     ============================== -->
     <template v-if="mainTab === 'vacunas'">
-      <!-- Stats rápidos -->
+      <!-- Stats rÃ¡pidos -->
       <div class="stats-row">
         <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-          <span class="stat-card__icon" aria-hidden="true">✅</span>
+          <span class="stat-card__icon" aria-hidden="true">âœ…</span>
           <div>
             <strong>{{ stats.upToDate }}</strong>
             <span>{{ t('vaccines.upToDate') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-          <span class="stat-card__icon" aria-hidden="true">⚠️</span>
+          <span class="stat-card__icon" aria-hidden="true">âš ï¸</span>
           <div>
             <strong>{{ stats.dueSoon }}</strong>
             <span>{{ t('vaccines.dueSoon') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#FDEAEA;--ct:#c0392b">
-          <span class="stat-card__icon" aria-hidden="true">🔴</span>
+          <span class="stat-card__icon" aria-hidden="true">ðŸ”´</span>
           <div>
             <strong>{{ stats.overdue }}</strong>
             <span>{{ t('vaccines.overdue') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-          <span class="stat-card__icon" aria-hidden="true">📋</span>
+          <span class="stat-card__icon" aria-hidden="true">ðŸ“‹</span>
           <div>
             <strong>{{ stats.total }}</strong>
             <span>{{ t('vaccines.totalRecords') }}</span>
@@ -74,7 +74,7 @@
       <div v-if="loading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingVaccines') }}</div>
       <div v-else-if="error" class="alert alert--error">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
-        <span class="empty-state__emoji" aria-hidden="true">🐾</span>
+        <span class="empty-state__emoji" aria-hidden="true">ðŸ¾</span>
         <p>{{ t('vaccines.emptyVaccines') }}</p>
       </div>
 
@@ -88,7 +88,14 @@
               <th>{{ t('vaccines.applicationDate') }}</th>
               <th>{{ t('vaccines.nextDose') }}</th>
               <th>{{ t('vaccines.lot') }}</th>
+              <th>Aplicacion</th>
               <th>{{ t('vaccines.status') }}</th>
+              <td class="sub">
+                <span v-if="d.route">{{ routeLabel(d.route) }}</span>
+                <span v-if="d.route && d.notes"> Â· </span>
+                <span v-if="d.notes">{{ d.notes }}</span>
+                <span v-if="!d.route && !d.notes">Ã¢â‚¬â€</span>
+              </td>
             </tr>
           </thead>
           <tbody>
@@ -97,27 +104,37 @@
                 <div class="pet-cell">
                   <span>{{ petEmoji(v.species) }}</span>
                   <div>
-                    <strong>{{ v.patient_name || '—' }}</strong>
+                    <strong>{{ v.patient_name || 'â€”' }}</strong>
                     <span class="sub">{{ v.administered_by || '' }}</span>
                   </div>
                 </div>
               </td>
               <td>
                 <div>
-                    <strong>{{ v.vaccine_name || '—' }}</strong>
+                    <strong>{{ v.vaccine_name || 'â€”' }}</strong>
                   <span class="sub">{{ v.manufacturer || '' }}</span>
                 </div>
               </td>
               <td>{{ formatDate(v.vaccination_date) }}</td>
               <td :class="dueDateClass(v.next_dose_due)">{{ formatDate(v.next_dose_due) }}</td>
-              <td class="sub">{{ v.lot_number || '—' }}</td>
+              <td class="sub">{{ v.lot_number || '-' }}</td>
+              <td class="sub">
+                <span v-if="v.expiry_date">Vence {{ formatDate(v.expiry_date) }}</span>
+                <span v-if="v.expiry_date && (v.dose || v.route)"> | </span>
+                <span v-if="v.dose">{{ v.dose }}</span>
+                <span v-if="v.dose && v.route"> / </span>
+                <span v-if="v.route">{{ routeLabel(v.route) }}</span>
+                <span v-if="v.administration_site" class="sub"> | {{ v.administration_site }}</span>
+                <span v-if="v.medical_record_id" class="sub"> | Ficha #{{ v.medical_record_id }}</span>
+                <span v-if="!v.expiry_date && !v.dose && !v.route && !v.administration_site && !v.medical_record_id">-</span>
+              </td>
               <td><span class="badge" :class="vacStatus(v)">{{ vacStatusLabel(v) }}</span></td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <!-- Paginación vacunas -->
+      <!-- PaginaciÃ³n vacunas -->
       <div v-if="pagination.totalPages > 1" class="pagination">
         <button type="button" :disabled="pagination.page <= 1" @click="load(pagination.page - 1)">{{ t('common.previous') }}</button>
         <span>{{ pagination.page }} / {{ pagination.totalPages }}</span>
@@ -126,7 +143,7 @@
     </template>
 
     <!-- ==============================
-         SECCIÓN DESPARASITACIÓN
+         SECCIÃ“N DESPARASITACIÃ“N
     ============================== -->
     <template v-if="mainTab === 'deworming'">
       <!-- Filtros deworming -->
@@ -137,7 +154,7 @@
       <div v-if="dewLoading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingDeworming') }}</div>
       <div v-else-if="dewError" class="alert alert--error">{{ dewError }}</div>
       <div v-else-if="dewItems.length === 0" class="empty-state">
-        <span class="empty-state__emoji" aria-hidden="true">🐛</span>
+        <span class="empty-state__emoji" aria-hidden="true">ðŸ›</span>
         <p>{{ t('vaccines.emptyDeworming') }}</p>
       </div>
 
@@ -153,6 +170,7 @@
               <th>{{ t('vaccines.nextDose') }}</th>
               <th>{{ t('vaccines.weightDose') }}</th>
               <th>{{ t('vaccines.administeredBy') }}</th>
+              <th>Via / notas</th>
             </tr>
           </thead>
           <tbody>
@@ -161,33 +179,39 @@
                 <div class="pet-cell">
                   <span>{{ petEmoji(d.species) }}</span>
                   <div>
-                    <strong>{{ d.patient_name || '—' }}</strong>
+                    <strong>{{ d.patient_name || 'â€”' }}</strong>
                     <span class="sub">{{ d.species || '' }}</span>
                   </div>
                 </div>
               </td>
               <td>
                 <div>
-                  <strong>{{ d.product_name || '—' }}</strong>
+                  <strong>{{ d.product_name || 'â€”' }}</strong>
                   <span class="sub">{{ d.active_ingredient || '' }}</span>
                 </div>
               </td>
-              <td>{{ d.parasite_type || '—' }}</td>
+              <td>{{ d.parasite_type || 'â€”' }}</td>
               <td>{{ formatDate(d.deworming_date) }}</td>
               <td :class="dueDateClass(d.next_due_date)">{{ formatDate(d.next_due_date) }}</td>
               <td>
                 <span v-if="d.weight_at_treatment">{{ d.weight_at_treatment }} kg</span>
                 <span v-if="d.weight_at_treatment && d.dose_administered"> / </span>
                 <span v-if="d.dose_administered">{{ d.dose_administered }}</span>
-                <span v-if="!d.weight_at_treatment && !d.dose_administered" class="sub">—</span>
+                <span v-if="!d.weight_at_treatment && !d.dose_administered" class="sub">â€”</span>
               </td>
-              <td class="sub">{{ d.administered_by || '—' }}</td>
+              <td class="sub">{{ d.administered_by || 'â€”' }}</td>
+              <td class="sub">
+                <span v-if="d.route">{{ routeLabel(d.route) }}</span>
+                <span v-if="d.route && d.notes"> | </span>
+                <span v-if="d.notes">{{ d.notes }}</span>
+                <span v-if="!d.route && !d.notes">â€”</span>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <!-- Paginación deworming -->
+      <!-- PaginaciÃ³n deworming -->
       <div v-if="dewPagination.totalPages > 1" class="pagination">
         <button type="button" :disabled="dewPagination.page <= 1" @click="loadDew(dewPagination.page - 1)">{{ t('common.previous') }}</button>
         <span>{{ dewPagination.page }} / {{ dewPagination.totalPages }}</span>
@@ -203,7 +227,7 @@
         <div class="modal">
           <div class="modal__header">
             <h3>{{ t('vaccines.registerVaccination') }}</h3>
-            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">×</button>
+            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">Ã—</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -214,10 +238,10 @@
                   <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                      <span class="autocomplete__owner">â€” {{ pt.primary_owner || '' }}</span>
                     </button>
                   </div>
-                  <div v-if="form.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                  <div v-if="form.patientId" class="selected-patient">âœ… {{ selectedPatientLabel }}</div>
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
@@ -241,6 +265,32 @@
                   <label>{{ t('vaccines.nextDose') }}</label>
                   <input v-model="form.nextDoseDue" type="date" :disabled="saving" />
                 </div>
+                <div class="field">
+                  <label>Dosis</label>
+                  <input v-model.trim="form.dose" type="text" placeholder="ej: 1 mL" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Vencimiento</label>
+                  <input v-model="form.expiryDate" type="date" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Via</label>
+                  <select v-model="form.route" :disabled="saving">
+                    <option value="">{{ t('common.choose') }}</option>
+                    <option value="oral">{{ t('vaccines.routeOral') }}</option>
+                    <option value="topical">{{ t('vaccines.routeTopical') }}</option>
+                    <option value="injectable">{{ t('vaccines.routeInjectable') }}</option>
+                    <option value="other">{{ t('common.other') }}</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Sitio</label>
+                  <input v-model.trim="form.administrationSite" type="text" placeholder="ej: subcutaneo" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Ficha medica</label>
+                  <input v-model.trim="form.medicalRecordId" type="number" min="1" placeholder="ID de ficha" :disabled="saving" />
+                </div>
                 <div class="field field--full">
                   <label>{{ t('vaccines.notes') }}</label>
                   <textarea v-model.trim="form.notes" rows="2" :placeholder="t('vaccines.notesPlaceholder')" :disabled="saving" />
@@ -260,14 +310,14 @@
     </Transition>
 
     <!-- ==============================
-         MODAL DESPARASITACIÓN
+         MODAL DESPARASITACIÃ“N
     ============================== -->
     <Transition name="modal">
       <div v-if="showModal && mainTab === 'deworming'" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
             <h3>{{ t('vaccines.registerDeworming') }}</h3>
-            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">×</button>
+            <button type="button" class="modal__close" :aria-label="t('common.close')" @click="closeModal()">Ã—</button>
           </div>
           <form @submit.prevent="handleCreateDew" novalidate>
             <div class="form-body">
@@ -279,10 +329,10 @@
                   <div v-if="dewPatientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button v-for="pt in dewPatientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectDewPatient(pt)">
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                      <span class="autocomplete__owner">â€” {{ pt.primary_owner || '' }}</span>
                     </button>
                   </div>
-                  <div v-if="dewForm.patientId" class="selected-patient">✅ {{ dewSelectedPatientLabel }}</div>
+                  <div v-if="dewForm.patientId" class="selected-patient">âœ… {{ dewSelectedPatientLabel }}</div>
                   <span v-if="dewFe.patientId" class="field-error">{{ dewFe.patientId }}</span>
                 </div>
 
@@ -292,7 +342,7 @@
                   <select v-model="dewForm.productId" :disabled="saving" required>
                     <option value="">{{ t('vaccines.selectProduct') }}</option>
                     <option v-for="p in dewProductList" :key="p.id" :value="p.id">
-                      {{ p.name }}{{ p.parasite_type ? ' — ' + p.parasite_type : '' }}
+                      {{ p.name }}{{ p.parasite_type ? ' â€” ' + p.parasite_type : '' }}
                     </option>
                   </select>
                   <span v-if="dewFe.productId" class="field-error">{{ dewFe.productId }}</span>
@@ -305,7 +355,7 @@
                   <span v-if="dewFe.dewormingDate" class="field-error">{{ dewFe.dewormingDate }}</span>
                 </div>
 
-                <!-- Próxima dosis -->
+                <!-- PrÃ³xima dosis -->
                 <div class="field">
                   <label>{{ t('vaccines.nextDose') }}</label>
                   <input v-model="dewForm.nextDueDate" type="date" :disabled="saving" />
@@ -323,7 +373,7 @@
                   <input v-model.trim="dewForm.doseAdministered" type="text" :placeholder="t('vaccines.dosePlaceholder')" :disabled="saving" />
                 </div>
 
-                <!-- Vía de administración -->
+                <!-- VÃ­a de administraciÃ³n -->
                 <div class="field">
                   <label>{{ t('vaccines.administrationRoute') }}</label>
                   <select v-model="dewForm.route" :disabled="saving">
@@ -387,6 +437,12 @@ function normalizeVaccine(row) {
     manufacturer: row.manufacturer ?? row.brand ?? '',
     next_dose_due: row.next_dose_due ?? row.next_due_date ?? row.nextDoseDue ?? row.nextDueDate ?? null,
     patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
+    lot_number: row.lot_number ?? row.batch_number ?? row.lotNumber ?? row.batchNumber ?? '',
+    expiry_date: row.expiry_date ?? row.expiryDate ?? null,
+    dose: row.dose ?? '',
+    route: row.route ?? '',
+    administration_site: row.administration_site ?? row.administrationSite ?? '',
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
   }
 }
 
@@ -408,22 +464,24 @@ function normalizeDewRecord(row) {
     product_name: row.product_name ?? row.product?.name ?? row.productName ?? '',
     active_ingredient: row.active_ingredient ?? row.activeIngredient ?? '',
     parasite_type: row.parasite_type ?? row.parasiteType ?? '',
+    route: row.route ?? '',
+    notes: row.notes ?? '',
   }
 }
 
-// ── Tab principal ──────────────────────────────────────────────
+// â”€â”€ Tab principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const mainTab = ref('vacunas')
 
-// ── Helpers compartidos ────────────────────────────────────────
+// â”€â”€ Helpers compartidos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function petEmoji(s) {
-  if (!s) return '🐾'
+  if (!s) return 'ðŸ¾'
   const sl = s.toLowerCase()
-  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
-  return m[sl] || '🐾'
+  const m = { perro:'ðŸ¶', dog:'ðŸ¶', gato:'ðŸ±', cat:'ðŸ±', conejo:'ðŸ°', rabbit:'ðŸ°', loro:'ðŸ¦œ', bird:'ðŸ¦œ', pez:'ðŸŸ', fish:'ðŸŸ', tortuga:'ðŸ¢', reptile:'ðŸ¦Ž', hamster:'ðŸ¹' }
+  return m[sl] || 'ðŸ¾'
 }
 
 function formatDate(iso) {
-  if (!iso) return '—'
+  if (!iso) return 'â€”'
   return new Date(iso).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' })
 }
 
@@ -435,7 +493,11 @@ function dueDateClass(dt) {
   return ''
 }
 
-// ── Modal compartido ───────────────────────────────────────────
+function routeLabel(route) {
+  return { oral: 'Oral', topical: 'Topica', injectable: 'Inyectable', other: 'Otra' }[route] || route || 'Ã¢â‚¬â€'
+}
+
+// â”€â”€ Modal compartido â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showModal = ref(false)
 const saving    = ref(false)
 
@@ -455,9 +517,9 @@ function openModal()  {
 }
 function closeModal() { showModal.value = false; resetForm(); resetDewForm() }
 
-// ════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  VACUNAS
-// ════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const items       = ref([])
 const loading     = ref(false)
 const error       = ref('')
@@ -558,7 +620,10 @@ function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 
 const saveError = ref('')
 const fe        = reactive({})
-const form      = reactive({ patientId:'', vaccineId:'', lotNumber:'', vaccinationDate:'', nextDoseDue:'', notes:'' })
+const form      = reactive({
+  patientId:'', vaccineId:'', lotNumber:'', vaccinationDate:'', nextDoseDue:'', notes:'',
+  dose:'', expiryDate:'', route:'', administrationSite:'', medicalRecordId:''
+})
 
 function resetForm() {
   Object.keys(form).forEach(k => form[k] = '')
@@ -584,6 +649,11 @@ async function handleCreate() {
     }
     if (form.lotNumber)   payload.batchNumber = form.lotNumber
     if (form.nextDoseDue) payload.nextDueDate = form.nextDoseDue
+    if (form.dose)        payload.dose = form.dose
+    if (form.expiryDate)  payload.expiryDate = form.expiryDate
+    if (form.route)       payload.route = form.route
+    if (form.administrationSite) payload.administrationSite = form.administrationSite
+    if (form.medicalRecordId) payload.medicalRecordId = parseInt(form.medicalRecordId)
     if (form.notes)       payload.notes       = form.notes
     await http.post('/vaccinations', payload)
     closeModal(); await load()
@@ -592,9 +662,9 @@ async function handleCreate() {
   } finally { saving.value = false }
 }
 
-// ════════════════════════════════════════════════════════════════
-//  DESPARASITACIÓN
-// ════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  DESPARASITACIÃ“N
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const dewItems      = ref([])
 const dewLoading    = ref(false)
 const dewError      = ref('')
@@ -699,7 +769,7 @@ async function handleCreateDew() {
   } finally { saving.value = false }
 }
 
-// ── Inicialización ─────────────────────────────────────────────
+// â”€â”€ InicializaciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 onMounted(() => {
   load()
   loadVaccines()
@@ -755,7 +825,7 @@ onMounted(() => {
 .badge--red     { background: #FDEAEA; color: #c0392b; }
 .badge--neutral { background: var(--surface-2); color: var(--text-3); }
 
-/* Paginación */
+/* PaginaciÃ³n */
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
 .pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }
@@ -802,5 +872,3 @@ onMounted(() => {
 .autocomplete__owner { font-size: 0.78rem; color: var(--text-3); }
 .selected-patient { margin-top: 6px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
 </style>
-
-

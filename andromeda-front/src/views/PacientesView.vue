@@ -93,15 +93,58 @@
             <h3>{{ petEmoji(detailPatient?.species) }} {{ detailPatient?.name }}</h3>
             <BaseButton type="button" variant="ghost" class="modal__close" @click="showDetail = false">✕</BaseButton>
           </div>
-          <div class="form-body" v-if="detailPatient">
+          <div v-if="detailLoading" class="loading-state" role="status" aria-live="polite">
+            <span class="spin spin--dark" /> {{ t('patients.loading') }}
+          </div>
+          <div v-else-if="detailError" class="alert alert--error" role="alert">{{ detailError }}</div>
+          <div class="form-body" v-else-if="detailPatient">
             <div class="detail-row"><b>{{ t('patients.species') }}:</b> {{ detailPatient.species }}</div>
+            <div class="detail-row" v-if="detailPatient.scientific_name"><b>Nombre científico:</b> {{ detailPatient.scientific_name }}</div>
             <div class="detail-row"><b>{{ t('patients.breed') }}:</b> {{ detailPatient.breed_name || detailPatient.breed || t('patients.noBreed') }}</div>
             <div class="detail-row"><b>{{ t('patients.sex') }}:</b> {{ sexLabel(detailPatient.sex) }}</div>
             <div class="detail-row"><b>{{ t('patients.birthdate') }}:</b> {{ detailPatient.birthdate ? formatDate(detailPatient.birthdate) : '—' }}</div>
             <div class="detail-row"><b>{{ t('patients.weight') }}:</b> {{ detailPatient.weight_kg ? detailPatient.weight_kg + ' kg' : '—' }}</div>
+            <div class="detail-row"><b>Condición corporal:</b> {{ detailPatient.body_condition_score || '—' }}</div>
             <div class="detail-row"><b>{{ t('patients.chip') }}:</b> {{ detailPatient.chip_number || '—' }}</div>
+            <div class="detail-row"><b>Tatuaje:</b> {{ detailPatient.tattoo_number || detailPatient.tattoo_code || '—' }}</div>
+            <div class="detail-row"><b>Pasaporte:</b> {{ detailPatient.passport_number || '—' }}</div>
+            <div class="detail-row"><b>Color de pelaje:</b> {{ detailPatient.coat_color_name || detailPatient.coat_color || '—' }}</div>
+            <div class="detail-row"><b>Esterilizado:</b> {{ boolLabel(detailPatient.is_sterilized ?? detailPatient.is_neutered) }}</div>
+            <div class="detail-row"><b>Fallecido:</b> {{ boolLabel(detailPatient.is_deceased) }}</div>
             <div class="detail-row"><b>{{ t('patients.owner') }}:</b> {{ detailPatient.primary_owner || '—' }}</div>
             <div class="detail-row"><b>{{ t('patients.ownerPhone') }}:</b> {{ detailPatient.owner_phone || '—' }}</div>
+            <div class="detail-row" v-if="detailPatient.photo_url"><b>Foto:</b> <a :href="detailPatient.photo_url" target="_blank" rel="noopener noreferrer">{{ detailPatient.photo_url }}</a></div>
+            <div class="detail-row" v-if="detailPatient.notes"><b>Notas:</b> {{ detailPatient.notes }}</div>
+
+            <div v-if="detailPatient.owners?.length" class="detail-block">
+              <b>Propietarios</b>
+              <ul class="detail-list">
+                <li v-for="owner in detailPatient.owners" :key="owner.id">
+                  {{ [owner.first_name, owner.last_name].filter(Boolean).join(' ') || '—' }}
+                  <span class="sub">{{ owner.ownership_type || 'secondary' }} · {{ owner.phone || owner.email || 'sin contacto' }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <div v-if="detailPatient.allergies?.length" class="detail-block">
+              <b>Alergias</b>
+              <ul class="detail-list">
+                <li v-for="allergy in detailPatient.allergies" :key="allergy.id || allergy.allergen">
+                  {{ allergy.allergen || '—' }}
+                  <span class="sub">{{ [allergy.severity, allergy.reaction_description].filter(Boolean).join(' · ') || 'sin detalle' }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <div v-if="detailPatient.chronicConditions?.length" class="detail-block">
+              <b>Condiciones crónicas</b>
+              <ul class="detail-list">
+                <li v-for="condition in detailPatient.chronicConditions" :key="condition.id || condition.condition_name">
+                  {{ condition.condition_name || '—' }}
+                  <span class="sub">{{ [condition.diagnosis_code, condition.managed_with].filter(Boolean).join(' · ') || 'sin detalle' }}</span>
+                </li>
+              </ul>
+            </div>
           </div>
           <div class="modal__actions">
             <BaseButton type="button" variant="ghost" @click="showDetail = false">{{ t('common.close') }}</BaseButton>
@@ -157,8 +200,44 @@
                   <input v-model.number="form.weight" type="number" step="0.1" min="0" placeholder="3.5" :disabled="saving" />
                 </div>
                 <div class="field">
+                  <label>Condición corporal</label>
+                  <input v-model.number="form.bodyConditionScore" type="number" min="1" max="9" step="0.5" placeholder="5" :disabled="saving" />
+                </div>
+                <div class="field">
                   <label>Microchip</label>
                   <input v-model.trim="form.microchip" type="text" placeholder="123456789012345" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Raza ID</label>
+                  <input v-model.number="form.breedId" type="number" min="1" placeholder="Opcional" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Color ID</label>
+                  <input v-model.number="form.coatColorId" type="number" min="1" placeholder="Opcional" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Tatuaje</label>
+                  <input v-model.trim="form.tattooNumber" type="text" placeholder="Opcional" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Pasaporte</label>
+                  <input v-model.trim="form.passportNumber" type="text" placeholder="Opcional" :disabled="saving" />
+                </div>
+                <div class="field">
+                  <label>Foto URL</label>
+                  <input v-model.trim="form.photoUrl" type="url" placeholder="https://..." :disabled="saving" />
+                </div>
+                <label class="checkbox-label">
+                  <input v-model="form.isNeutered" type="checkbox" :disabled="saving" />
+                  Esterilizado
+                </label>
+                <label class="checkbox-label">
+                  <input v-model="form.isDeceased" type="checkbox" :disabled="saving" />
+                  Fallecido
+                </label>
+                <div class="field field--full">
+                  <label>Notas</label>
+                  <textarea v-model.trim="form.notes" rows="2" placeholder="Observaciones generales" :disabled="saving" />
                 </div>
               </div>
 
@@ -232,8 +311,19 @@ function normalizePatient(row) {
     primary_owner: row.primary_owner || row.owner_name || row.ownerName || '',
     owner_name: row.owner_name || row.primary_owner || row.ownerName || '',
     owner_phone: row.owner_phone || row.ownerPhone || '',
+    owner_id: row.owner_id ?? row.ownerId ?? null,
     weight_kg: row.weight_kg ?? row.weightKg ?? null,
+    body_condition_score: row.body_condition_score ?? row.bodyConditionScore ?? null,
     chip_number: row.chip_number || row.microchip_number || row.microchipNumber || '',
+    scientific_name: row.scientific_name || '',
+    coat_color_name: row.coat_color_name || row.coatColorName || row.coat_color || '',
+    photo_url: row.photo_url || row.photoUrl || '',
+    tattoo_number: row.tattoo_number || row.tattooNumber || row.tattoo_code || '',
+    passport_number: row.passport_number || row.passportNumber || '',
+    notes: row.notes || '',
+    owners: asArray(row.owners),
+    allergies: asArray(row.allergies),
+    chronicConditions: asArray(row.chronicConditions),
     is_active: row.is_active ?? row.active ?? true,
   }
 }
@@ -331,7 +421,22 @@ function debouncedLoad() {
 
 const showDetail    = ref(false)
 const detailPatient = ref(null)
-function openDetail(p) { detailPatient.value = p; showDetail.value = true }
+const detailLoading = ref(false)
+const detailError   = ref('')
+async function openDetail(p) {
+  detailPatient.value = normalizePatient(p)
+  detailError.value = ''
+  showDetail.value = true
+  detailLoading.value = true
+  try {
+    const { data } = await http.get(`/patients/${p.id}`)
+    detailPatient.value = normalizePatient(data?.data || data)
+  } catch (e) {
+    detailError.value = e.response?.data?.error?.message || 'No se pudo cargar el detalle del paciente'
+  } finally {
+    detailLoading.value = false
+  }
+}
 
 // ── Create / Edit modal ──────────────────────────────────────────────────────
 
@@ -343,6 +448,8 @@ const fe        = reactive({})
 
 const form = reactive({
   name: '', speciesId: '', sex: 'unknown', birthDate: '', weight: '', microchip: '',
+  breedId: '', coatColorId: '', tattooNumber: '', passportNumber: '',
+  bodyConditionScore: '', photoUrl: '', notes: '', isNeutered: false, isDeceased: false,
   ownerFirstName: '', ownerLastName: '', ownerPhone: '', ownerEmail: '',
 })
 
@@ -352,6 +459,9 @@ function closeModal() { showModal.value = false; resetForm() }
 function resetForm() {
   form.name = ''; form.speciesId = ''; form.sex = 'unknown'
   form.birthDate = ''; form.weight = ''; form.microchip = ''
+  form.breedId = ''; form.coatColorId = ''; form.tattooNumber = ''; form.passportNumber = ''
+  form.bodyConditionScore = ''; form.photoUrl = ''; form.notes = ''
+  form.isNeutered = false; form.isDeceased = false
   form.ownerFirstName = ''; form.ownerLastName = ''
   form.ownerPhone = ''; form.ownerEmail = ''
   editingId.value = null
@@ -368,6 +478,15 @@ function openEdit(p) {
   form.birthDate = p.birthdate ? p.birthdate.split('T')[0] : ''
   form.weight    = p.weight_kg || ''
   form.microchip = p.chip_number || ''
+  form.breedId   = p.breed_id || ''
+  form.coatColorId = p.coat_color_id || p.color_id || ''
+  form.tattooNumber = p.tattoo_number || p.tattoo_code || ''
+  form.passportNumber = p.passport_number || ''
+  form.bodyConditionScore = p.body_condition_score || ''
+  form.photoUrl = p.photo_url || ''
+  form.notes = p.notes || ''
+  form.isNeutered = !!(p.is_sterilized ?? p.is_neutered)
+  form.isDeceased = !!p.is_deceased
   saveError.value = ''
   Object.keys(fe).forEach(k => delete fe[k])
   showModal.value = true
@@ -395,6 +514,15 @@ async function handleSave() {
       if (form.birthDate) payload.birthDate        = form.birthDate
       if (form.weight)    payload.weightKg          = parseFloat(form.weight)
       if (form.microchip) payload.microchipNumber   = form.microchip
+      if (form.breedId)   payload.breedId           = parseInt(form.breedId)
+      if (form.coatColorId) payload.coatColorId     = parseInt(form.coatColorId)
+      if (form.tattooNumber) payload.tattooNumber   = form.tattooNumber
+      if (form.passportNumber) payload.passportNumber = form.passportNumber
+      if (form.bodyConditionScore) payload.bodyConditionScore = parseFloat(form.bodyConditionScore)
+      payload.isNeutered = !!form.isNeutered
+      payload.isDeceased = !!form.isDeceased
+      if (form.photoUrl) payload.photoUrl = form.photoUrl
+      if (form.notes) payload.notes = form.notes
       await http.put(`/patients/${editingId.value}`, payload)
     } else {
       // ── CREAR: primero el cliente (dueño), luego el paciente ─────────────
@@ -415,6 +543,15 @@ async function handleSave() {
       if (form.birthDate) patientPayload.birthDate        = form.birthDate
       if (form.weight)    patientPayload.weightKg          = parseFloat(form.weight)
       if (form.microchip) patientPayload.microchipNumber   = form.microchip
+      if (form.breedId) patientPayload.breedId = parseInt(form.breedId)
+      if (form.coatColorId) patientPayload.coatColorId = parseInt(form.coatColorId)
+      if (form.tattooNumber) patientPayload.tattooNumber = form.tattooNumber
+      if (form.passportNumber) patientPayload.passportNumber = form.passportNumber
+      if (form.bodyConditionScore) patientPayload.bodyConditionScore = parseFloat(form.bodyConditionScore)
+      patientPayload.isNeutered = !!form.isNeutered
+      patientPayload.isDeceased = !!form.isDeceased
+      if (form.photoUrl) patientPayload.photoUrl = form.photoUrl
+      if (form.notes) patientPayload.notes = form.notes
 
       await http.post('/patients', patientPayload)
     }
@@ -436,6 +573,10 @@ onMounted(() => {
   loadSpecies()
   load()
 })
+
+function boolLabel(value) {
+  return value ? 'Sí' : 'No'
+}
 </script>
 
 <style scoped>

@@ -56,7 +56,14 @@
             </div>
           </div>
           <p class="appt-card__reason">{{ a.reason || a.appointment_type || 'Consulta general' }}</p>
+          <div class="appt-card__meta-chips">
+            <span v-if="a.duration_minutes" class="vital-chip">⏱ {{ a.duration_minutes }} min</span>
+            <span v-if="a.is_emergency" class="vital-chip vital-chip--danger">🚨 Emergencia</span>
+            <span v-if="a.record_status" class="vital-chip">📋 {{ a.record_status }}</span>
+          </div>
+          <p v-if="a.owner_phone" class="appt-card__vet">📞 {{ a.owner_phone }}</p>
           <p v-if="a.vet_name" class="appt-card__vet">👨‍⚕️ {{ a.vet_name }}</p>
+          <p v-if="a.notes" class="appt-card__notes">{{ a.notes }}</p>
         </div>
         <div class="appt-card__actions">
           <button type="button"
@@ -144,6 +151,18 @@
                 <label>{{ t('appointments.reasonLabel') }}</label>
                 <textarea v-model.trim="form.reason" rows="2" :placeholder="t('appointments.reasonPlaceholder')" :disabled="saving" />
               </div>
+              <div class="field">
+                <label>Duración (min)</label>
+                <input v-model.number="form.duration" type="number" min="5" step="5" :disabled="saving" />
+              </div>
+              <label class="checkbox-label field--full">
+                <input v-model="form.isEmergency" type="checkbox" :disabled="saving" />
+                Marcar como emergencia
+              </label>
+              <div class="field field--full">
+                <label>Notas internas</label>
+                <textarea v-model.trim="form.notes" rows="2" placeholder="Indicaciones, contexto clínico, observaciones" :disabled="saving" />
+              </div>
             </div>
             <div v-if="saveError" class="alert alert--error" role="alert">{{ saveError }}</div>
             <div class="modal__actions">
@@ -201,10 +220,16 @@ function normalizeAppointment(row) {
     species: row.species || row.species_name || row.speciesName || '',
     patient_name: row.patient_name || row.patient?.name || row.patientName || '',
     owner_name: row.owner_name || row.owner?.full_name || row.ownerName || '',
+    owner_phone: row.owner_phone || row.ownerPhone || '',
     reason: row.reason || row.appointment_type || row.appointmentType || '',
     appointment_type: row.appointment_type || row.appointmentType || '',
     vet_name: row.vet_name || row.veterinarian_name || row.vetName || '',
     scheduled_date: row.scheduled_date || row.scheduledDate || '',
+    duration_minutes: row.duration_minutes ?? row.durationMinutes ?? null,
+    is_emergency: row.is_emergency ?? row.isEmergency ?? false,
+    notes: row.notes || '',
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
+    record_status: row.record_status ?? row.recordStatus ?? '',
     status: row.status || 'scheduled',
   }
 }
@@ -323,8 +348,10 @@ const form = reactive({
   patientId:         '',
   clientId:          '',
   reason:            '',
+  notes:             '',
   vetId:             '',
   duration:          30,
+  isEmergency:       false,
 })
 
 // Patient autocomplete
@@ -368,8 +395,10 @@ function resetForm() {
   form.patientId = ''
   form.clientId = ''
   form.reason = ''
+  form.notes = ''
   form.vetId = ''
   form.duration = 30
+  form.isEmergency = false
   patientSearch.value = ''
   patientResults.value = []
   selectedPatientLabel.value = ''
@@ -400,6 +429,8 @@ async function handleCreate() {
     }
     if (form.clientId)  payload.clientId = parseInt(form.clientId)
     if (form.reason)    payload.reason   = form.reason
+    if (form.notes)     payload.notes    = form.notes
+    if (form.isEmergency) payload.isEmergency = true
     await http.post('/appointments', payload)
     closeModal()
     await load()

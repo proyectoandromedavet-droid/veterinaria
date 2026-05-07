@@ -74,6 +74,9 @@
               <th>{{ t('inventory.currentStock') }}</th>
               <th>{{ t('inventory.minStock') }}</th>
               <th>{{ t('inventory.salePrice') }}</th>
+              <th>Reorden</th>
+              <th>Costo</th>
+              <th>Proveedor</th>
               <th>{{ t('inventory.expiry') }}</th>
               <th>{{ t('inventory.status') }}</th>
             </tr>
@@ -94,9 +97,14 @@
               </td>
               <td class="sub">{{ p.minimum_stock ?? '—' }}</td>
               <td class="sub">{{ p.sale_price != null ? '$' + p.sale_price : '—' }}</td>
+              <td class="sub">{{ p.reorder_point ?? '—' }}</td>
+              <td class="sub">{{ p.unit_cost != null ? '$' + Number(p.unit_cost).toFixed(2) : '—' }}</td>
+              <td class="sub">{{ p.supplier_name || '—' }}</td>
               <td :class="expClass(p.expiry_date)">{{ formatDate(p.expiry_date) }}</td>
               <td>
                 <span class="badge" :class="stockBadge(p)">{{ stockLabel(p) }}</span>
+                <span v-if="p.requires_prescription" class="badge badge--red" style="margin-left:6px">Rx</span>
+                <span v-if="p.is_active === false" class="badge badge--neutral" style="margin-left:6px">Inactivo</span>
               </td>
             </tr>
           </tbody>
@@ -312,9 +320,28 @@
                   <input v-model.number="form.minStock" type="number" min="0" placeholder="5" :disabled="saving" />
                 </div>
                 <div class="field">
+                  <label>Punto de reorden</label>
+                  <input v-model.number="form.reorderPoint" type="number" min="0" placeholder="10" :disabled="saving" />
+                </div>
+                <div class="field">
                   <label>{{ t('inventory.batchExpiration') }}</label>
                   <input v-model="form.expirationDate" type="date" :disabled="saving" />
                 </div>
+                <div class="field">
+                  <label>Proveedor</label>
+                  <select v-model="form.supplierId" :disabled="saving">
+                    <option value="">{{ t('common.choose') }}</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                  </select>
+                </div>
+                <label class="checkbox-label">
+                  <input v-model="form.requiresPrescription" type="checkbox" :disabled="saving" />
+                  Requiere prescripción
+                </label>
+                <label class="checkbox-label">
+                  <input v-model="form.isActive" type="checkbox" :disabled="saving" />
+                  Activo
+                </label>
                 <div class="field field--full">
                   <label>{{ t('inventory.description') }}</label>
                   <textarea v-model.trim="form.description" rows="2" :placeholder="t('inventory.description')" :disabled="saving" />
@@ -500,8 +527,14 @@ function normalizeInventoryItem(row) {
     item_type: row.item_type ?? row.itemType ?? row.type ?? '',
     quantity_available: row.quantity_available ?? row.quantityAvailable ?? row.quantity ?? row.stock ?? 0,
     minimum_stock: row.minimum_stock ?? row.minimumStock ?? row.min_stock ?? 0,
+    reorder_point: row.reorder_point ?? row.reorderPoint ?? null,
+    unit_cost: row.unit_cost ?? row.unitCost ?? null,
     sale_price: row.sale_price ?? row.salePrice ?? null,
     expiry_date: row.expiry_date ?? row.expiryDate ?? null,
+    supplier_name: row.supplier_name ?? row.supplierName ?? '',
+    supplier_id: row.supplier_id ?? row.supplierId ?? null,
+    requires_prescription: row.requires_prescription ?? row.requiresPrescription ?? false,
+    is_active: row.is_active ?? row.isActive ?? true,
   }
 }
 
@@ -611,6 +644,7 @@ function stockBadge(p) {
 }
 
 function stockLabel(p) {
+  if (p.is_active === false) return 'Inactivo'
   if (isOut(p)) return t('inventory.noStock')
   if (isLow(p)) return t('inventory.lowStock')
   return t('common.active')
@@ -632,6 +666,7 @@ function formatDate(iso) {
 async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
+    if (suppliers.value.length === 0) loadSuppliers()
     const params = { page, limit: 25 }
     if (search.value)         params.search      = search.value
     if (categoryFilter.value) params.itemType    = categoryFilter.value
@@ -653,12 +688,18 @@ const showModal = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
 const fe        = reactive({})
-const form = reactive({ name:'', category:'', sku:'', salePrice:'', unitCost:'', stock:'', minStock:'', expirationDate:'', description:'' })
+const form = reactive({
+  name:'', category:'', sku:'', salePrice:'', unitCost:'', stock:'', minStock:'', reorderPoint:'',
+  expirationDate:'', description:'', supplierId:'', requiresPrescription:false, isActive:true,
+})
 
 function openModal()  { resetForm(); showModal.value = true }
 function closeModal() { showModal.value = false; resetForm() }
 function resetForm() {
-  Object.keys(form).forEach(k => form[k] = '')
+  Object.assign(form, {
+    name:'', category:'', sku:'', salePrice:'', unitCost:'', stock:'', minStock:'', reorderPoint:'',
+    expirationDate:'', description:'', supplierId:'', requiresPrescription:false, isActive:true,
+  })
   saveError.value = ''; Object.keys(fe).forEach(k => delete fe[k])
 }
 
@@ -683,7 +724,11 @@ async function handleCreate() {
     if (form.sku)             payload.sku           = form.sku
     if (form.unitCost !== '')  payload.unitCost      = parseFloat(form.unitCost)
     if (form.minStock !== '')  payload.minimumStock  = parseInt(form.minStock)
+    if (form.reorderPoint !== '') payload.reorderPoint = parseInt(form.reorderPoint)
     if (form.description)     payload.description   = form.description
+    if (form.supplierId)      payload.supplierId    = parseInt(form.supplierId)
+    payload.requiresPrescription = !!form.requiresPrescription
+    payload.isActive = !!form.isActive
     const { data: created } = await http.post('/inventory/items', payload)
     if (parseInt(form.stock) > 0 && created?.id) {
       await http.post('/inventory/batches', {

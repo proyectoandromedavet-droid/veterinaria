@@ -202,6 +202,15 @@ export const useAuthStore = defineStore('auth', () => {
     if (all)
       items.push({ key: 'admin',          label: 'Administrar',  icon: '⚙️',  to: '/admin' })
 
+    if (all || r.length)
+      items.push({ key: 'notifications',  label: 'Notificaciones', icon: '🔔', to: '/notificaciones' })
+
+    if (all || r.some(x => ['branch_manager','org_admin','receptionist','read_only'].includes(x)))
+      items.push({ key: 'portal',         label: 'Portal',       icon: '👥', to: '/portal' })
+
+    if (can('ai:use'))
+      items.push({ key: 'ai',             label: 'IA',           icon: '🧠', to: '/ai' })
+
     return items
   })
 

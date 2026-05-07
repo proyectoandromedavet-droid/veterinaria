@@ -13,6 +13,7 @@ const { enforcePassword } = require('../../../../shared/passwordPolicy');
 const { captureFingerprint } = require('../../../../shared/deviceFingerprint');
 const { enqueueJob } = require('../../../../shared/notificationRetry');
 const oidc = require('../../../../shared/oidc');
+const { getEffectivePermissions } = require('../../../../shared/rbac');
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 async function getRedis() {
@@ -205,6 +206,15 @@ async function ensureUserRoles(userId) {
   return roleRows.map((r) => r.name);
 }
 
+async function getUserPermissions(roles, orgId) {
+  const merged = new Set();
+  for (const role of roles || []) {
+    const permissions = await getEffectivePermissions(role, orgId);
+    for (const permission of permissions) merged.add(permission);
+  }
+  return [...merged];
+}
+
 async function persistSession(req, user, refreshToken, jti) {
   const ip = req.ip;
   const ua = req.headers['user-agent'] || '';
@@ -227,19 +237,23 @@ async function persistSession(req, user, refreshToken, jti) {
 
 async function finalizeLogin(res, req, user, roles, responseData = null) {
   const { accessToken, refreshToken, jti } = await buildTokenPair(user, roles);
+  const permissions = await getUserPermissions(roles, user.organization_id);
   await persistSession(req, user, refreshToken, jti);
   setSessionCookies(res, accessToken, refreshToken);
   return {
     accessToken,
     expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m',
-    user: responseData || {
-      id: user.id,
-      email: user.email,
-      name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
-      orgId: user.organization_id,
-      branchId: user.branch_id,
-      roles,
-    },
+    user: responseData
+      ? { ...responseData, permissions }
+      : {
+          id: user.id,
+          email: user.email,
+          name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+          orgId: user.organization_id,
+          branchId: user.branch_id,
+          roles,
+          permissions,
+        },
   };
 }
 
@@ -558,7 +572,10 @@ async function me(req, res) {
     { id: req.user.userId }
   );
 
-  return R.ok(res, { ...user, roles });
+  const roleNames = roles.map((role) => role.name);
+  const permissions = await getUserPermissions(roleNames, user.org_id);
+
+  return R.ok(res, { ...user, roles, permissions });
 }
 
 /**

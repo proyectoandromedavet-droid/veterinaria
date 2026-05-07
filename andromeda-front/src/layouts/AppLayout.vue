@@ -131,6 +131,10 @@ const PAGE_TITLES = {
   reportes: 'Reportes',
   admin: 'Administración',
 }
+PAGE_TITLES.notificaciones = 'Notificaciones'
+PAGE_TITLES.portal = 'Portal de DueÃ±os'
+PAGE_TITLES.ai = 'Inteligencia Artificial'
+
 const currentTitle = computed(() => PAGE_TITLES[route.name] || 'Sistema Andromeda')
 
 function handleLogout() {
