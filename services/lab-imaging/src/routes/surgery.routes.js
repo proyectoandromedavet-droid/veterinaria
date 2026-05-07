@@ -26,7 +26,7 @@ router.get('/', async (req, res, next) => {
     if (to)        { conds.push('s.scheduled_date <= :to');   p.to   = to; }
 
     const rows = await db.query(
-      `SELECT s.id, s.scheduled_date, s.start_time, s.end_time, s.status,
+      `SELECT s.id, s.medical_record_id, s.scheduled_date, s.start_time, s.end_time, s.status,
               s.duration_minutes, s.urgency,
               st.name AS surgery_type, sc.name AS surgery_category,
               p.name AS patient_name, sp.common_name AS species,

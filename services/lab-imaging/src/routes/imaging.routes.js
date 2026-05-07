@@ -26,7 +26,7 @@ router.get('/orders', async (req, res, next) => {
 
     const where = `WHERE ${conds.join(' AND ')}`;
     const rows  = await db.query(
-      `SELECT io.id, io.order_number, io.status, io.ordered_at, io.priority,
+      `SELECT io.id, io.medical_record_id, io.order_number, io.status, io.ordered_at, io.priority,
               io.clinical_indication, io.body_region,
               p.name AS patient_name, sp.common_name AS species,
               it.name AS imaging_type,

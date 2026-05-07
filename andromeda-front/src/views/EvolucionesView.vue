@@ -125,6 +125,231 @@
                 </li>
               </ul>
             </div>
+
+            <div class="detail-block">
+              <b>Órdenes derivadas</b>
+              <div v-if="relatedOrdersLoading" class="loading-state" style="padding:20px 0">
+                <span class="spin spin--dark" /> Cargando órdenes vinculadas…
+              </div>
+              <div v-else class="detail-related-grid">
+                <div class="detail-related-card">
+                  <strong>Laboratorio</strong>
+                  <ul v-if="relatedOrders.lab.length" class="detail-list">
+                    <li v-for="order in relatedOrders.lab" :key="`lab-${order.id}`">
+                      {{ order.order_number || ('#' + order.id) }}
+                      <span class="sub">{{ [order.status, order.priority, order.test_count ? order.test_count + ' pruebas' : '', order.ordered_at ? formatDate(order.ordered_at) : ''].filter(Boolean).join(' · ') }}</span>
+                    </li>
+                  </ul>
+                  <span v-else class="sub">Sin órdenes de laboratorio vinculadas.</span>
+                </div>
+                <div class="detail-related-card">
+                  <strong>Imágenes</strong>
+                  <ul v-if="relatedOrders.imaging.length" class="detail-list">
+                    <li v-for="order in relatedOrders.imaging" :key="`img-${order.id}`">
+                      {{ order.order_number || ('#' + order.id) }}
+                      <span class="sub">{{ [order.imaging_type, order.status, order.body_region, order.ordered_at ? formatDate(order.ordered_at) : ''].filter(Boolean).join(' · ') }}</span>
+                    </li>
+                  </ul>
+                  <span v-else class="sub">Sin órdenes de imágenes vinculadas.</span>
+                </div>
+                <div class="detail-related-card">
+                  <strong>Internación</strong>
+                  <ul v-if="relatedOrders.hospitalizations.length" class="detail-list">
+                    <li v-for="item in relatedOrders.hospitalizations" :key="`hos-${item.id}`">
+                      Internación #{{ item.id }}
+                      <span class="sub">{{ [item.hospitalization_status, item.ward_name, item.kennel_number ? 'Jaula ' + item.kennel_number : '', item.admission_date ? formatDate(item.admission_date) : ''].filter(Boolean).join(' · ') }}</span>
+                    </li>
+                  </ul>
+                  <span v-else class="sub">Sin internaciones vinculadas.</span>
+                </div>
+                <div class="detail-related-card">
+                  <strong>Cirugía</strong>
+                  <ul v-if="relatedOrders.surgeries.length" class="detail-list">
+                    <li v-for="item in relatedOrders.surgeries" :key="`sur-${item.id}`">
+                      {{ item.surgery_type || ('Cirugía #' + item.id) }}
+                      <span class="sub">{{ [item.status, item.lead_surgeon, item.scheduled_date ? formatDate(item.scheduled_date) : ''].filter(Boolean).join(' · ') }}</span>
+                    </li>
+                  </ul>
+                  <span v-else class="sub">Sin cirugías vinculadas.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-block">
+              <b>Acciones clínicas</b>
+              <div class="detail-actions-grid">
+                <div class="detail-action-card">
+                  <strong>Laboratorio</strong>
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>Prioridad</label>
+                      <select v-model="detailOrders.lab.priority" :disabled="detailActionSaving">
+                        <option value="routine">Rutina</option>
+                        <option value="urgent">Urgente</option>
+                        <option value="emergency">Emergencia</option>
+                      </select>
+                    </div>
+                    <div class="field field--full">
+                      <label>Notas clínicas</label>
+                      <textarea v-model.trim="detailOrders.lab.clinicalNotes" rows="2" :disabled="detailActionSaving" />
+                    </div>
+                  </div>
+                  <div v-if="loadingLabTests" class="loading-state" style="padding:12px 0">
+                    <span class="spin spin--dark" /> Cargando pruebas…
+                  </div>
+                  <div v-else class="tests-catalog">
+                    <div v-for="(tests, category) in groupedLabTests" :key="category" class="test-category">
+                      <div class="test-category__title">{{ category }}</div>
+                      <div class="test-category__items">
+                        <label v-for="test in tests" :key="test.id" class="test-checkbox-label">
+                          <input v-model="detailOrders.lab.tests" type="checkbox" :value="test.id" :disabled="detailActionSaving" />
+                          <div class="test-info">
+                            <strong>{{ test.name }}</strong>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <button type="button" class="btn-primary btn-sm" :disabled="detailActionSaving || !detailOrders.lab.tests.length" @click="submitDetailLabOrder()">Crear orden de laboratorio</button>
+                </div>
+
+                <div class="detail-action-card">
+                  <strong>Imágenes</strong>
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>Tipo de estudio</label>
+                      <select v-model="detailOrders.imaging.imagingTypeId" :disabled="detailActionSaving || loadingImagingTypes">
+                        <option value="">{{ loadingImagingTypes ? 'Cargando tipos…' : 'Seleccionar estudio' }}</option>
+                        <option v-for="type in imagingTypes" :key="type.id" :value="type.id">{{ type.name }}{{ type.modality ? ' · ' + type.modality : '' }}</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Prioridad</label>
+                      <select v-model="detailOrders.imaging.priority" :disabled="detailActionSaving">
+                        <option value="routine">Rutina</option>
+                        <option value="urgent">Urgente</option>
+                        <option value="emergency">Emergencia</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Región anatómica</label>
+                      <input v-model.trim="detailOrders.imaging.bodyRegion" type="text" :disabled="detailActionSaving" />
+                    </div>
+                    <label class="checkbox-label">
+                      <input v-model="detailOrders.imaging.sedationRequired" type="checkbox" :disabled="detailActionSaving" />
+                      Requiere sedación
+                    </label>
+                    <div class="field field--full">
+                      <label>Indicación clínica</label>
+                      <textarea v-model.trim="detailOrders.imaging.clinicalIndication" rows="2" :disabled="detailActionSaving" />
+                    </div>
+                  </div>
+                  <button type="button" class="btn-primary btn-sm" :disabled="detailActionSaving || !detailOrders.imaging.imagingTypeId" @click="submitDetailImagingOrder()">Crear orden de imágenes</button>
+                </div>
+
+                <div class="detail-action-card">
+                  <strong>Internación</strong>
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>Veterinario responsable</label>
+                      <select v-model="detailOrders.hospitalization.responsibleVetId" :disabled="detailActionSaving || loadingProfessionals">
+                        <option value="">{{ loadingProfessionals ? 'Cargando profesionales…' : 'Seleccionar veterinario' }}</option>
+                        <option v-for="professional in hospitalizationProfessionals" :key="professional.id" :value="String(professional.id)">{{ professional.label }}</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Sala</label>
+                      <select v-model="detailOrders.hospitalization.wardId" :disabled="detailActionSaving || wardsLoading" @change="detailOrders.hospitalization.kennelId = ''">
+                        <option value="">{{ wardsLoading ? 'Cargando salas…' : 'Seleccionar sala' }}</option>
+                        <option v-for="ward in availableWards" :key="ward.id" :value="ward.id">{{ ward.name }}{{ ward.available_kennels != null ? ' (' + ward.available_kennels + ' libres)' : '' }}</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Jaula</label>
+                      <select v-model="detailOrders.hospitalization.kennelId" :disabled="detailActionSaving || !detailOrders.hospitalization.wardId">
+                        <option value="">Sin jaula asignada</option>
+                        <option v-for="kennel in freeKennelsForDetailWard" :key="kennel.id" :value="kennel.id">Jaula {{ kennel.number }}{{ kennel.kennel_type ? ' (' + kennel.kennel_type + ')' : '' }}</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Peso ingreso</label>
+                      <input v-model.number="detailOrders.hospitalization.admissionWeight" type="number" min="0" step="0.01" :disabled="detailActionSaving" />
+                    </div>
+                    <div class="field">
+                      <label>Alta estimada</label>
+                      <input v-model="detailOrders.hospitalization.estimatedDischargeDate" type="date" :disabled="detailActionSaving" />
+                    </div>
+                    <div class="field field--full">
+                      <label>Motivo de internación</label>
+                      <textarea v-model.trim="detailOrders.hospitalization.hospitalizationReason" rows="2" :disabled="detailActionSaving" />
+                    </div>
+                    <div class="field field--full">
+                      <label>Diagnóstico de ingreso</label>
+                      <textarea v-model.trim="detailOrders.hospitalization.admissionDiagnosis" rows="2" :disabled="detailActionSaving" />
+                    </div>
+                    <div class="field field--full">
+                      <label>Indicaciones especiales</label>
+                      <textarea v-model.trim="detailOrders.hospitalization.specialInstructions" rows="2" :disabled="detailActionSaving" />
+                    </div>
+                  </div>
+                  <button type="button" class="btn-primary btn-sm" :disabled="detailActionSaving || !detailOrders.hospitalization.hospitalizationReason || !detailOrders.hospitalization.responsibleVetId" @click="submitDetailHospitalization()">Crear internación</button>
+                </div>
+
+                <div class="detail-action-card">
+                  <strong>Cirugía</strong>
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>Tipo de cirugía</label>
+                      <select v-model="detailOrders.surgery.surgeryTypeId" :disabled="detailActionSaving || loadingSurgeryTypes">
+                        <option value="">{{ loadingSurgeryTypes ? 'Cargando tipos…' : 'Seleccionar cirugía' }}</option>
+                        <optgroup v-for="(types, category) in groupedSurgeryTypes" :key="category" :label="category">
+                          <option v-for="type in types" :key="type.id" :value="type.id">{{ type.name }}{{ type.estimated_duration_minutes ? ' · ' + type.estimated_duration_minutes + ' min est.' : '' }}</option>
+                        </optgroup>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Cirujano responsable</label>
+                      <select v-model="detailOrders.surgery.leadSurgeonId" :disabled="detailActionSaving || loadingProfessionals">
+                        <option value="">{{ loadingProfessionals ? 'Cargando profesionales…' : 'Seleccionar cirujano' }}</option>
+                        <option v-for="professional in surgeryProfessionals" :key="professional.id" :value="String(professional.id)">{{ professional.label }}</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Fecha programada</label>
+                      <input v-model="detailOrders.surgery.scheduledDate" type="date" :disabled="detailActionSaving" />
+                    </div>
+                    <div class="field">
+                      <label>Hora estimada</label>
+                      <input v-model="detailOrders.surgery.startTime" type="time" :disabled="detailActionSaving" />
+                    </div>
+                    <div class="field">
+                      <label>Urgencia</label>
+                      <select v-model="detailOrders.surgery.urgency" :disabled="detailActionSaving">
+                        <option value="elective">Electiva</option>
+                        <option value="urgent">Urgente</option>
+                        <option value="emergency">Emergencia</option>
+                      </select>
+                    </div>
+                    <div class="field field--full">
+                      <label>Diagnóstico preoperatorio</label>
+                      <textarea v-model.trim="detailOrders.surgery.preoperativeDiagnosis" rows="2" :disabled="detailActionSaving" />
+                    </div>
+                    <div class="field field--full">
+                      <label>Abordaje quirúrgico</label>
+                      <input v-model.trim="detailOrders.surgery.surgicalApproach" type="text" :disabled="detailActionSaving" />
+                    </div>
+                    <div class="field field--full">
+                      <label>Notas quirúrgicas</label>
+                      <textarea v-model.trim="detailOrders.surgery.notes" rows="2" :disabled="detailActionSaving" />
+                    </div>
+                  </div>
+                  <button type="button" class="btn-primary btn-sm" :disabled="detailActionSaving || !detailOrders.surgery.surgeryTypeId || !detailOrders.surgery.leadSurgeonId || !detailOrders.surgery.scheduledDate" @click="submitDetailSurgery()">Crear cirugía</button>
+                </div>
+              </div>
+
+              <div v-if="detailActionError" class="alert alert--error" style="margin-top:12px">{{ detailActionError }}</div>
+              <div v-if="detailActionSuccess" class="alert alert--success" style="margin-top:12px">{{ detailActionSuccess }}</div>
+            </div>
           </div>
           <div class="modal__actions">
             <button type="button" class="btn-ghost" @click="closeDetail()">Cerrar</button>
@@ -162,6 +387,7 @@
                     <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                       <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="t('common.selectPatient')" @click="selectPatient(pt)">
                         {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
+                        <span v-if="pt.hc_number" class="autocomplete__owner"> · HC {{ pt.hc_number }}</span>
                         <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                       </button>
                     </div>
@@ -565,8 +791,180 @@
                 </div>
               </div>
 
-              <!-- TAB 5: Recetas -->
+              <!-- TAB 5: Órdenes -->
               <div v-show="activeTab === 5">
+                <div class="section-title">Laboratorio</div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label>Prioridad</label>
+                    <select v-model="form.labOrder.priority" :disabled="saving">
+                      <option value="routine">Rutina</option>
+                      <option value="urgent">Urgente</option>
+                      <option value="emergency">Emergencia</option>
+                    </select>
+                  </div>
+                  <div class="field field--full">
+                    <label>Notas clínicas para laboratorio</label>
+                    <textarea v-model.trim="form.labOrder.clinicalNotes" rows="2" placeholder="Motivo del pedido, sospecha diagnóstica, observaciones..." :disabled="saving" />
+                  </div>
+                </div>
+                <div v-if="loadingLabTests" class="loading-state" style="padding:20px 0">
+                  <span class="spin spin--dark" /> Cargando pruebas de laboratorio…
+                </div>
+                <div v-else class="tests-catalog">
+                  <div v-for="(tests, category) in groupedLabTests" :key="category" class="test-category">
+                    <div class="test-category__title">{{ category }}</div>
+                    <div class="test-category__items">
+                      <label v-for="test in tests" :key="test.id" class="test-checkbox-label">
+                        <input v-model="form.labOrder.tests" type="checkbox" :value="test.id" :disabled="saving" />
+                        <div class="test-info">
+                          <strong>{{ test.name }}</strong>
+                          <span v-if="test.code" class="sub">{{ test.code }}</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="section-title" style="margin-top:18px">Imágenes</div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label>Tipo de estudio</label>
+                    <select v-model="form.imagingOrder.imagingTypeId" :disabled="saving || loadingImagingTypes">
+                      <option value="">{{ loadingImagingTypes ? 'Cargando tipos…' : 'Seleccionar estudio' }}</option>
+                      <option v-for="type in imagingTypes" :key="type.id" :value="type.id">
+                        {{ type.name }}{{ type.modality ? ' · ' + type.modality : '' }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Prioridad</label>
+                    <select v-model="form.imagingOrder.priority" :disabled="saving">
+                      <option value="routine">Rutina</option>
+                      <option value="urgent">Urgente</option>
+                      <option value="emergency">Emergencia</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Región anatómica</label>
+                    <input v-model.trim="form.imagingOrder.bodyRegion" type="text" placeholder="Tórax, abdomen, miembro posterior..." :disabled="saving" />
+                  </div>
+                  <label class="checkbox-label">
+                    <input v-model="form.imagingOrder.sedationRequired" type="checkbox" :disabled="saving" />
+                    Requiere sedación
+                  </label>
+                  <div class="field field--full">
+                    <label>Indicación clínica</label>
+                    <textarea v-model.trim="form.imagingOrder.clinicalIndication" rows="3" placeholder="Sospecha clínica, hallazgos del examen, objetivo del estudio..." :disabled="saving" />
+                  </div>
+                </div>
+
+                <div class="section-title" style="margin-top:18px">Internación</div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label>Veterinario responsable</label>
+                    <select v-model="form.hospitalizationOrder.responsibleVetId" :disabled="saving || loadingProfessionals">
+                      <option value="">{{ loadingProfessionals ? 'Cargando profesionales…' : 'Seleccionar veterinario' }}</option>
+                      <option v-for="professional in hospitalizationProfessionals" :key="professional.id" :value="String(professional.id)">
+                        {{ professional.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Sala</label>
+                    <select v-model="form.hospitalizationOrder.wardId" :disabled="saving || wardsLoading" @change="form.hospitalizationOrder.kennelId = ''">
+                      <option value="">{{ wardsLoading ? 'Cargando salas…' : 'Seleccionar sala' }}</option>
+                      <option v-for="ward in availableWards" :key="ward.id" :value="ward.id">
+                        {{ ward.name }}{{ ward.available_kennels != null ? ' (' + ward.available_kennels + ' libres)' : '' }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Jaula</label>
+                    <select v-model="form.hospitalizationOrder.kennelId" :disabled="saving || !form.hospitalizationOrder.wardId">
+                      <option value="">Sin jaula asignada</option>
+                      <option v-for="kennel in freeKennelsForEvolutionWard" :key="kennel.id" :value="kennel.id">
+                        Jaula {{ kennel.number }}{{ kennel.kennel_type ? ' (' + kennel.kennel_type + ')' : '' }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Peso ingreso</label>
+                    <input v-model.number="form.hospitalizationOrder.admissionWeight" type="number" min="0" step="0.01" placeholder="Ej: 12.4" :disabled="saving" />
+                  </div>
+                  <div class="field">
+                    <label>Alta estimada</label>
+                    <input v-model="form.hospitalizationOrder.estimatedDischargeDate" type="date" :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Motivo de internación</label>
+                    <textarea v-model.trim="form.hospitalizationOrder.hospitalizationReason" rows="2" placeholder="Razón clínica para internar al paciente..." :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Diagnóstico de ingreso</label>
+                    <textarea v-model.trim="form.hospitalizationOrder.admissionDiagnosis" rows="2" placeholder="Diagnóstico inicial o presuntivo..." :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Indicaciones especiales</label>
+                    <textarea v-model.trim="form.hospitalizationOrder.specialInstructions" rows="2" placeholder="Aislamiento, monitoreo, cuidados, dieta..." :disabled="saving" />
+                  </div>
+                </div>
+
+                <div class="section-title" style="margin-top:18px">Cirugía</div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label>Tipo de cirugía</label>
+                    <select v-model="form.surgeryOrder.surgeryTypeId" :disabled="saving || loadingSurgeryTypes">
+                      <option value="">{{ loadingSurgeryTypes ? 'Cargando tipos…' : 'Seleccionar cirugía' }}</option>
+                      <optgroup v-for="(types, category) in groupedSurgeryTypes" :key="category" :label="category">
+                        <option v-for="type in types" :key="type.id" :value="type.id">
+                          {{ type.name }}{{ type.estimated_duration_minutes ? ' · ' + type.estimated_duration_minutes + ' min est.' : '' }}
+                        </option>
+                      </optgroup>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Cirujano responsable</label>
+                    <select v-model="form.surgeryOrder.leadSurgeonId" :disabled="saving || loadingProfessionals">
+                      <option value="">{{ loadingProfessionals ? 'Cargando profesionales…' : 'Seleccionar cirujano' }}</option>
+                      <option v-for="professional in surgeryProfessionals" :key="professional.id" :value="String(professional.id)">
+                        {{ professional.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Fecha programada</label>
+                    <input v-model="form.surgeryOrder.scheduledDate" type="date" :disabled="saving" />
+                  </div>
+                  <div class="field">
+                    <label>Hora estimada</label>
+                    <input v-model="form.surgeryOrder.startTime" type="time" :disabled="saving" />
+                  </div>
+                  <div class="field">
+                    <label>Urgencia</label>
+                    <select v-model="form.surgeryOrder.urgency" :disabled="saving">
+                      <option value="elective">Electiva</option>
+                      <option value="urgent">Urgente</option>
+                      <option value="emergency">Emergencia</option>
+                    </select>
+                  </div>
+                  <div class="field field--full">
+                    <label>Diagnóstico preoperatorio</label>
+                    <textarea v-model.trim="form.surgeryOrder.preoperativeDiagnosis" rows="2" placeholder="Indicación clínica, diagnóstico presuntivo o definitivo..." :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Abordaje quirúrgico</label>
+                    <input v-model.trim="form.surgeryOrder.surgicalApproach" type="text" placeholder="Línea media, lateral, artrotomía, etc." :disabled="saving" />
+                  </div>
+                  <div class="field field--full">
+                    <label>Notas quirúrgicas</label>
+                    <textarea v-model.trim="form.surgeryOrder.notes" rows="2" placeholder="Preparación, consideraciones anestésicas, materiales, observaciones..." :disabled="saving" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- TAB 6: Recetas -->
+              <div v-show="activeTab === 6">
                 <div class="section-title">{{ t('evolutions.prescription') }}</div>
 
                 <!-- Agregar ítem -->
@@ -664,9 +1062,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
+import { adminUsersApi } from '../api/adminUsers'
 import { t } from '../i18n'
+import { useAuthStore } from '../stores/auth'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -681,6 +1081,7 @@ function normalizeMedicalRecord(row) {
   return {
     ...row,
     id: row.id ?? row.record_id ?? row.recordId ?? null,
+    patient_id: row.patient_id ?? row.patientId ?? row.patient?.id ?? null,
     patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
     vet_name: row.vet_name ?? row.vet?.name ?? row.vetName ?? '',
     species: row.species ?? row.species_name ?? row.speciesName ?? '',
@@ -708,6 +1109,7 @@ function normalizePatient(row) {
     name: row.name ?? row.full_name ?? row.fullName ?? '',
     species: row.species ?? row.species_name ?? row.speciesName ?? '',
     primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+    hc_number: row.hc_number ?? row.hcNumber ?? '',
   }
 }
 
@@ -722,6 +1124,10 @@ const search     = ref('')
 const dateFrom   = ref('')
 const dateTo     = ref('')
 const pagination = ref({ page: 1, totalPages: 1 })
+const auth = useAuthStore()
+const CLINICAL_ROLES = ['veterinarian', 'surgeon', 'vet_technician', 'tele_vet']
+const HOSPITALIZATION_ROLES = ['veterinarian', 'surgeon', 'tele_vet']
+const SURGERY_ROLES = ['veterinarian', 'surgeon']
 
 const tabs = [
   { label: t('evolutions.generalData'), icon: '📝' },
@@ -729,9 +1135,62 @@ const tabs = [
   { label: t('evolutions.physicalExam'), icon: '🔬' },
   { label: t('evolutions.diagnosis'), icon: '🩺' },
   { label: t('evolutions.treatment'), icon: '💊' },
+  { label: 'Órdenes', icon: '🧪' },
   { label: t('evolutions.prescription'), icon: '📄' },
 ]
 const activeTab = ref(0)
+const labTests = ref([])
+const imagingTypes = ref([])
+const surgeryTypes = ref([])
+const loadingLabTests = ref(false)
+const loadingImagingTypes = ref(false)
+const loadingSurgeryTypes = ref(false)
+const availableWards = ref([])
+const wardsLoading = ref(false)
+const professionals = ref([])
+const loadingProfessionals = ref(false)
+
+const groupedLabTests = computed(() => {
+  const groups = {}
+  labTests.value.forEach((test) => {
+    const category = test.category || 'General'
+    if (!groups[category]) groups[category] = []
+    groups[category].push(test)
+  })
+  return groups
+})
+
+const freeKennelsForEvolutionWard = computed(() => {
+  if (!form.hospitalizationOrder.wardId) return []
+  const ward = availableWards.value.find((entry) => entry.id === form.hospitalizationOrder.wardId)
+  if (!ward || !ward.kennels) return []
+  return ward.kennels.filter((kennel) => kennel.status === 'available' || kennel.status === 'free')
+})
+
+const groupedSurgeryTypes = computed(() => {
+  const groups = {}
+  surgeryTypes.value.forEach((type) => {
+    const category = type.category || 'General'
+    if (!groups[category]) groups[category] = []
+    groups[category].push(type)
+  })
+  return groups
+})
+
+const hospitalizationProfessionals = computed(() =>
+  professionals.value.filter((entry) => entry.roles.some((role) => HOSPITALIZATION_ROLES.includes(role)))
+)
+
+const surgeryProfessionals = computed(() =>
+  professionals.value.filter((entry) => entry.roles.some((role) => SURGERY_ROLES.includes(role)))
+)
+
+const freeKennelsForDetailWard = computed(() => {
+  if (!detailOrders.hospitalization.wardId) return []
+  const ward = availableWards.value.find((entry) => entry.id === detailOrders.hospitalization.wardId)
+  if (!ward || !ward.kennels) return []
+  return ward.kennels.filter((kennel) => kennel.status === 'available' || kennel.status === 'free')
+})
 
 function petEmoji(s) {
   if (!s) return '🐾'
@@ -762,6 +1221,61 @@ function labelizeKey(key) {
     .replace(/^\w/, (m) => m.toUpperCase())
 }
 
+function normalizeRoleList(input) {
+  if (Array.isArray(input)) {
+    return input
+      .flatMap((entry) => normalizeRoleList(entry))
+      .filter(Boolean)
+  }
+  if (!input) return []
+  if (typeof input === 'string') {
+    return input.split(',').map((entry) => entry.trim()).filter(Boolean)
+  }
+  if (typeof input === 'object') {
+    return normalizeRoleList(input.name || input.code || input.role || input.slug)
+  }
+  return []
+}
+
+function normalizeProfessional(row) {
+  if (!row) return null
+  const roles = normalizeRoleList(row.roles)
+  const id = row.id ?? row.user_id ?? row.userId ?? null
+  if (!id) return null
+  return {
+    id,
+    roles,
+    isActive: row.is_active ?? row.isActive ?? row.active ?? true,
+    label: [
+      [row.first_name, row.last_name].filter(Boolean).join(' ').trim(),
+      row.name,
+      row.email,
+      `#${id}`,
+    ].find(Boolean),
+  }
+}
+
+function currentUserProfessional() {
+  const currentUser = auth.user || {}
+  const roles = normalizeRoleList(auth.roles)
+  if (!roles.some((role) => CLINICAL_ROLES.includes(role))) return null
+  return normalizeProfessional({
+    id: currentUser.id || currentUser.userId || null,
+    first_name: currentUser.first_name || currentUser.firstName || currentUser.name || '',
+    last_name: currentUser.last_name || currentUser.lastName || '',
+    email: currentUser.email || '',
+    roles,
+    is_active: true,
+  })
+}
+
+function preferredProfessionalId(list) {
+  const self = currentUserProfessional()
+  if (self && list.some((entry) => entry.id === self.id)) return String(self.id)
+  if (list.length === 1) return String(list[0].id)
+  return ''
+}
+
 // Patient autocomplete
 const patientSearch        = ref('')
 const patientResults       = ref([])
@@ -789,7 +1303,7 @@ function fmtDate(iso) {
 
 async function selectPatient(pt) {
   form.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.hc_number ? ' · HC ' + pt.hc_number : ''}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 
@@ -868,10 +1382,26 @@ async function openDetail(record) {
   showDetail.value = true
   detailLoading.value = true
   detailError.value = ''
+  detailActionError.value = ''
+  detailActionSuccess.value = ''
+  relatedOrders.lab = []
+  relatedOrders.imaging = []
+  relatedOrders.surgeries = []
+  relatedOrders.hospitalizations = []
+  Object.assign(detailOrders, makeDetailOrdersForm())
   detailRecord.value = normalizeMedicalRecord(record)
   try {
+    await Promise.all([loadOrderCatalogs(), loadProfessionals()])
     const { data } = await http.get(`/medical-records/${record.id}`)
     detailRecord.value = normalizeMedicalRecord(data?.data || data)
+    detailOrders.lab.clinicalNotes = detailRecord.value?.chief_complaint || ''
+    detailOrders.imaging.clinicalIndication = detailRecord.value?.chief_complaint || ''
+    detailOrders.hospitalization.admissionDiagnosis = detailRecord.value?.chief_complaint || ''
+    detailOrders.surgery.preoperativeDiagnosis = detailRecord.value?.chief_complaint || ''
+    detailOrders.hospitalization.responsibleVetId = preferredProfessionalId(hospitalizationProfessionals.value)
+    detailOrders.surgery.leadSurgeonId = preferredProfessionalId(surgeryProfessionals.value)
+    detailOrders.surgery.scheduledDate = new Date().toISOString().slice(0, 10)
+    await loadRelatedOrders(detailRecord.value)
   } catch (e) {
     detailError.value = e.response?.data?.message || 'No se pudo cargar el detalle de la ficha'
   } finally {
@@ -882,7 +1412,13 @@ async function openDetail(record) {
 function closeDetail() {
   showDetail.value = false
   detailError.value = ''
+  detailActionError.value = ''
+  detailActionSuccess.value = ''
   detailRecord.value = null
+  relatedOrders.lab = []
+  relatedOrders.imaging = []
+  relatedOrders.surgeries = []
+  relatedOrders.hospitalizations = []
 }
 
 let timer = null
@@ -892,10 +1428,230 @@ const showModal = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
 
+async function loadOrderCatalogs() {
+  if (!labTests.value.length) {
+    loadingLabTests.value = true
+    try {
+      const { data } = await http.get('/lab/tests')
+      labTests.value = asArray(data?.data || data).map((row) => ({
+        ...row,
+        id: row.id ?? row.test_id ?? row.testId ?? null,
+        name: row.name ?? row.test_name ?? row.testName ?? '',
+        category: row.category ?? row.group ?? 'General',
+      })).filter((row) => row.id)
+    } catch { labTests.value = [] }
+    finally { loadingLabTests.value = false }
+  }
+
+  if (!imagingTypes.value.length) {
+    loadingImagingTypes.value = true
+    try {
+      const { data } = await http.get('/imaging/types')
+      imagingTypes.value = asArray(data?.data || data).map((row) => ({
+        ...row,
+        id: row.id ?? row.type_id ?? row.typeId ?? null,
+        name: row.name ?? row.type_name ?? row.typeName ?? '',
+        modality: row.modality ?? row.modality_code ?? row.modalityCode ?? '',
+      })).filter((row) => row.id)
+    } catch { imagingTypes.value = [] }
+    finally { loadingImagingTypes.value = false }
+  }
+
+  if (!surgeryTypes.value.length) {
+    loadingSurgeryTypes.value = true
+    try {
+      const { data } = await http.get('/surgeries/types/all')
+      surgeryTypes.value = asArray(data?.data || data).map((row) => ({
+        ...row,
+        id: row.id ?? row.type_id ?? row.typeId ?? null,
+        name: row.name ?? row.type_name ?? row.typeName ?? '',
+        category: row.category ?? row.category_name ?? row.categoryName ?? 'General',
+        estimated_duration_minutes: row.estimated_duration_minutes ?? row.estimatedDurationMinutes ?? null,
+      })).filter((row) => row.id)
+    } catch { surgeryTypes.value = [] }
+    finally { loadingSurgeryTypes.value = false }
+  }
+
+  if (!availableWards.value.length) {
+    wardsLoading.value = true
+    try {
+      const { data } = await http.get('/hospitalizations/wards/availability')
+      const rows = asArray(data?.data || data?.wards || data)
+      const grouped = new Map()
+      rows.forEach((row) => {
+        const wardId = row.ward_id ?? row.id ?? row.wardId
+        if (!wardId) return
+        if (!grouped.has(wardId)) {
+          grouped.set(wardId, {
+            id: wardId,
+            name: row.ward_name ?? row.name ?? '',
+            ward_type: row.ward_type ?? row.wardType ?? '',
+            available_kennels: 0,
+            kennels: [],
+          })
+        }
+        const ward = grouped.get(wardId)
+        const kennel = {
+          id: row.kennel_id ?? row.id ?? row.kennelId ?? null,
+          number: row.kennel_number ?? row.number ?? row.kennelNumber ?? '',
+          status: row.status ?? '',
+          kennel_type: row.kennel_type ?? row.kennelType ?? '',
+        }
+        if (kennel.id) ward.kennels.push(kennel)
+        if (kennel.status === 'available' || kennel.status === 'free') ward.available_kennels += 1
+      })
+      availableWards.value = Array.from(grouped.values())
+    } catch { availableWards.value = [] }
+    finally { wardsLoading.value = false }
+  }
+}
+
+async function loadProfessionals() {
+  loadingProfessionals.value = true
+  try {
+    const currentRoles = normalizeRoleList(auth.roles)
+    const isAdmin = currentRoles.includes('superadmin') || currentRoles.includes('org_admin')
+
+    if (isAdmin) {
+      const { data } = await adminUsersApi.list({ limit: 100 })
+      professionals.value = asArray(data?.data || data)
+        .map(normalizeProfessional)
+        .filter((entry) => entry && entry.isActive && entry.roles.some((role) => CLINICAL_ROLES.includes(role)))
+      return
+    }
+
+    const self = currentUserProfessional()
+    professionals.value = self ? [self] : []
+  } catch {
+    const self = currentUserProfessional()
+    professionals.value = self ? [self] : []
+  } finally {
+    loadingProfessionals.value = false
+  }
+}
+
+function prefillProfessionalFields() {
+  const preferredHospitalization = preferredProfessionalId(hospitalizationProfessionals.value)
+  const preferredSurgery = preferredProfessionalId(surgeryProfessionals.value)
+  if (!form.hospitalizationOrder.responsibleVetId && preferredHospitalization) {
+    form.hospitalizationOrder.responsibleVetId = preferredHospitalization
+  }
+  if (!form.surgeryOrder.leadSurgeonId && preferredSurgery) {
+    form.surgeryOrder.leadSurgeonId = preferredSurgery
+  }
+}
+
 // Receta — nuevo ítem pendiente de agregar
 const newRxItem = reactive({
   medicationName: '', dose: '', doseUnit: '', frequency: '',
   route: '', durationDays: '', quantity: '', instructions: ''
+})
+
+function makeDetailOrdersForm() {
+  return {
+    lab: {
+      tests: [],
+      priority: 'routine',
+      clinicalNotes: '',
+    },
+    imaging: {
+      imagingTypeId: '',
+      priority: 'routine',
+      clinicalIndication: '',
+      bodyRegion: '',
+      sedationRequired: false,
+    },
+    hospitalization: {
+      responsibleVetId: '',
+      wardId: '',
+      kennelId: '',
+      hospitalizationReason: '',
+      admissionDiagnosis: '',
+      admissionWeight: '',
+      estimatedDischargeDate: '',
+      specialInstructions: '',
+    },
+    surgery: {
+      surgeryTypeId: '',
+      leadSurgeonId: '',
+      scheduledDate: '',
+      startTime: '',
+      urgency: 'elective',
+      preoperativeDiagnosis: '',
+      surgicalApproach: '',
+      notes: '',
+    },
+  }
+}
+
+function normalizeRelatedLabOrder(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? null,
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
+    order_number: row.order_number ?? row.orderNumber ?? '',
+    status: row.status ?? '',
+    priority: row.priority ?? '',
+    ordered_at: row.ordered_at ?? row.orderedAt ?? null,
+    reported_at: row.reported_at ?? row.reportedAt ?? null,
+    test_count: row.test_count ?? row.testCount ?? null,
+  }
+}
+
+function normalizeRelatedImagingOrder(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? null,
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
+    order_number: row.order_number ?? row.orderNumber ?? '',
+    status: row.status ?? '',
+    priority: row.priority ?? '',
+    ordered_at: row.ordered_at ?? row.orderedAt ?? null,
+    imaging_type: row.imaging_type ?? row.imagingType ?? '',
+    body_region: row.body_region ?? row.bodyRegion ?? '',
+  }
+}
+
+function normalizeRelatedSurgery(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? null,
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
+    status: row.status ?? '',
+    scheduled_date: row.scheduled_date ?? row.scheduledDate ?? null,
+    surgery_type: row.surgery_type ?? row.surgeryType ?? '',
+    lead_surgeon: row.lead_surgeon ?? row.leadSurgeon ?? '',
+  }
+}
+
+function normalizeRelatedHospitalization(row) {
+  if (!row || typeof row !== 'object') return null
+  return {
+    ...row,
+    id: row.id ?? null,
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
+    admission_date: row.admission_date ?? row.admissionDate ?? null,
+    discharge_date: row.discharge_date ?? row.dischargeDate ?? null,
+    hospitalization_reason: row.hospitalization_reason ?? row.hospitalizationReason ?? '',
+    hospitalization_status: row.hospitalization_status ?? row.hospitalizationStatus ?? row.status ?? '',
+    ward_name: row.ward_name ?? row.wardName ?? '',
+    kennel_number: row.kennel_number ?? row.kennelNumber ?? '',
+  }
+}
+
+const detailOrders = reactive(makeDetailOrdersForm())
+const detailActionSaving = ref(false)
+const detailActionError = ref('')
+const detailActionSuccess = ref('')
+const relatedOrdersLoading = ref(false)
+const relatedOrders = reactive({
+  lab: [],
+  imaging: [],
+  hospitalizations: [],
+  surgeries: [],
 })
 
 function addRxItem() {
@@ -987,6 +1743,39 @@ function makeForm() {
       startDate:      '',
       notes:          '',
     },
+    // Ordenes derivadas de la evolucion
+    labOrder: {
+      tests: [],
+      priority: 'routine',
+      clinicalNotes: '',
+    },
+    imagingOrder: {
+      imagingTypeId: '',
+      priority: 'routine',
+      clinicalIndication: '',
+      bodyRegion: '',
+      sedationRequired: false,
+    },
+    hospitalizationOrder: {
+      responsibleVetId: '',
+      wardId: '',
+      kennelId: '',
+      hospitalizationReason: '',
+      admissionDiagnosis: '',
+      admissionWeight: '',
+      estimatedDischargeDate: '',
+      specialInstructions: '',
+    },
+    surgeryOrder: {
+      surgeryTypeId: '',
+      leadSurgeonId: '',
+      scheduledDate: '',
+      startTime: '',
+      urgency: 'elective',
+      preoperativeDiagnosis: '',
+      surgicalApproach: '',
+      notes: '',
+    },
     // Receta
     prescriptionItems:   [],
     prescriptionNotes:   '',
@@ -996,7 +1785,7 @@ function makeForm() {
 
 const form = reactive(makeForm())
 
-function openModal() {
+async function openModal() {
   Object.assign(form, makeForm())
   patientSearch.value        = ''
   patientResults.value       = []
@@ -1005,6 +1794,8 @@ function openModal() {
   Object.keys(fe).forEach(k => delete fe[k])
   activeTab.value = 0
   showModal.value = true
+  await Promise.all([loadOrderCatalogs(), loadProfessionals()])
+  prefillProfessionalFields()
 }
 function closeModal() { showModal.value = false }
 
@@ -1037,6 +1828,150 @@ function hasPhysicalExamData() {
 
 function hasDiagnosisData() {
   return !!form.diagnosisName
+}
+
+async function runDetailAction(action) {
+  if (!detailRecord.value?.id || !detailRecord.value?.patient_id) return
+  detailActionSaving.value = true
+  detailActionError.value = ''
+  detailActionSuccess.value = ''
+  try {
+    await action()
+    detailActionSuccess.value = 'Acción clínica registrada'
+    const { data } = await http.get(`/medical-records/${detailRecord.value.id}`)
+    detailRecord.value = normalizeMedicalRecord(data?.data || data)
+    await loadRelatedOrders(detailRecord.value)
+  } catch (e) {
+    detailActionError.value = e.response?.data?.error?.message || e.response?.data?.message || 'No se pudo registrar la acción clínica'
+  } finally {
+    detailActionSaving.value = false
+  }
+}
+
+async function loadRelatedOrders(record = detailRecord.value) {
+  if (!record?.id || !record?.patient_id) return
+  relatedOrdersLoading.value = true
+  try {
+    const patientId = record.patient_id
+    const recordId = record.id
+    const [labRes, imagingRes, surgeryRes, hospRes] = await Promise.allSettled([
+      http.get('/lab/orders', { params: { patientId, limit: 100 } }),
+      http.get('/imaging/orders', { params: { patientId, limit: 100 } }),
+      http.get('/surgeries', { params: { patientId, limit: 100 } }),
+      http.get('/hospitalizations', { params: { limit: 100 } }),
+    ])
+
+    const takeData = (result) => result.status === 'fulfilled' ? (result.value?.data?.data || result.value?.data?.orders || result.value?.data) : []
+
+    relatedOrders.lab = asArray(takeData(labRes))
+      .map(normalizeRelatedLabOrder)
+      .filter((row) => row && String(row.medical_record_id) === String(recordId))
+
+    relatedOrders.imaging = asArray(takeData(imagingRes))
+      .map(normalizeRelatedImagingOrder)
+      .filter((row) => row && String(row.medical_record_id) === String(recordId))
+
+    relatedOrders.surgeries = asArray(takeData(surgeryRes))
+      .map(normalizeRelatedSurgery)
+      .filter((row) => row && String(row.medical_record_id) === String(recordId))
+
+    relatedOrders.hospitalizations = asArray(takeData(hospRes))
+      .map(normalizeRelatedHospitalization)
+      .filter((row) => row && String(row.medical_record_id) === String(recordId))
+  } finally {
+    relatedOrdersLoading.value = false
+  }
+}
+
+async function submitDetailLabOrder() {
+  await runDetailAction(async () => {
+    await http.post('/lab/orders', {
+      patientId: parseInt(detailRecord.value.patient_id),
+      medicalRecordId: detailRecord.value.id,
+      priority: detailOrders.lab.priority,
+      clinicalNotes: detailOrders.lab.clinicalNotes || detailRecord.value.chief_complaint,
+      tests: detailOrders.lab.tests.map((testId) => ({ testId })),
+    })
+    Object.assign(detailOrders.lab, { tests: [], priority: 'routine', clinicalNotes: detailRecord.value.chief_complaint || '' })
+  })
+}
+
+async function submitDetailImagingOrder() {
+  await runDetailAction(async () => {
+    await http.post('/imaging/orders', {
+      patientId: parseInt(detailRecord.value.patient_id),
+      medicalRecordId: detailRecord.value.id,
+      imagingTypeId: parseInt(detailOrders.imaging.imagingTypeId),
+      priority: detailOrders.imaging.priority,
+      bodyRegion: detailOrders.imaging.bodyRegion || undefined,
+      clinicalIndication: detailOrders.imaging.clinicalIndication || detailRecord.value.chief_complaint,
+      sedationRequired: !!detailOrders.imaging.sedationRequired,
+    })
+    Object.assign(detailOrders.imaging, {
+      imagingTypeId: '',
+      priority: 'routine',
+      clinicalIndication: detailRecord.value.chief_complaint || '',
+      bodyRegion: '',
+      sedationRequired: false,
+    })
+  })
+}
+
+async function submitDetailHospitalization() {
+  await runDetailAction(async () => {
+    await http.post('/hospitalizations', {
+      patientId: parseInt(detailRecord.value.patient_id),
+      medicalRecordId: detailRecord.value.id,
+      responsibleVetId: parseInt(detailOrders.hospitalization.responsibleVetId),
+      wardId: detailOrders.hospitalization.wardId ? parseInt(detailOrders.hospitalization.wardId) : undefined,
+      kennelId: detailOrders.hospitalization.kennelId ? parseInt(detailOrders.hospitalization.kennelId) : undefined,
+      hospitalizationReason: detailOrders.hospitalization.hospitalizationReason,
+      admissionDiagnosis: detailOrders.hospitalization.admissionDiagnosis || undefined,
+      admissionWeight: detailOrders.hospitalization.admissionWeight || undefined,
+      estimatedDischargeDate: detailOrders.hospitalization.estimatedDischargeDate || undefined,
+      specialInstructions: detailOrders.hospitalization.specialInstructions || undefined,
+    })
+    Object.assign(detailOrders.hospitalization, {
+      responsibleVetId: preferredProfessionalId(hospitalizationProfessionals.value),
+      wardId: '',
+      kennelId: '',
+      hospitalizationReason: '',
+      admissionDiagnosis: detailRecord.value.chief_complaint || '',
+      admissionWeight: '',
+      estimatedDischargeDate: '',
+      specialInstructions: '',
+    })
+  })
+}
+
+async function submitDetailSurgery() {
+  await runDetailAction(async () => {
+    const payload = {
+      patientId: parseInt(detailRecord.value.patient_id),
+      medicalRecordId: detailRecord.value.id,
+      surgeryTypeId: parseInt(detailOrders.surgery.surgeryTypeId),
+      leadSurgeonId: parseInt(detailOrders.surgery.leadSurgeonId),
+      scheduledDate: detailOrders.surgery.startTime
+        ? `${detailOrders.surgery.scheduledDate}T${detailOrders.surgery.startTime}`
+        : `${detailOrders.surgery.scheduledDate}T09:00`,
+      urgency: detailOrders.surgery.urgency || 'elective',
+    }
+    if (detailOrders.surgery.startTime) payload.startTime = detailOrders.surgery.startTime
+    if (detailOrders.surgery.preoperativeDiagnosis) payload.preoperativeDiagnosis = detailOrders.surgery.preoperativeDiagnosis
+    if (detailOrders.surgery.surgicalApproach) payload.surgicalApproach = detailOrders.surgery.surgicalApproach
+    if (detailOrders.surgery.notes) payload.notes = detailOrders.surgery.notes
+    await http.post('/surgeries', payload)
+    Object.assign(detailOrders.surgery, {
+      surgeryTypeId: '',
+      leadSurgeonId: preferredProfessionalId(surgeryProfessionals.value),
+      scheduledDate: new Date().toISOString().slice(0, 10),
+      startTime: '',
+      urgency: 'elective',
+      preoperativeDiagnosis: detailRecord.value.chief_complaint || '',
+      surgicalApproach: '',
+      notes: '',
+    })
+  })
 }
 
 async function handleCreate() {
@@ -1147,7 +2082,62 @@ async function handleCreate() {
       await http.post(`/medical-records/${recordId}/treatments`, tr)
     }
 
-    // 6 — Receta
+    if (form.labOrder.tests.length > 0) {
+      await http.post('/lab/orders', {
+        patientId: parseInt(form.patientId),
+        medicalRecordId: recordId,
+        priority: form.labOrder.priority,
+        clinicalNotes: form.labOrder.clinicalNotes || form.chiefComplaint,
+        tests: form.labOrder.tests.map((testId) => ({ testId })),
+      })
+    }
+
+    if (form.imagingOrder.imagingTypeId) {
+      await http.post('/imaging/orders', {
+        patientId: parseInt(form.patientId),
+        medicalRecordId: recordId,
+        imagingTypeId: parseInt(form.imagingOrder.imagingTypeId),
+        priority: form.imagingOrder.priority,
+        bodyRegion: form.imagingOrder.bodyRegion || undefined,
+        clinicalIndication: form.imagingOrder.clinicalIndication || form.chiefComplaint,
+        sedationRequired: !!form.imagingOrder.sedationRequired,
+      })
+    }
+
+    if (form.hospitalizationOrder.hospitalizationReason && form.hospitalizationOrder.responsibleVetId) {
+      await http.post('/hospitalizations', {
+        patientId: parseInt(form.patientId),
+        medicalRecordId: recordId,
+        responsibleVetId: parseInt(form.hospitalizationOrder.responsibleVetId),
+        wardId: form.hospitalizationOrder.wardId ? parseInt(form.hospitalizationOrder.wardId) : undefined,
+        kennelId: form.hospitalizationOrder.kennelId ? parseInt(form.hospitalizationOrder.kennelId) : undefined,
+        hospitalizationReason: form.hospitalizationOrder.hospitalizationReason,
+        admissionDiagnosis: form.hospitalizationOrder.admissionDiagnosis || undefined,
+        admissionWeight: form.hospitalizationOrder.admissionWeight || undefined,
+        estimatedDischargeDate: form.hospitalizationOrder.estimatedDischargeDate || undefined,
+        specialInstructions: form.hospitalizationOrder.specialInstructions || undefined,
+      })
+    }
+
+    if (form.surgeryOrder.surgeryTypeId && form.surgeryOrder.leadSurgeonId && form.surgeryOrder.scheduledDate) {
+      const surgeryPayload = {
+        patientId: parseInt(form.patientId),
+        medicalRecordId: recordId,
+        surgeryTypeId: parseInt(form.surgeryOrder.surgeryTypeId),
+        leadSurgeonId: parseInt(form.surgeryOrder.leadSurgeonId),
+        scheduledDate: form.surgeryOrder.startTime
+          ? `${form.surgeryOrder.scheduledDate}T${form.surgeryOrder.startTime}`
+          : `${form.surgeryOrder.scheduledDate}T09:00`,
+        urgency: form.surgeryOrder.urgency || 'elective',
+      }
+      if (form.surgeryOrder.startTime) surgeryPayload.startTime = form.surgeryOrder.startTime
+      if (form.surgeryOrder.preoperativeDiagnosis) surgeryPayload.preoperativeDiagnosis = form.surgeryOrder.preoperativeDiagnosis
+      if (form.surgeryOrder.surgicalApproach) surgeryPayload.surgicalApproach = form.surgeryOrder.surgicalApproach
+      if (form.surgeryOrder.notes) surgeryPayload.notes = form.surgeryOrder.notes
+      await http.post('/surgeries', surgeryPayload)
+    }
+
+    // 7 — Receta
     if (form.prescriptionItems.length > 0) {
       const rxPayload = {
         items: form.prescriptionItems.map(item => {
@@ -1256,6 +2246,7 @@ onMounted(load)
 
 .alert { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.875rem; }
 .alert--error { background: #FDEAEA; color: #c0392b; border-left: 3px solid var(--danger); }
+.alert--success { background: #D6F3EC; color: #1A9E7F; border-left: 3px solid #1A9E7F; }
 .mx { margin: 0 24px 8px; }
 .loading-state, .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 20px; color: var(--text-3); font-size: 0.9rem; background: var(--white); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
 .empty-state__emoji { font-size: 3rem; }
@@ -1272,6 +2263,16 @@ onMounted(load)
 .selected-patient { margin-top: 5px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
 .history-loading { margin-left: 8px; font-size: 0.75rem; color: var(--text-3); font-weight: 400; }
 .history-empty   { margin-left: 8px; font-size: 0.75rem; color: var(--text-3); font-style: italic; font-weight: 400; }
+.tests-catalog { display: flex; flex-direction: column; gap: 10px; }
+.test-category { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.test-category__title { font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); margin-bottom: 8px; }
+.test-category__items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.test-checkbox-label { display: flex; align-items: flex-start; gap: 8px; background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; cursor: pointer; }
+.test-info { display: flex; flex-direction: column; gap: 2px; }
+.detail-related-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.detail-related-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.detail-actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.detail-action-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 
 /* Receta */
 .rx-add-item { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; }
@@ -1289,6 +2290,9 @@ onMounted(load)
   .evol-card__vet { grid-column: 1; }
   .form-grid { grid-template-columns: 1fr; }
   .checkbox-grid { grid-template-columns: 1fr 1fr; }
+  .test-category__items { grid-template-columns: 1fr; }
+  .detail-related-grid { grid-template-columns: 1fr; }
+  .detail-actions-grid { grid-template-columns: 1fr; }
   .modal { max-width: 100%; max-height: 100vh; border-radius: 0; }
 }
 </style>

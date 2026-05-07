@@ -25,7 +25,7 @@ router.get('/', async (req, res, next) => {
     else if (status === 'discharged') conds.push('h.discharge_date IS NOT NULL');
 
     const rows = await db.query(
-      `SELECT h.id, h.admission_date, h.discharge_date, h.estimated_discharge_date,
+      `SELECT h.id, h.medical_record_id, h.admission_date, h.discharge_date, h.estimated_discharge_date,
               h.hospitalization_reason, h.hospitalization_status,
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS responsible_vet,
