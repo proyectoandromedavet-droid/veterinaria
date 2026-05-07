@@ -174,6 +174,7 @@ export const documentsApi = {
     byPatient: (patientId) => http.get(`/documents/inbox/patients/${patientId}`),
     manual:    (d)         => http.post('/documents/inbox/manual', d),
     upload:    (formData)  => http.post('/documents/inbox/upload', formData),
+    ingest:    (id)        => http.post(`/documents/inbox/${id}/ingest`),
     associate: (id, d)     => http.patch(`/documents/inbox/${id}/associate`, d),
   },
 }

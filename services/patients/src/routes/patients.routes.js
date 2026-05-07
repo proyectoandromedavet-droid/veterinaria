@@ -164,6 +164,7 @@ router.get('/', async (req, res, next) => {
     const chipCol = patientCols.has('chip_number')
       ? `COALESCE(p.chip_number, ${patientCols.has('microchip_number') ? 'p.microchip_number' : 'NULL'})`
       : (patientCols.has('microchip_number') ? 'p.microchip_number' : 'NULL');
+    const hcCol = patientCols.has('hc_number') ? 'p.hc_number' : 'NULL';
     const tattooCol = patientCols.has('tattoo_number') ? 'p.tattoo_number' : (patientCols.has('tattoo_code') ? 'p.tattoo_code' : 'NULL');
     const sexCol = patientCols.has('sex')
       ? 'p.sex'
@@ -198,7 +199,7 @@ router.get('/', async (req, res, next) => {
       params.isActive = boolFromQuery(isActive, 1);
     }
     if (search) {
-      conditions.push(`(p.name LIKE :s OR ${chipCol} LIKE :s OR ${tattooCol} LIKE :s OR CONCAT(cl.first_name,' ',cl.last_name) LIKE :s)`);
+      conditions.push(`(p.name LIKE :s OR ${hcCol} LIKE :s OR ${chipCol} LIKE :s OR ${tattooCol} LIKE :s OR CONCAT(cl.first_name,' ',cl.last_name) LIKE :s)`);
       params.s = `%${search}%`;
     }
     if (speciesId) {
@@ -216,7 +217,7 @@ router.get('/', async (req, res, next) => {
 
     const [rows, [{ total }]] = await Promise.all([
       db.query(
-        `SELECT p.id, p.name,
+        `SELECT p.id, p.name, ${hcCol} AS hc_number,
                 ${chipCol} AS chip_number,
                 ${sexCol} AS sex,
                 ${birthdateCol} AS birthdate,
@@ -300,6 +301,7 @@ router.get('/:id', async (req, res, next) => {
 
     const patient = await db.queryOne(
       `SELECT p.*,
+              ${patientCols.has('hc_number') ? 'p.hc_number' : 'NULL'} AS hc_number,
               ${chipExpr} AS chip_number,
               ${birthExpr} AS birthdate,
               ${activeExpr} AS is_active,
@@ -515,6 +517,7 @@ router.post('/',
         };
 
         if (patientCols.has('organization_id')) { columns.push('organization_id'); values.push(':orgId'); }
+        if (patientCols.has('hc_number')) { columns.push('hc_number'); values.push(':hcNumber'); }
         if (patientCols.has('branch_id')) { columns.push('branch_id'); values.push(':branchId'); }
         if (patientCols.has('breed_id')) { columns.push('breed_id'); values.push(':breedId'); }
         if (patientCols.has('coat_color_id')) { columns.push('coat_color_id'); values.push(':coatColorId'); }
@@ -541,9 +544,24 @@ router.post('/',
         const [r] = await conn.query(
           `INSERT INTO patients (${columns.join(', ')})
            VALUES (${values.join(', ')})`,
-          params
+          {
+            ...params,
+            hcNumber: `TMP${Date.now()}${Math.floor(Math.random() * 1000)}`,
+          }
         );
         const patientId = r.insertId;
+
+        if (patientCols.has('hc_number')) {
+          await conn.query(
+            `UPDATE patients
+                SET hc_number = :hcNumber
+              WHERE id = :patientId`,
+            {
+              patientId,
+              hcNumber: `HC${String(patientId).padStart(6, '0')}`,
+            }
+          );
+        }
 
         const ownerColumns = ['patient_id', 'client_id', 'ownership_type', 'start_date'];
         const ownerValues = [':patientId', ':clientId', `'primary'`, 'CURDATE()'];

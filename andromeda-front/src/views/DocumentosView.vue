@@ -161,6 +161,14 @@
                 <div class="row-actions">
                   <BaseButton size="sm" variant="ghost" @click="viewRow(row)">Ver</BaseButton>
                   <BaseButton size="sm" variant="ghost" @click="downloadRow(row)">Descargar</BaseButton>
+                  <BaseButton
+                    size="sm"
+                    variant="ghost"
+                    :disabled="processingRowId === row.id || !canIngest(row)"
+                    @click="ingestRow(row)"
+                  >
+                    {{ processingRowId === row.id ? 'Procesando...' : 'Procesar' }}
+                  </BaseButton>
                   <BaseButton size="sm" variant="ghost" @click="openAssociateModal(row)">Asociar</BaseButton>
                 </div>
               </td>
@@ -376,6 +384,7 @@ const syncingAccountId = ref(null)
 const savingAccount = ref(false)
 const savingImport = ref(false)
 const savingAssociation = ref(false)
+const processingRowId = ref(null)
 
 const showAccountModal = ref(false)
 const showImportModal = ref(false)
@@ -452,6 +461,10 @@ function badgeClass(status) {
   if (status === 'associated') return 'badge--active'
   if (status === 'needs_review') return 'badge--warning'
   return 'badge--inactive'
+}
+
+function canIngest(row) {
+  return row.document_category === 'external_lab' && Boolean(row.patient_id)
 }
 
 async function loadProviders() {
@@ -694,6 +707,19 @@ async function downloadRow(row) {
     if (url) window.open(url, '_blank', 'noopener')
   } catch (error) {
     inboxError.value = error.response?.data?.error?.message || 'No se pudo generar el enlace de descarga.'
+  }
+}
+
+async function ingestRow(row) {
+  processingRowId.value = row.id
+  inboxError.value = ''
+  try {
+    await documentsApi.inbox.ingest(row.id)
+    await loadInbox()
+  } catch (error) {
+    inboxError.value = error.response?.data?.error?.message || 'No se pudo procesar el PDF.'
+  } finally {
+    processingRowId.value = null
   }
 }
 

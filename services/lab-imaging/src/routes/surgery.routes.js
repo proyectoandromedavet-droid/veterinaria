@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { body, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R  = require('../../../../shared/response');
+const { resolveMedicalRecordId } = require('../lib/clinicalContext');
 
 const router   = Router();
 const validate = (req, res, next) => {
@@ -110,6 +111,11 @@ router.post('/',
         scheduledDate, startTime, urgency = 'elective',
         preoperativeDiagnosis, surgicalApproach, notes,
       } = req.body;
+      const resolvedMedicalRecordId = await resolveMedicalRecordId(db, {
+        patientId,
+        branchId: req.user.branchId,
+        medicalRecordId: medicalRecordId || null,
+      });
 
       const [r] = await db.query(
         `INSERT INTO surgeries
@@ -120,7 +126,7 @@ router.post('/',
          VALUES (:bid,:pid,:mid,:type,:lead,:asst,:anes,:nurse,
                  :date,:time,:urg,:prediag,:approach,:notes,'scheduled')`,
         {
-          bid: req.user.branchId, pid: patientId, mid: medicalRecordId || null,
+          bid: req.user.branchId, pid: patientId, mid: resolvedMedicalRecordId,
           type: surgeryTypeId, lead: leadSurgeonId,
           asst: assistantSurgeonId || null, anes: anesthesiologistId || null,
           nurse: surgicalNurseId || null, date: scheduledDate,

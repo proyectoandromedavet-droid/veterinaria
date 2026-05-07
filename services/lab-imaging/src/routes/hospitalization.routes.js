@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { body, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R  = require('../../../../shared/response');
+const { resolveMedicalRecordId } = require('../lib/clinicalContext');
 
 const router   = Router();
 const validate = (req, res, next) => {
@@ -111,6 +112,11 @@ router.post('/',
   async (req, res, next) => {
     try {
       const admission = await db.transaction(async (conn) => {
+        const resolvedMedicalRecordId = await resolveMedicalRecordId(conn, {
+          patientId: req.body.patientId,
+          branchId: req.user.branchId,
+          medicalRecordId: req.body.medicalRecordId || null,
+        });
         const [r] = await conn.query(
           `INSERT INTO hospitalizations
              (branch_id, patient_id, medical_record_id, responsible_vet_id, kennel_id,
@@ -122,7 +128,7 @@ router.post('/',
           {
             bid: req.user.branchId,
             pid: req.body.patientId,
-            mrid: req.body.medicalRecordId || null,
+            mrid: resolvedMedicalRecordId,
             vetid: req.body.responsibleVetId,
             kennelid: req.body.kennelId || null,
             reason: req.body.hospitalizationReason,
@@ -137,7 +143,7 @@ router.post('/',
           id: r.insertId,
           branch_id: req.user.branchId,
           patient_id: req.body.patientId,
-          medical_record_id: req.body.medicalRecordId || null,
+          medical_record_id: resolvedMedicalRecordId,
           responsible_vet_id: req.body.responsibleVetId,
           kennel_id: req.body.kennelId || null,
           hospitalization_reason: req.body.hospitalizationReason,

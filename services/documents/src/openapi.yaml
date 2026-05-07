@@ -89,6 +89,16 @@ paths:
       responses:
         '200':
           description: OK
+  /inbox/{id}/ingest:
+    post:
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
   /inbox/patients/{patientId}:
     get:
       parameters:

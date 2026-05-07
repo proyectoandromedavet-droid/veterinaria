@@ -169,8 +169,9 @@
                       :aria-label="`${t('imaging.selectPatient')} ${pt.name}`"
                       @click="selectPatient(pt)"
                     >
-                      {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                      <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+                    {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
+                    <span v-if="pt.hc_number" class="autocomplete__owner"> · HC {{ pt.hc_number }}</span>
+                    <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
                 </div>
                 <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
@@ -388,6 +389,7 @@ function normalizePatient(row) {
     primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
     owner_id: row.owner_id ?? row.ownerId ?? '',
     species: row.species ?? row.pet_species ?? row.petSpecies ?? '',
+    hc_number: row.hc_number ?? row.hcNumber ?? '',
   }
 }
 
@@ -539,7 +541,7 @@ async function searchPatients() {
 
 function selectPatient(pt) {
   orderForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.hc_number ? ' · HC ' + pt.hc_number : ''}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 }
@@ -777,4 +779,3 @@ onMounted(load)
   .table thead th:nth-child(5), .table tbody td:nth-child(5) { display: none; }
 }
 </style>
-

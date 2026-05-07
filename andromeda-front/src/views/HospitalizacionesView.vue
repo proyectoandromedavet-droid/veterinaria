@@ -208,6 +208,7 @@
                 <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('hospitalizations.searchByName')">
                     <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
+                    <span v-if="pt.hc_number" class="autocomplete__owner"> · HC {{ pt.hc_number }}</span>
                     <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                   </button>
                 </div>
@@ -262,10 +263,6 @@
                     :disabled="admitSaving"
                   />
                   <span v-if="afe.admissionReason" class="field-error">{{ afe.admissionReason }}</span>
-                </div>
-                <div class="field">
-                  <label>Ficha medica</label>
-                  <input v-model.trim="admitForm.medicalRecordId" type="number" min="1" placeholder="ID de ficha" :disabled="admitSaving" />
                 </div>
                 <div class="field">
                   <label>Peso ingreso</label>
@@ -643,6 +640,7 @@ function normalizePatient(row) {
     name: row.name ?? row.full_name ?? row.fullName ?? '',
     species: row.species ?? row.species_name ?? row.speciesName ?? '',
     primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+    hc_number: row.hc_number ?? row.hcNumber ?? '',
   }
 }
 
@@ -797,7 +795,7 @@ async function searchPatients() {
 
 function selectPatient(pt) {
   admitForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.hc_number ? ' · HC ' + pt.hc_number : ''}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 }
@@ -814,7 +812,6 @@ const admitForm = reactive({
   kennelId: '',
   attendingVetId: '',
   admissionReason: '',
-  medicalRecordId: '',
   admissionDiagnosis: '',
   admissionWeight: null,
   estimatedDischargeDate: '',
@@ -824,7 +821,7 @@ const admitForm = reactive({
 function openAdmit() {
   Object.assign(admitForm, {
     patientId: '', wardId: '', kennelId: '', attendingVetId: '', admissionReason: '',
-    medicalRecordId: '', admissionDiagnosis: '', admissionWeight: null, estimatedDischargeDate: '', specialInstructions: ''
+    admissionDiagnosis: '', admissionWeight: null, estimatedDischargeDate: '', specialInstructions: ''
   })
   patientSearch.value = ''
   patientResults.value = []
@@ -855,7 +852,6 @@ async function handleAdmit() {
       admissionReason: admitForm.admissionReason,
     }
     if (admitForm.kennelId) payload.kennelId = admitForm.kennelId
-    if (admitForm.medicalRecordId) payload.medicalRecordId = admitForm.medicalRecordId
     if (admitForm.admissionDiagnosis) payload.admissionDiagnosis = admitForm.admissionDiagnosis
     if (admitForm.admissionWeight) payload.admissionWeight = admitForm.admissionWeight
     if (admitForm.estimatedDischargeDate) payload.estimatedDischargeDate = admitForm.estimatedDischargeDate

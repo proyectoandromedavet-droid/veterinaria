@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { body, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R  = require('../../../../shared/response');
+const { resolveMedicalRecordId } = require('../lib/clinicalContext');
 
 const router   = Router();
 const validate = (req, res, next) => {
@@ -114,6 +115,11 @@ router.post('/orders',
         bodyRegion, clinicalIndication, priority = 'routine',
         patientPreparation, sedationRequired,
       } = req.body;
+      const resolvedMedicalRecordId = await resolveMedicalRecordId(db, {
+        patientId,
+        branchId: req.user.branchId,
+        medicalRecordId: medicalRecordId || null,
+      });
 
       const [{ nextNum }] = await db.query(
         `SELECT COALESCE(MAX(CAST(SUBSTRING(order_number,4) AS UNSIGNED)),0)+1 AS nextNum
@@ -129,7 +135,7 @@ router.post('/orders',
             patient_preparation, sedation_required, ordered_by, status)
          VALUES (:bid,:pid,:mid,:type,:num,:region,:indication,:prio,:prep,:sed,:uid,'pending')`,
         {
-          bid: req.user.branchId, pid: patientId, mid: medicalRecordId || null,
+          bid: req.user.branchId, pid: patientId, mid: resolvedMedicalRecordId,
           type: imagingTypeId, num: orderNumber, region: bodyRegion || null,
           indication: clinicalIndication || null, prio: priority,
           prep: patientPreparation || null, sed: sedationRequired ? 1 : 0,

@@ -2253,6 +2253,18 @@ paths:
       responses:
         '200': { description: Documento asociado }
 
+  /documents/inbox/{id}/ingest:
+    post:
+      tags: [Documents]
+      summary: Procesar PDF y volcarlo en tablas clínicas soportadas
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Documento procesado }
+
   /documents/inbox/patients/{patientId}:
     get:
       tags: [Documents]

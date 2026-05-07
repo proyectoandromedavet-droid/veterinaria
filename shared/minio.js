@@ -81,6 +81,16 @@ async function deleteFile(bucket, objectName) {
   return getClient().removeObject(bucket, objectName);
 }
 
+async function getObjectBuffer(bucket, objectName) {
+  const stream = await getClient().getObject(bucket, objectName);
+  const chunks = [];
+  return new Promise((resolve, reject) => {
+    stream.on('data', (chunk) => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
+
 function getMimeType(ext) {
   const types = {
     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -91,4 +101,4 @@ function getMimeType(ext) {
   return types[ext] || 'application/octet-stream';
 }
 
-module.exports = { getClient, uploadFile, getPresignedUrl, deleteFile, BUCKETS };
+module.exports = { getClient, uploadFile, getPresignedUrl, deleteFile, getObjectBuffer, BUCKETS };

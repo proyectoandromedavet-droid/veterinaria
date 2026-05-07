@@ -50,6 +50,10 @@
         </div>
         <div class="patient-card__body">
           <div class="patient-card__row">
+            <span>📁</span>
+            <span>{{ p.hc_number || '—' }}</span>
+          </div>
+          <div class="patient-card__row">
             <span>👤</span>
             <span>{{ p.primary_owner || p.owner_name || '—' }}</span>
           </div>
@@ -99,6 +103,7 @@
           <div v-else-if="detailError" class="alert alert--error" role="alert">{{ detailError }}</div>
           <div class="form-body" v-else-if="detailPatient">
             <div class="detail-row"><b>{{ t('patients.species') }}:</b> {{ detailPatient.species }}</div>
+            <div class="detail-row"><b>HC:</b> {{ detailPatient.hc_number || '—' }}</div>
             <div class="detail-row" v-if="detailPatient.scientific_name"><b>Nombre científico:</b> {{ detailPatient.scientific_name }}</div>
             <div class="detail-row"><b>{{ t('patients.breed') }}:</b> {{ detailPatient.breed_name || detailPatient.breed || t('patients.noBreed') }}</div>
             <div class="detail-row"><b>{{ t('patients.sex') }}:</b> {{ sexLabel(detailPatient.sex) }}</div>
@@ -312,6 +317,7 @@ function normalizePatient(row) {
     owner_name: row.owner_name || row.primary_owner || row.ownerName || '',
     owner_phone: row.owner_phone || row.ownerPhone || '',
     owner_id: row.owner_id ?? row.ownerId ?? null,
+    hc_number: row.hc_number || row.hcNumber || '',
     weight_kg: row.weight_kg ?? row.weightKg ?? null,
     body_condition_score: row.body_condition_score ?? row.bodyConditionScore ?? null,
     chip_number: row.chip_number || row.microchip_number || row.microchipNumber || '',

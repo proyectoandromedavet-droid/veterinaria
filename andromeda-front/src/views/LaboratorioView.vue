@@ -163,6 +163,7 @@
                     @click="selectPatient(pt)"
                   >
                     {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
+                    <span v-if="pt.hc_number" class="autocomplete__owner"> · HC {{ pt.hc_number }}</span>
                     <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                   </button>
                 </div>
@@ -373,6 +374,7 @@ function normalizePatient(row) {
     name: row.name ?? row.full_name ?? row.fullName ?? '',
     species: row.species ?? row.species_name ?? row.speciesName ?? '',
     primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
+    hc_number: row.hc_number ?? row.hcNumber ?? '',
   }
 }
 
@@ -511,7 +513,7 @@ async function searchPatients() {
 
 function selectPatient(pt) {
   orderForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
+  selectedPatientLabel.value = `${pt.name}${pt.hc_number ? ' · HC ' + pt.hc_number : ''}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
   patientSearch.value = pt.name
   patientResults.value = []
 }
