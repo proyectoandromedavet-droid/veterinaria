@@ -468,10 +468,24 @@ const mainTab = ref('vacunas')
 
 // â”€â”€ Helpers compartidos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function petEmoji(s) {
-  if (!s) return 'ðŸ¾'
+  if (!s) return '\u{1F43E}'
   const sl = s.toLowerCase()
-  const m = { perro:'ðŸ¶', dog:'ðŸ¶', gato:'ðŸ±', cat:'ðŸ±', conejo:'ðŸ°', rabbit:'ðŸ°', loro:'ðŸ¦œ', bird:'ðŸ¦œ', pez:'ðŸŸ', fish:'ðŸŸ', tortuga:'ðŸ¢', reptile:'ðŸ¦Ž', hamster:'ðŸ¹' }
-  return m[sl] || 'ðŸ¾'
+  const m = {
+    perro: '\u{1F436}',
+    dog: '\u{1F436}',
+    gato: '\u{1F431}',
+    cat: '\u{1F431}',
+    conejo: '\u{1F430}',
+    rabbit: '\u{1F430}',
+    loro: '\u{1F99C}',
+    bird: '\u{1F99C}',
+    pez: '\u{1F41F}',
+    fish: '\u{1F41F}',
+    tortuga: '\u{1F422}',
+    reptile: '\u{1F98E}',
+    hamster: '\u{1F439}',
+  }
+  return m[sl] || '\u{1F43E}'
 }
 
 function formatDate(iso) {
