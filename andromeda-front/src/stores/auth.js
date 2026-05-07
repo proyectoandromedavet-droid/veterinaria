@@ -54,21 +54,20 @@ function normalizeUser(payload = {}) {
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(null)
-  const user        = ref(null)
-  const hydrated    = ref(false)
-  const hydrating    = ref(false)
+  const user = ref(null)
+  const hydrated = ref(false)
+  const hydrating = ref(false)
   let hydratePromise = null
 
   const isAuthenticated = computed(() => !!accessToken.value)
-  const roles           = computed(() => normalizeRoles(user.value?.roles))
-  const orgId           = computed(() => user.value?.org_id || null)
+  const roles = computed(() => normalizeRoles(user.value?.roles))
+  const orgId = computed(() => user.value?.org_id || null)
 
   function hasRole(...check) {
-    return check.some(r => roles.value.includes(r))
+    return check.some((r) => roles.value.includes(r))
   }
 
   function can(permission) {
-    // superadmin puede todo
     if (roles.value.includes('superadmin')) return true
     const perms = user.value?.permissions || []
     if (perms.includes(permission) || perms.includes('*')) return true
@@ -79,9 +78,7 @@ export const useAuthStore = defineStore('auth', () => {
   function setTokens(at) {
     accessToken.value = at
     const payload = parseJwt(at)
-    if (payload) {
-      user.value = normalizeUser(payload)
-    }
+    if (payload) user.value = normalizeUser(payload)
   }
 
   async function bootstrap() {
@@ -106,7 +103,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(credentials) {
     const res = await authApi.login(credentials)
-    // Backend devuelve { success: true, data: { accessToken, user, ... } }
     const payload = res.data?.data || res.data
     if (payload.requiresTwoFactor) {
       return { requiresTwoFactor: true, pendingToken: payload.pendingToken }
@@ -149,79 +145,111 @@ export const useAuthStore = defineStore('auth', () => {
     clearCsrfToken()
   }
 
-  // Menú permitido según rol
   const allowedMenu = computed(() => {
     const r = roles.value
     const all = r.includes('superadmin') || r.includes('org_admin')
 
     const items = []
 
-    if (all || r.some(x => ['branch_manager','veterinarian','vet_technician','receptionist','tele_vet','read_only'].includes(x)))
-      items.push({ key: 'dashboard',      label: 'Inicio',       icon: '🏠', to: '/' })
+    if (all || r.some((x) => ['branch_manager', 'veterinarian', 'vet_technician', 'receptionist', 'tele_vet', 'read_only'].includes(x))) {
+      items.push({ key: 'dashboard', label: 'Inicio', icon: '🏠', to: '/' })
+    }
 
-    if (all || r.some(x => ['veterinarian','vet_technician','receptionist','branch_manager','tele_vet','read_only'].includes(x)))
-      items.push({ key: 'appointments',   label: 'Turnos',       icon: '📅', to: '/turnos' })
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'receptionist', 'branch_manager', 'tele_vet', 'read_only'].includes(x))) {
+      items.push({ key: 'appointments', label: 'Turnos', icon: '📅', to: '/turnos' })
+    }
 
-    if (all || r.some(x => ['veterinarian','vet_technician','branch_manager','read_only'].includes(x)))
-      items.push({ key: 'patients',       label: 'Pacientes',    icon: '🐾', to: '/pacientes' })
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'branch_manager', 'read_only'].includes(x))) {
+      items.push({ key: 'patients', label: 'Pacientes', icon: '🐾', to: '/pacientes' })
+    }
 
-    if (all || r.some(x => ['veterinarian','vet_technician','surgeon','tele_vet'].includes(x)))
-      items.push({ key: 'medical',        label: 'Evoluciones',  icon: '📋', to: '/evoluciones' })
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'surgeon', 'tele_vet'].includes(x))) {
+      items.push({ key: 'medical', label: 'Evoluciones', icon: '📋', to: '/evoluciones' })
+    }
 
-    if (all || r.some(x => ['veterinarian','vet_technician','surgeon','lab_technician'].includes(x)))
-      items.push({ key: 'vaccinations',   label: 'Vacunas',      icon: '💉', to: '/vacunas' })
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'surgeon', 'lab_technician'].includes(x))) {
+      items.push({ key: 'vaccinations', label: 'Vacunas', icon: '💉', to: '/vacunas' })
+    }
 
-    if (all || r.some(x => ['veterinarian','vet_technician','lab_technician'].includes(x)))
-      items.push({ key: 'laboratorio',    label: 'Laboratorio',  icon: '🧪', to: '/laboratorio' })
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician'].includes(x))) {
+      items.push({ key: 'laboratorio', label: 'Laboratorio', icon: '🧪', to: '/laboratorio' })
+    }
 
-    if (all || r.some(x => ['veterinarian','vet_technician','lab_technician'].includes(x)))
-      items.push({ key: 'imagenes',       label: 'Imágenes',     icon: '🩻', to: '/imagenes' })
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician'].includes(x))) {
+      items.push({ key: 'imagenes', label: 'Imágenes', icon: '🩻', to: '/imagenes' })
+    }
 
-    if (all || r.some(x => ['veterinarian','vet_technician','lab_technician'].includes(x)))
-      items.push({ key: 'patologia',      label: 'Patología',    icon: '🔬', to: '/patologia' })
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician'].includes(x))) {
+      items.push({ key: 'patologia', label: 'Patología', icon: '🔬', to: '/patologia' })
+    }
 
-    if (all || r.some(x => ['veterinarian','surgeon'].includes(x)))
-      items.push({ key: 'cirugias',       label: 'Cirugías',     icon: '🔪', to: '/cirugias' })
+    if (all || r.some((x) => ['veterinarian', 'surgeon'].includes(x))) {
+      items.push({ key: 'cirugias', label: 'Cirugías', icon: '🔪', to: '/cirugias' })
+    }
 
-    if (all || r.some(x => ['veterinarian','vet_technician','branch_manager'].includes(x)))
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'branch_manager'].includes(x))) {
       items.push({ key: 'hospitalizaciones', label: 'Internados', icon: '🏥', to: '/hospitalizaciones' })
+    }
 
-    if (all || r.some(x => ['pharmacist','accountant','branch_manager','org_admin'].includes(x)))
-      items.push({ key: 'inventory',      label: 'Inventario',   icon: '📦', to: '/inventario' })
+    if (all || r.some((x) => ['pharmacist', 'accountant', 'branch_manager', 'org_admin'].includes(x))) {
+      items.push({ key: 'inventory', label: 'Inventario', icon: '📦', to: '/inventario' })
+    }
 
-    if (all || r.some(x => ['groomer','grooming_manager'].includes(x)))
-      items.push({ key: 'grooming',       label: 'Grooming',     icon: '✂️',  to: '/grooming' })
+    if (all || r.some((x) => ['groomer', 'grooming_manager'].includes(x))) {
+      items.push({ key: 'grooming', label: 'Grooming', icon: '✂️', to: '/grooming' })
+    }
 
-    if (all || r.some(x => ['tele_vet','veterinarian'].includes(x)))
-      items.push({ key: 'telemedicine',   label: 'Telemedicina', icon: '💻', to: '/telemedicina' })
+    if (all || r.some((x) => ['tele_vet', 'veterinarian'].includes(x))) {
+      items.push({ key: 'telemedicine', label: 'Telemedicina', icon: '💻', to: '/telemedicina' })
+    }
 
-    if (all || r.some(x => ['accountant','branch_manager','org_admin'].includes(x)))
-      items.push({ key: 'billing',        label: 'Facturación',  icon: '💰', to: '/facturacion' })
+    if (all || r.some((x) => ['accountant', 'branch_manager', 'org_admin'].includes(x))) {
+      items.push({ key: 'billing', label: 'Facturación', icon: '💰', to: '/facturacion' })
+    }
 
-    if (all || r.some(x => ['branch_manager','org_admin','accountant'].includes(x)))
-      items.push({ key: 'reports',        label: 'Reportes',     icon: '📊', to: '/reportes' })
+    if (all || r.some((x) => ['branch_manager', 'org_admin', 'accountant'].includes(x))) {
+      items.push({ key: 'reports', label: 'Reportes', icon: '📊', to: '/reportes' })
+    }
 
-    if (all)
-      items.push({ key: 'admin',          label: 'Administrar',  icon: '⚙️',  to: '/admin' })
+    if (all) {
+      items.push({ key: 'admin', label: 'Administrar', icon: '⚙️', to: '/admin' })
+    }
 
-    if (all || r.length)
-      items.push({ key: 'notifications',  label: 'Notificaciones', icon: '🔔', to: '/notificaciones' })
+    if (all || r.length) {
+      items.push({ key: 'notifications', label: 'Notificaciones', icon: '🔔', to: '/notificaciones' })
+    }
 
-    if (all || r.some(x => ['branch_manager','org_admin','receptionist','read_only'].includes(x)))
-      items.push({ key: 'portal',         label: 'Portal',       icon: '👥', to: '/portal' })
+    if (all || r.some((x) => ['branch_manager', 'veterinarian', 'vet_technician', 'surgeon', 'lab_technician', 'read_only'].includes(x))) {
+      items.push({ key: 'documents', label: 'Documentos', icon: '📨', to: '/documentos' })
+    }
 
-    if (can('ai:use'))
-      items.push({ key: 'ai',             label: 'IA',           icon: '🧠', to: '/ai' })
+    if (all || r.some((x) => ['branch_manager', 'org_admin', 'receptionist', 'read_only'].includes(x))) {
+      items.push({ key: 'portal', label: 'Portal', icon: '👥', to: '/portal' })
+    }
+
+    if (can('ai:use')) {
+      items.push({ key: 'ai', label: 'IA', icon: '🧠', to: '/ai' })
+    }
 
     return items
   })
 
   return {
-    accessToken, user,
-    hydrated, hydrating,
-    isAuthenticated, roles, orgId,
-    hasRole, can,
-    login, twoFaChallenge, refresh, fetchMe, bootstrap, logout,
+    accessToken,
+    user,
+    hydrated,
+    hydrating,
+    isAuthenticated,
+    roles,
+    orgId,
+    hasRole,
+    can,
+    login,
+    twoFaChallenge,
+    refresh,
+    fetchMe,
+    bootstrap,
+    logout,
     allowedMenu,
   }
 })

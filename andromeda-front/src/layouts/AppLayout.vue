@@ -1,7 +1,5 @@
 <template>
   <div class="app-layout">
-
-    <!-- Sidebar -->
     <aside class="sidebar" :class="{ 'sidebar--open': sidebarOpen }">
       <div class="sidebar__header">
         <AppLogo size="sm" />
@@ -34,10 +32,8 @@
       </div>
     </aside>
 
-    <!-- Overlay mobile -->
     <div v-if="sidebarOpen" class="sidebar-overlay" @click="sidebarOpen = false" />
 
-    <!-- Contenido principal -->
     <div class="main">
       <header class="topbar">
         <button class="topbar__menu" @click="sidebarOpen = true" aria-label="Abrir menú">☰</button>
@@ -51,19 +47,18 @@
         <RouterView />
       </main>
     </div>
-
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import AppLogo from '../components/AppLogo.vue'
 
-const auth   = useAuthStore()
+const auth = useAuthStore()
 const router = useRouter()
-const route  = useRoute()
+const route = useRoute()
 
 const sidebarOpen = ref(false)
 
@@ -76,7 +71,7 @@ const displayName = computed(() => {
 const firstName = computed(() => displayName.value.split(' ')[0])
 
 const initials = computed(() =>
-  displayName.value.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase()).join('')
+  displayName.value.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
 )
 
 function normalizeRoleList(input) {
@@ -114,8 +109,9 @@ const ROLE_LABELS = {
   surgeon: 'Cirujano/a',
   read_only: 'Solo Lectura',
 }
+
 const displayRole = computed(() =>
-  normalizeRoleList(auth.roles).map(r => ROLE_LABELS[r] || r).join(', ') || ''
+  normalizeRoleList(auth.roles).map((r) => ROLE_LABELS[r] || r).join(', ') || ''
 )
 
 const PAGE_TITLES = {
@@ -131,8 +127,10 @@ const PAGE_TITLES = {
   reportes: 'Reportes',
   admin: 'Administración',
 }
+
 PAGE_TITLES.notificaciones = 'Notificaciones'
-PAGE_TITLES.portal = 'Portal de DueÃ±os'
+PAGE_TITLES.documentos = 'Documentos por Mail'
+PAGE_TITLES.portal = 'Portal de Dueños'
 PAGE_TITLES.ai = 'Inteligencia Artificial'
 
 const currentTitle = computed(() => PAGE_TITLES[route.name] || 'Sistema Andromeda')
@@ -150,7 +148,6 @@ function handleLogout() {
   overflow: hidden;
 }
 
-/* ── Sidebar ─────────────────────────────────── */
 .sidebar {
   width: 240px;
   min-width: 240px;
@@ -174,8 +171,11 @@ function handleLogout() {
 
 .sidebar__close {
   display: none;
-  background: none; border: none; cursor: pointer;
-  font-size: 1.1rem; color: var(--text-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: var(--text-2);
 }
 
 .sidebar__nav {
@@ -198,13 +198,23 @@ function handleLogout() {
   text-decoration: none;
   transition: background var(--transition), color var(--transition);
 }
-.sidebar__link:hover { background: var(--primary-xlight); color: var(--primary); }
+
+.sidebar__link:hover {
+  background: var(--primary-xlight);
+  color: var(--primary);
+}
+
 .sidebar__link--active {
   background: var(--primary-xlight);
   color: var(--primary);
   font-weight: 600;
 }
-.sidebar__icon { font-size: 1.15rem; width: 22px; text-align: center; }
+
+.sidebar__icon {
+  font-size: 1.15rem;
+  width: 22px;
+  text-align: center;
+}
 
 .sidebar__footer {
   padding: 14px 12px;
@@ -214,39 +224,73 @@ function handleLogout() {
   gap: 8px;
 }
 
-.sidebar__user { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
 
 .sidebar__avatar {
-  width: 34px; height: 34px; min-width: 34px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--primary) 0%, var(--accent-pink) 100%);
   color: white;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.75rem; font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
-.sidebar__user-info { min-width: 0; }
+.sidebar__user-info {
+  min-width: 0;
+}
+
 .sidebar__user-name {
   display: block;
-  font-size: 0.82rem; font-weight: 600; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
 .sidebar__user-role {
   display: block;
-  font-size: 0.72rem; color: var(--text-3);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 0.72rem;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar__logout {
-  background: none; border: none; cursor: pointer;
-  font-size: 1.1rem; color: var(--text-3); padding: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: var(--text-3);
+  padding: 6px;
   border-radius: var(--radius-sm);
   transition: background var(--transition), color var(--transition);
 }
-.sidebar__logout:hover { background: var(--danger-light); color: var(--danger); }
 
-/* ── Main ──────────────────────────────────────── */
-.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.sidebar__logout:hover {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
 .topbar {
   padding: 0 24px;
@@ -262,8 +306,12 @@ function handleLogout() {
 
 .topbar__menu {
   display: none;
-  background: none; border: none; cursor: pointer;
-  font-size: 1.3rem; color: var(--text-2); padding: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.3rem;
+  color: var(--text-2);
+  padding: 4px;
 }
 
 .topbar__title {
@@ -284,24 +332,40 @@ function handleLogout() {
   padding: 28px 28px;
 }
 
-/* ── Responsive ─────────────────────────────────── */
 .sidebar-overlay {
   display: none;
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.3);
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
   z-index: 99;
 }
 
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
-    left: 0; top: 0;
+    left: 0;
+    top: 0;
     transform: translateX(-100%);
   }
-  .sidebar--open { transform: translateX(0); }
-  .sidebar__close { display: block; }
-  .sidebar-overlay { display: block; }
-  .topbar__menu { display: block; }
-  .page-content { padding: 20px 16px; }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .sidebar__close {
+    display: block;
+  }
+
+  .sidebar-overlay {
+    display: block;
+  }
+
+  .topbar__menu {
+    display: block;
+  }
+
+  .page-content {
+    padding: 20px 16px;
+  }
 }
 </style>

@@ -2210,6 +2210,13 @@ paths:
       responses:
         '201': { description: Importación creada }
 
+  /documents/inbox/upload:
+    post:
+      tags: [Documents]
+      summary: Subir PDFs reales a la bandeja documental
+      responses:
+        '201': { description: Upload creado }
+
   /documents/inbox/{id}:
     get:
       tags: [Documents]
@@ -2221,6 +2228,18 @@ paths:
           schema: { type: integer }
       responses:
         '200': { description: Documento }
+
+  /documents/inbox/{id}/download-url:
+    get:
+      tags: [Documents]
+      summary: Generar URL temporal de descarga del documento
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: URL temporal }
 
   /documents/inbox/{id}/associate:
     patch:

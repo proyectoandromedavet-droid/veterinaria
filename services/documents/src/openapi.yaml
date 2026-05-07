@@ -54,7 +54,22 @@ paths:
       responses:
         '201':
           description: Created
+  /inbox/upload:
+    post:
+      responses:
+        '201':
+          description: Created
   /inbox/{id}:
+    get:
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+  /inbox/{id}/download-url:
     get:
       parameters:
         - in: path

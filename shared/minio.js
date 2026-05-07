@@ -28,6 +28,7 @@ const BUCKETS = {
   patients: process.env.MINIO_BUCKET_PATIENTS || 'patient-files',
   grooming: process.env.MINIO_BUCKET_GROOMING || 'grooming-photos',
   tele:     process.env.MINIO_BUCKET_TELE     || 'tele-docs',
+  documents: process.env.MINIO_BUCKET_DOCUMENTS || 'documents-inbox',
 };
 
 /**

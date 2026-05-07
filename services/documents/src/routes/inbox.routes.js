@@ -1,12 +1,17 @@
 'use strict';
 
+const path = require('path');
 const { Router } = require('express');
+const multer = require('multer');
 const { body, param, query, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
 const { requirePerm } = require('../../../../shared/serviceBase');
+const { uploadFile, getPresignedUrl, BUCKETS } = require('../../../../shared/minio');
+const { sha256 } = require('../lib/sync');
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
 
 function validate(req, res, next) {
   const errors = validationResult(req);
@@ -24,6 +29,27 @@ function parseJson(value, fallback) {
   if (!value) return fallback;
   if (typeof value === 'object') return value;
   try { return JSON.parse(value); } catch { return fallback; }
+}
+
+function isPdf(file) {
+  return file?.mimetype === 'application/pdf' || /\.pdf$/i.test(file?.originalname || '');
+}
+
+function hasPdfMagic(buffer) {
+  return Buffer.isBuffer(buffer) && buffer.slice(0, 4).equals(Buffer.from([0x25, 0x50, 0x44, 0x46]));
+}
+
+function extractObjectRef(storagePath) {
+  if (!storagePath) return null;
+  try {
+    const url = new URL(storagePath);
+    const pathname = url.pathname.replace(/^\/+/, '');
+    const [bucket, ...rest] = pathname.split('/');
+    if (!bucket || !rest.length) return null;
+    return { bucket, objectName: rest.join('/') };
+  } catch {
+    return null;
+  }
 }
 
 async function ensurePatientInOrg(patientId, orgId) {
@@ -149,6 +175,24 @@ router.get('/:id',
   }
 );
 
+router.get('/:id/download-url',
+  param('id').isInt({ min: 1 }),
+  validate,
+  async (req, res, next) => {
+    try {
+      const row = await db.queryOne(
+        'SELECT storage_path FROM mail_document_inbox WHERE id = :id AND org_id = :orgId',
+        { id: req.params.id, orgId: req.user.orgId }
+      );
+      if (!row) return R.notFound(res, 'Inbox document not found');
+      const ref = extractObjectRef(row.storage_path);
+      if (!ref) return R.badRequest(res, 'Document has no downloadable storage reference');
+      const url = await getPresignedUrl(ref.bucket, ref.objectName, 3600);
+      return R.ok(res, { url, expiresIn: 3600 });
+    } catch (err) { next(err); }
+  }
+);
+
 router.post('/manual',
   requirePerm('medical_records:update'),
   body('accountId').optional().isInt({ min: 1 }),
@@ -220,6 +264,107 @@ router.post('/manual',
               documentCategory: attachment.documentCategory || 'external_lab',
               associationStatus,
               metadataJson: JSON.stringify(attachment.metadata || {}),
+            }
+          );
+          createdIds.push(result.insertId);
+        }
+      });
+
+      return R.created(res, { createdIds, count: createdIds.length });
+    } catch (err) { next(err); }
+  }
+);
+
+router.post('/upload',
+  requirePerm('medical_records:update'),
+  upload.array('files', 10),
+  async (req, res, next) => {
+    try {
+      const files = req.files || [];
+      if (!files.length) return R.badRequest(res, 'No files uploaded');
+
+      const fromEmail = String(req.body.fromEmail || req.user.email || 'manual-upload@local').trim();
+      const subject = String(req.body.subject || 'Carga manual').trim();
+      const documentCategory = String(req.body.documentCategory || 'external_lab').trim();
+      const accountId = req.body.accountId ? Number(req.body.accountId) : null;
+      const patientId = req.body.patientId ? Number(req.body.patientId) : null;
+      const receivedAt = req.body.receivedAt || new Date().toISOString();
+
+      if (accountId) {
+        const account = await db.queryOne(
+          'SELECT id FROM mail_accounts WHERE id = :id AND org_id = :orgId',
+          { id: accountId, orgId: req.user.orgId }
+        );
+        if (!account) return R.notFound(res, 'Mail account not found');
+      }
+
+      if (patientId) {
+        const patient = await ensurePatientInOrg(patientId, req.user.orgId);
+        if (!patient) return R.notFound(res, 'Patient not found');
+      }
+
+      const createdIds = [];
+
+      await db.transaction(async (conn) => {
+        for (const file of files) {
+          if (!isPdf(file) || !hasPdfMagic(file.buffer)) {
+            throw new Error(`Invalid PDF file: ${file.originalname}`);
+          }
+
+          const checksum = sha256(file.buffer);
+          const existing = await conn.queryOne(
+            `SELECT id
+               FROM mail_document_inbox
+              WHERE org_id = :orgId
+                AND checksum = :checksum
+                AND filename = :filename
+              LIMIT 1`,
+            {
+              orgId: req.user.orgId,
+              checksum,
+              filename: file.originalname,
+            }
+          );
+          if (existing) continue;
+
+          const storagePath = await uploadFile(
+            file.buffer,
+            file.originalname,
+            BUCKETS.documents,
+            `documents/${req.user.orgId}/${accountId || 'manual'}`
+          );
+
+          const [result] = await conn.query(
+            `INSERT INTO mail_document_inbox
+               (org_id, branch_id, account_id, patient_id, external_message_id,
+                from_email, subject, received_at, filename, mime_type, file_size,
+                checksum, storage_path, document_category, association_status,
+                ingestion_status, metadata_json)
+             VALUES
+               (:orgId, :branchId, :accountId, :patientId, NULL,
+                :fromEmail, :subject, :receivedAt, :filename, :mimeType, :fileSize,
+                :checksum, :storagePath, :documentCategory, :associationStatus,
+                'downloaded', :metadataJson)`,
+            {
+              orgId: req.user.orgId,
+              branchId: req.user.branchId || null,
+              accountId,
+              patientId,
+              fromEmail,
+              subject: subject || null,
+              receivedAt,
+              filename: file.originalname,
+              mimeType: file.mimetype || 'application/pdf',
+              fileSize: file.size || file.buffer.length,
+              checksum,
+              storagePath,
+              documentCategory,
+              associationStatus: patientId ? 'associated' : 'unassociated',
+              metadataJson: JSON.stringify({
+                provider: 'upload',
+                uploadedBy: req.user.userId || null,
+                extension: path.extname(file.originalname).toLowerCase(),
+              }),
             }
           );
           createdIds.push(result.insertId);

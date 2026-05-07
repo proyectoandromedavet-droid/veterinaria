@@ -159,6 +159,25 @@ export const notificationsApi = {
   retries:    ()              => http.get('/notifications/retries'),
 }
 
+export const documentsApi = {
+  providers: () => http.get('/documents/providers'),
+  accounts: {
+    list:   (p)     => http.get('/documents/mail-accounts', { params: p }),
+    create: (d)     => http.post('/documents/mail-accounts', d),
+    update: (id, d) => http.patch(`/documents/mail-accounts/${id}`, d),
+    sync:   (id)    => http.post(`/documents/mail-accounts/${id}/sync`),
+  },
+  inbox: {
+    list:      (p)         => http.get('/documents/inbox', { params: p }),
+    get:       (id)        => http.get(`/documents/inbox/${id}`),
+    downloadUrl: (id)      => http.get(`/documents/inbox/${id}/download-url`),
+    byPatient: (patientId) => http.get(`/documents/inbox/patients/${patientId}`),
+    manual:    (d)         => http.post('/documents/inbox/manual', d),
+    upload:    (formData)  => http.post('/documents/inbox/upload', formData),
+    associate: (id, d)     => http.patch(`/documents/inbox/${id}/associate`, d),
+  },
+}
+
 export const aiApi = {
   diagnosis:   (d)            => http.post('/ai/diagnosis', d),
   analyze:     (d)            => http.post('/ai/images/analyze', d),

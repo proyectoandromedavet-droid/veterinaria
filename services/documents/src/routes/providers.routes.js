@@ -11,16 +11,16 @@ const PROVIDERS = [
     label: 'Gmail API',
     authType: 'oauth2',
     syncMode: 'api',
-    implemented: false,
-    notes: 'Preparado para integrar watch + descarga de adjuntos PDF.',
+    implemented: true,
+    notes: 'Sincroniza adjuntos PDF con credenciales OAuth2 cargadas en settings.',
   },
   {
     key: 'imap',
-    label: 'IMAP genérico',
+    label: 'IMAP generico',
     authType: 'basic',
     syncMode: 'polling',
-    implemented: false,
-    notes: 'Pensado para casillas estándar con lectura por IMAP.',
+    implemented: true,
+    notes: 'Sincroniza PDFs por IMAP con host, usuario y password/app password.',
   },
   {
     key: 'outlook',
@@ -28,11 +28,11 @@ const PROVIDERS = [
     authType: 'oauth2',
     syncMode: 'api',
     implemented: false,
-    notes: 'Pendiente de integrar vía Microsoft Graph.',
+    notes: 'Pendiente de integrar via Microsoft Graph.',
   },
   {
     key: 'manual',
-    label: 'Carga manual / importación interna',
+    label: 'Carga manual / importacion interna',
     authType: 'none',
     syncMode: 'manual',
     implemented: true,
@@ -40,8 +40,6 @@ const PROVIDERS = [
   },
 ];
 
-router.get('/', (_req, res) => {
-  return R.ok(res, PROVIDERS);
-});
+router.get('/', (_req, res) => R.ok(res, PROVIDERS));
 
 module.exports = router;
