@@ -10,6 +10,7 @@ Plataforma veterinaria basada en microservicios para gestión clínica, paciente
 - `services/medical/`: turnos, historias clínicas, diagnósticos y prescripciones.
 - `services/billing/`: facturación, pagos, inventario y MercadoPago/Stripe.
 - `services/notifications/`: bandeja interna, SMS, WhatsApp, FCM y cola de reintentos.
+- `services/documents/`: cuentas de correo, bandeja de documentos entrantes y asociación manual a pacientes.
 - `services/reports/`: KPIs, reportes exportables y programados.
 - `services/ai/`: diagnóstico asistido, riesgo e imágenes con circuit breaker.
 - `andromeda-front/`: frontend Vue.
@@ -40,6 +41,7 @@ Servicios individuales:
 node gateway/src/index.js
 node services/auth/src/index.js
 node services/notifications/src/index.js
+node services/documents/src/index.js
 ```
 
 Frontend:

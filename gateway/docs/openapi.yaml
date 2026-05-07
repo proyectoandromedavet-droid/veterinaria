@@ -52,6 +52,8 @@ tags:
     description: Peluquería y estética canina/felina
   - name: Reports
     description: Reportes ejecutivos y KPIs
+  - name: Documents
+    description: Casillas de correo e inbox documental
 
 components:
   securitySchemes:
@@ -2150,6 +2152,99 @@ paths:
       summary: Listar jobs de reintento
       responses:
         '200': { description: Reintentos }
+
+  /documents/providers:
+    get:
+      tags: [Documents]
+      summary: Listar proveedores de correo disponibles
+      responses:
+        '200': { description: Proveedores }
+
+  /documents/mail-accounts:
+    get:
+      tags: [Documents]
+      summary: Listar cuentas de correo configuradas
+      responses:
+        '200': { description: Cuentas }
+    post:
+      tags: [Documents]
+      summary: Crear cuenta de correo
+      responses:
+        '201': { description: Cuenta creada }
+
+  /documents/mail-accounts/{id}:
+    patch:
+      tags: [Documents]
+      summary: Actualizar cuenta de correo
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Cuenta actualizada }
+
+  /documents/mail-accounts/{id}/sync:
+    post:
+      tags: [Documents]
+      summary: Disparar sincronización de una cuenta
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '202': { description: Sincronización aceptada }
+
+  /documents/inbox:
+    get:
+      tags: [Documents]
+      summary: Listar documentos entrantes
+      responses:
+        '200': { description: Bandeja }
+
+  /documents/inbox/manual:
+    post:
+      tags: [Documents]
+      summary: Importar documentos manualmente
+      responses:
+        '201': { description: Importación creada }
+
+  /documents/inbox/{id}:
+    get:
+      tags: [Documents]
+      summary: Ver detalle de documento entrante
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Documento }
+
+  /documents/inbox/{id}/associate:
+    patch:
+      tags: [Documents]
+      summary: Asociar documento entrante a un paciente
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Documento asociado }
+
+  /documents/inbox/patients/{patientId}:
+    get:
+      tags: [Documents]
+      summary: Listar documentos de un paciente
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Documentos del paciente }
 
   /notifications/fcm/register:
     post:

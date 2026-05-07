@@ -67,6 +67,7 @@ services:
       - SERVICE_NOTIFICATIONS=http://notifications:4059
       - SERVICE_PORTAL=http://portal:4060
       - SERVICE_AI=http://ai:4061
+      - SERVICE_DOCUMENTS=http://documents:4062
     depends_on:
       mysql:
         condition: service_healthy
@@ -362,6 +363,31 @@ services:
         limits:
           cpus: "1"
           memory: 512M
+    networks:
+      - vetnet
+
+  documents:
+    build:
+      context: .
+      dockerfile: services/documents/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 4062
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4062/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     networks:
       - vetnet
 

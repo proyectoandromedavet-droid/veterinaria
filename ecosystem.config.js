@@ -54,5 +54,6 @@ module.exports = {
     svc('notifications', `${BASE}/services/notifications/src/index.js`,      4059),
     svc('portal',        `${BASE}/services/portal/src/index.js`,             4060),
     svc('ai',            `${BASE}/services/ai/src/index.js`,                 4061),
+    svc('documents',     `${BASE}/services/documents/src/index.js`,          4062),
   ],
 };

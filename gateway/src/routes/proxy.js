@@ -231,6 +231,7 @@ function registerProxies(app) {
   // ── NOTIFICATIONS (WebSocket upgrade handled separately) ─────────────────
   registerVersioned(app, 'use', 'notifications/fcm', authMiddleware, tenantLimiter, makeServiceProxy('notifications'));
   registerVersioned(app, 'use', 'notifications',     authMiddleware, tenantLimiter, makeServiceProxy('notifications'));
+  registerVersioned(app, 'use', 'documents',         authMiddleware, tenantLimiter, makeServiceProxy('documents'));
 
   // ── PORTAL DE DUEÑOS (auth propia — sin authMiddleware de staff) ──────────
   registerVersioned(app, 'use', 'portal/auth', makeServiceProxy('portal'));   // público

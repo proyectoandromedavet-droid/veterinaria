@@ -451,7 +451,7 @@
               </div>
               <div class="detail-item">
                 <span class="detail-label">{{ t('surgery.detailComplications') }}</span>
-                <span>{{ detailData.complications ? 'Si' : 'No' }}</span>
+                <span>{{ detailData.complications ? 'Sí' : 'No' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Urgencia</span>

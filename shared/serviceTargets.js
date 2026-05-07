@@ -14,6 +14,7 @@ const SERVICE_FALLBACKS = {
   notifications: process.env.SERVICE_NOTIFICATIONS || 'http://localhost:4059',
   portal:        process.env.SERVICE_PORTAL        || 'http://localhost:4060',
   ai:            process.env.SERVICE_AI            || 'http://localhost:4061',
+  documents:     process.env.SERVICE_DOCUMENTS     || 'http://localhost:4062',
 };
 
 function getServiceFallback(name) {
