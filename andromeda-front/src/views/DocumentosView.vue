@@ -467,19 +467,51 @@ function canIngest(row) {
   return row.document_category === 'external_lab' && Boolean(row.patient_id)
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function getWithRetry(requestFn, attempts = 2, delayMs = 250) {
+  let lastError = null
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await requestFn()
+    } catch (error) {
+      lastError = error
+      const status = error?.response?.status
+      const shouldRetry = attempt < attempts && (status === 404 || !status)
+      if (!shouldRetry) throw error
+      await sleep(delayMs)
+    }
+  }
+  throw lastError
+}
+
+function apiErrorMessage(error, fallback) {
+  return error?.response?.data?.error?.message
+    || error?.response?.data?.message
+    || error?.message
+    || fallback
+}
+
 async function loadProviders() {
-  const { data } = await documentsApi.providers()
-  providers.value = getPayloadData(data) || []
+  try {
+    const { data } = await getWithRetry(() => documentsApi.providers())
+    providers.value = getPayloadData(data) || []
+  } catch (error) {
+    providers.value = []
+    throw new Error(`Providers: ${apiErrorMessage(error, 'No se pudieron cargar los proveedores.')}`)
+  }
 }
 
 async function loadAccounts() {
   loadingAccounts.value = true
   accountsError.value = ''
   try {
-    const { data } = await documentsApi.accounts.list()
+    const { data } = await getWithRetry(() => documentsApi.accounts.list())
     accounts.value = getPayloadData(data) || []
   } catch (error) {
-    accountsError.value = error.response?.data?.error?.message || 'No se pudieron cargar las cuentas.'
+    accountsError.value = apiErrorMessage(error, 'No se pudieron cargar las cuentas.')
   } finally {
     loadingAccounts.value = false
   }
@@ -493,10 +525,10 @@ async function loadInbox() {
     if (filters.accountId) params.accountId = Number(filters.accountId)
     if (filters.associationStatus) params.associationStatus = filters.associationStatus
     if (filters.patientId) params.patientId = Number(filters.patientId)
-    const { data } = await documentsApi.inbox.list(params)
+    const { data } = await getWithRetry(() => documentsApi.inbox.list(params))
     inboxRows.value = getPayloadData(data) || []
   } catch (error) {
-    inboxError.value = error.response?.data?.error?.message || 'No se pudo cargar la bandeja documental.'
+    inboxError.value = apiErrorMessage(error, 'No se pudo cargar la bandeja documental.')
   } finally {
     loadingInbox.value = false
   }
@@ -504,7 +536,7 @@ async function loadInbox() {
 
 async function searchPatients(query, targetRef) {
   try {
-    const { data } = await patientsApi.list({ search: query || undefined, limit: 30 })
+    const { data } = await getWithRetry(() => patientsApi.list({ search: query || undefined, limit: 30 }))
     targetRef.value = getPayloadData(data) || []
   } catch {
     targetRef.value = []
@@ -530,7 +562,7 @@ async function loadAll() {
       searchPatients('', patientOptions),
     ])
   } catch (error) {
-    globalError.value = error.response?.data?.error?.message || 'No se pudieron cargar los documentos.'
+    globalError.value = error.message || 'No se pudieron cargar los documentos.'
   } finally {
     loading.value = false
   }
