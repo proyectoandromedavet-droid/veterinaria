@@ -82,7 +82,7 @@ router.get('/wards/availability', async (req, res, next) => {
 });
 
 // GET /hospitalizations/:id
-router.get('/:id', async (req, res, next) => {
+router.get('/:id(\\d+)', async (req, res, next) => {
   try {
     const hosp = await db.queryOne(
       `SELECT h.*, p.name AS patient_name, p.sex, p.birthdate, p.weight_kg, p.chip_number,
@@ -186,7 +186,7 @@ router.post('/',
 );
 
 // POST /hospitalizations/:id/monitoring (nursing check)
-router.post('/:id/monitoring',
+router.post('/:id(\\d+)/monitoring',
   body('recordedAt').isISO8601(),
   validate,
   async (req, res, next) => {
@@ -225,7 +225,7 @@ router.post('/:id/monitoring',
 );
 
 // POST /hospitalizations/:id/medications
-router.post('/:id/medications',
+router.post('/:id(\\d+)/medications',
   body('medicationId').isInt(),
   body('dose').notEmpty(),
   body('frequency').notEmpty(),
@@ -251,7 +251,7 @@ router.post('/:id/medications',
 );
 
 // PATCH /hospitalizations/:id/discharge
-router.patch('/:id/discharge',
+router.patch('/:id(\\d+)/discharge',
   body('dischargeDate').isISO8601(),
   validate,
   async (req, res, next) => {
