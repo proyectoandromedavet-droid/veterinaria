@@ -177,6 +177,7 @@
 
             <div class="detail-block">
               <b>Acciones clínicas</b>
+              <div v-if="orderCatalogError" class="alert alert--error" style="margin-top:12px; margin-bottom:12px">{{ orderCatalogError }}</div>
               <div class="detail-actions-grid">
                 <div class="detail-action-card">
                   <strong>Laboratorio</strong>
@@ -376,6 +377,7 @@
 
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
+              <div v-if="orderCatalogError" class="alert alert--error" style="margin-bottom:12px">{{ orderCatalogError }}</div>
 
               <!-- TAB 0: General + Signos vitales -->
               <div v-show="activeTab === 0">
@@ -1147,6 +1149,12 @@ const loadingImagingTypes = ref(false)
 const loadingSurgeryTypes = ref(false)
 const availableWards = ref([])
 const wardsLoading = ref(false)
+const orderCatalogErrors = reactive({
+  labTests: '',
+  imagingTypes: '',
+  surgeryTypes: '',
+  wards: '',
+})
 const professionals = ref([])
 const loadingProfessionals = ref(false)
 
@@ -1176,6 +1184,15 @@ const groupedSurgeryTypes = computed(() => {
   })
   return groups
 })
+
+const orderCatalogError = computed(() => Object.values(orderCatalogErrors).filter(Boolean).join(' | '))
+
+function apiErrorMessage(error, fallback) {
+  return error?.response?.data?.error?.message
+    || error?.response?.data?.message
+    || error?.message
+    || fallback
+}
 
 const hospitalizationProfessionals = computed(() =>
   professionals.value.filter((entry) => entry.roles.some((role) => HOSPITALIZATION_ROLES.includes(role)))
@@ -1433,13 +1450,17 @@ async function loadOrderCatalogs() {
     loadingLabTests.value = true
     try {
       const { data } = await http.get('/lab/tests')
+      orderCatalogErrors.labTests = ''
       labTests.value = asArray(data?.data || data).map((row) => ({
         ...row,
         id: row.id ?? row.test_id ?? row.testId ?? null,
         name: row.name ?? row.test_name ?? row.testName ?? '',
         category: row.category ?? row.group ?? 'General',
       })).filter((row) => row.id)
-    } catch { labTests.value = [] }
+    } catch (error) {
+      labTests.value = []
+      orderCatalogErrors.labTests = `Laboratorio: ${apiErrorMessage(error, 'No se pudieron cargar las pruebas')}`
+    }
     finally { loadingLabTests.value = false }
   }
 
@@ -1447,13 +1468,17 @@ async function loadOrderCatalogs() {
     loadingImagingTypes.value = true
     try {
       const { data } = await http.get('/imaging/types')
+      orderCatalogErrors.imagingTypes = ''
       imagingTypes.value = asArray(data?.data || data).map((row) => ({
         ...row,
         id: row.id ?? row.type_id ?? row.typeId ?? null,
         name: row.name ?? row.type_name ?? row.typeName ?? '',
         modality: row.modality ?? row.modality_code ?? row.modalityCode ?? '',
       })).filter((row) => row.id)
-    } catch { imagingTypes.value = [] }
+    } catch (error) {
+      imagingTypes.value = []
+      orderCatalogErrors.imagingTypes = `Imágenes: ${apiErrorMessage(error, 'No se pudieron cargar los tipos de estudio')}`
+    }
     finally { loadingImagingTypes.value = false }
   }
 
@@ -1461,6 +1486,7 @@ async function loadOrderCatalogs() {
     loadingSurgeryTypes.value = true
     try {
       const { data } = await http.get('/surgeries/types/all')
+      orderCatalogErrors.surgeryTypes = ''
       surgeryTypes.value = asArray(data?.data || data).map((row) => ({
         ...row,
         id: row.id ?? row.type_id ?? row.typeId ?? null,
@@ -1468,7 +1494,10 @@ async function loadOrderCatalogs() {
         category: row.category ?? row.category_name ?? row.categoryName ?? 'General',
         estimated_duration_minutes: row.estimated_duration_minutes ?? row.estimatedDurationMinutes ?? null,
       })).filter((row) => row.id)
-    } catch { surgeryTypes.value = [] }
+    } catch (error) {
+      surgeryTypes.value = []
+      orderCatalogErrors.surgeryTypes = `Cirugías: ${apiErrorMessage(error, 'No se pudieron cargar los tipos de cirugía')}`
+    }
     finally { loadingSurgeryTypes.value = false }
   }
 
@@ -1476,6 +1505,7 @@ async function loadOrderCatalogs() {
     wardsLoading.value = true
     try {
       const { data } = await http.get('/hospitalizations/wards/availability')
+      orderCatalogErrors.wards = ''
       const rows = asArray(data?.data || data?.wards || data)
       const grouped = new Map()
       rows.forEach((row) => {
@@ -1501,7 +1531,10 @@ async function loadOrderCatalogs() {
         if (kennel.status === 'available' || kennel.status === 'free') ward.available_kennels += 1
       })
       availableWards.value = Array.from(grouped.values())
-    } catch { availableWards.value = [] }
+    } catch (error) {
+      availableWards.value = []
+      orderCatalogErrors.wards = `Internación: ${apiErrorMessage(error, 'No se pudieron cargar las salas y jaulas')}`
+    }
     finally { wardsLoading.value = false }
   }
 }
