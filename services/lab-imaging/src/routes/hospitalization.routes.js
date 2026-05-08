@@ -61,6 +61,26 @@ router.get('/board', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /hospitalizations/wards  (kennel availability)
+router.get('/wards/availability', async (req, res, next) => {
+  try {
+    const rows = await db.query(
+      `SELECT w.id AS ward_id, w.name AS ward_name, w.ward_type,
+              k.id AS kennel_id, k.kennel_number, k.kennel_type, k.size_category,
+              CASE WHEN h.id IS NOT NULL THEN 'occupied' ELSE 'available' END AS status,
+              CASE WHEN h.id IS NOT NULL THEN p.name ELSE NULL END AS current_patient
+       FROM wards w
+       JOIN kennels k ON k.ward_id = w.id
+       LEFT JOIN hospitalizations h ON h.kennel_id = k.id AND h.discharge_date IS NULL
+       LEFT JOIN patients p ON h.patient_id = p.id
+       WHERE w.branch_id = :bid AND k.is_active = TRUE
+       ORDER BY w.name, k.kennel_number`,
+      { bid: req.user.branchId }
+    );
+    return R.ok(res, rows);
+  } catch (e) { next(e); }
+});
+
 // GET /hospitalizations/:id
 router.get('/:id', async (req, res, next) => {
   try {
@@ -263,25 +283,5 @@ router.patch('/:id/discharge',
     }
   }
 );
-
-// GET /hospitalizations/wards  (kennel availability)
-router.get('/wards/availability', async (req, res, next) => {
-  try {
-    const rows = await db.query(
-      `SELECT w.id AS ward_id, w.name AS ward_name, w.ward_type,
-              k.id AS kennel_id, k.kennel_number, k.kennel_type, k.size_category,
-              CASE WHEN h.id IS NOT NULL THEN 'occupied' ELSE 'available' END AS status,
-              CASE WHEN h.id IS NOT NULL THEN p.name ELSE NULL END AS current_patient
-       FROM wards w
-       JOIN kennels k ON k.ward_id = w.id
-       LEFT JOIN hospitalizations h ON h.kennel_id = k.id AND h.discharge_date IS NULL
-       LEFT JOIN patients p ON h.patient_id = p.id
-       WHERE w.branch_id = :bid AND k.is_active = TRUE
-       ORDER BY w.name, k.kennel_number`,
-      { bid: req.user.branchId }
-    );
-    return R.ok(res, rows);
-  } catch (e) { next(e); }
-});
 
 module.exports = router;
