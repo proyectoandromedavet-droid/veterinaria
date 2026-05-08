@@ -242,6 +242,7 @@ describe('Service OpenAPI coverage', () => {
       '/surgeries/types/all',
       '/hospitalizations',
       '/hospitalizations/board',
+      '/hospitalizations/wards/availability',
       '/hospitalizations/{id}',
       '/hospitalizations/{id}/monitoring',
       '/hospitalizations/{id}/medications',

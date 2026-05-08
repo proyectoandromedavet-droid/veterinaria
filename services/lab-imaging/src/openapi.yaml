@@ -200,6 +200,11 @@ paths:
       responses:
         '200':
           description: OK
+  /hospitalizations/wards/availability:
+    get:
+      responses:
+        '200':
+          description: OK
   /hospitalizations/{id}:
     get:
       parameters:
