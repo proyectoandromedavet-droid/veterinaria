@@ -1194,6 +1194,26 @@ function apiErrorMessage(error, fallback) {
     || fallback
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function getWithRetry(url, attempts = 2, delayMs = 250) {
+  let lastError = null
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await http.get(url)
+    } catch (error) {
+      lastError = error
+      const status = error?.response?.status
+      const shouldRetry = attempt < attempts && (status === 404 || !status)
+      if (!shouldRetry) throw error
+      await sleep(delayMs)
+    }
+  }
+  throw lastError
+}
+
 const hospitalizationProfessionals = computed(() =>
   professionals.value.filter((entry) => entry.roles.some((role) => HOSPITALIZATION_ROLES.includes(role)))
 )
@@ -1449,7 +1469,7 @@ async function loadOrderCatalogs() {
   if (!labTests.value.length) {
     loadingLabTests.value = true
     try {
-      const { data } = await http.get('/lab/tests')
+      const { data } = await getWithRetry('/lab/tests')
       orderCatalogErrors.labTests = ''
       labTests.value = asArray(data?.data || data).map((row) => ({
         ...row,
@@ -1467,7 +1487,7 @@ async function loadOrderCatalogs() {
   if (!imagingTypes.value.length) {
     loadingImagingTypes.value = true
     try {
-      const { data } = await http.get('/imaging/types')
+      const { data } = await getWithRetry('/imaging/types')
       orderCatalogErrors.imagingTypes = ''
       imagingTypes.value = asArray(data?.data || data).map((row) => ({
         ...row,
@@ -1485,7 +1505,7 @@ async function loadOrderCatalogs() {
   if (!surgeryTypes.value.length) {
     loadingSurgeryTypes.value = true
     try {
-      const { data } = await http.get('/surgeries/types/all')
+      const { data } = await getWithRetry('/surgeries/types/all')
       orderCatalogErrors.surgeryTypes = ''
       surgeryTypes.value = asArray(data?.data || data).map((row) => ({
         ...row,
@@ -1504,7 +1524,7 @@ async function loadOrderCatalogs() {
   if (!availableWards.value.length) {
     wardsLoading.value = true
     try {
-      const { data } = await http.get('/hospitalizations/wards/availability')
+      const { data } = await getWithRetry('/hospitalizations/wards/availability')
       orderCatalogErrors.wards = ''
       const rows = asArray(data?.data || data?.wards || data)
       const grouped = new Map()
