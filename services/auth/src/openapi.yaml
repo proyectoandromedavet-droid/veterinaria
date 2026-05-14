@@ -372,6 +372,14 @@ paths:
       summary: List API keys
       security:
         - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
       responses:
         '200':
           description: List of API keys
@@ -617,7 +625,7 @@ paths:
         '200':
           description: Cache warmed
 
-  /admin/security-alerts:
+  /admin/rbac/security-alerts:
     get:
       summary: List security alerts
       security:
@@ -626,7 +634,7 @@ paths:
         '200':
           description: Security alerts
 
-  /admin/security-alerts/{id}/acknowledge:
+  /admin/rbac/security-alerts/{id}/acknowledge:
     post:
       summary: Acknowledge security alert
       security:

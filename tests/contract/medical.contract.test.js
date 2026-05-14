@@ -76,6 +76,46 @@ describe('Contract - medical aliases', () => {
     expect(res.body.data[0].medication_name).toBe('Amoxicillin');
   });
 
+  it('maps POST /prescriptions/:id and adapts inserts to stricter runtime schemas', async () => {
+    const executed = [];
+    db.query.mockImplementation((sql) => {
+      executed.push(sql);
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+        return Promise.resolve([
+          { TABLE_NAME: 'prescriptions', COLUMN_NAME: 'organization_id' },
+          { TABLE_NAME: 'prescriptions', COLUMN_NAME: 'branch_id' },
+          { TABLE_NAME: 'prescriptions', COLUMN_NAME: 'refills_used' },
+          { TABLE_NAME: 'prescriptions', COLUMN_NAME: 'created_at' },
+          { TABLE_NAME: 'prescriptions', COLUMN_NAME: 'updated_at' },
+          { TABLE_NAME: 'prescription_items', COLUMN_NAME: 'organization_id' },
+          { TABLE_NAME: 'prescription_items', COLUMN_NAME: 'branch_id' },
+        ]);
+      }
+      if (sql.includes('INSERT INTO prescriptions')) {
+        return Promise.resolve([{ insertId: 99 }]);
+      }
+      if (sql.includes('INSERT INTO prescription_items')) {
+        return Promise.resolve([{ affectedRows: 1 }]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const res = await request(app)
+      .post('/prescriptions/42')
+      .set(USER_HEADERS)
+      .send({
+        items: [{ medicationName: 'Amoxicillin', dose: '250mg', frequency: 'cada 12h' }],
+        notes: 'Test',
+        refills: 0,
+      });
+
+    expect(res.status).toBe(201);
+    expect(executed.find((sql) => sql.includes('INSERT INTO prescriptions'))).toContain('organization_id');
+    expect(executed.find((sql) => sql.includes('INSERT INTO prescriptions'))).toContain('branch_id');
+    expect(executed.find((sql) => sql.includes('INSERT INTO prescription_items'))).toContain('organization_id');
+    expect(executed.find((sql) => sql.includes('INSERT INTO prescription_items'))).toContain('branch_id');
+  });
+
   it('lists appointment types using the live schema-compatible projection', async () => {
     db.query.mockResolvedValueOnce([
       { id: 1, name: 'Consulta', default_duration_minutes: 30, color_hex: '#00AEEF', requires_fasting: 0 },

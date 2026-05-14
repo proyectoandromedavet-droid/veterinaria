@@ -173,6 +173,29 @@ describe('GET /patients/:id/timeline', () => {
     expect(res.body.data).toHaveLength(2);
     expect(res.body.data[0].type).toBe('medical_record');
   });
+
+  test('200 - timeline degrades gracefully when one optional source query fails', async () => {
+    db.queryOne.mockResolvedValueOnce({ id: 1 });
+    db.query.mockImplementation((sql) => {
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+        return Promise.resolve([
+          ...SCHEMA_ROWS,
+          { TABLE_NAME: 'tele_sessions', COLUMN_NAME: 'patient_id' },
+          { TABLE_NAME: 'tele_sessions', COLUMN_NAME: 'scheduled_at' },
+          { TABLE_NAME: 'tele_sessions', COLUMN_NAME: 'reason' },
+        ]);
+      }
+      if (sql.includes('FROM appointments')) return Promise.resolve([{ id: 10, event_at: '2026-04-01T10:00:00Z', title: 'Checkup' }]);
+      if (sql.includes('FROM medical_records')) return Promise.resolve([{ id: 20, event_at: '2026-04-02T10:00:00Z', title: 'Medical record' }]);
+      if (sql.includes('FROM tele_sessions')) return Promise.reject(new Error('tele source failed'));
+      return Promise.resolve([]);
+    });
+
+    const res = await request(app).get('/patients/1/timeline').set(AUTH);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+  });
 });
 
 describe('POST /patients', () => {
@@ -228,11 +251,12 @@ describe('Owners and reference endpoints', () => {
   test('POST /patients/:id/owners performs transactional upsert', async () => {
     const mockConn = {
       queryOne: jest.fn()
-        .mockResolvedValueOnce({ id: 99 })
         .mockResolvedValueOnce(null),
       query: jest.fn().mockResolvedValue([{ affectedRows: 1 }]),
     };
-    db.queryOne.mockResolvedValueOnce({ id: 1 });
+    db.queryOne
+      .mockResolvedValueOnce({ id: 1 })
+      .mockResolvedValueOnce({ id: 99 });
     db.transaction.mockImplementationOnce((fn) => fn(mockConn));
 
     const res = await request(app)

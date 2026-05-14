@@ -366,9 +366,18 @@ describe('Internal auth routes', () => {
       branch_id: 10,
       scopes: JSON.stringify(['patients:read']),
     });
-    db.query
-      .mockResolvedValueOnce([{ affectedRows: 1 }])
-      .mockResolvedValueOnce([{ name: 'veterinarian' }]);
+    db.query.mockImplementation((sql) => {
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+        return Promise.resolve([{ COLUMN_NAME: 'is_active' }]);
+      }
+      if (sql.includes('UPDATE api_keys SET last_used_at = NOW()')) {
+        return Promise.resolve([{ affectedRows: 1 }]);
+      }
+      if (sql.includes('FROM roles r')) {
+        return Promise.resolve([{ name: 'veterinarian' }]);
+      }
+      return Promise.resolve([]);
+    });
 
     const res = await request(app)
       .post('/internal/validate-api-key')
@@ -403,5 +412,70 @@ describe('Internal auth routes', () => {
       orgId: 5,
       plan: 'pro',
     });
+  });
+});
+
+describe('Protected auth routes', () => {
+  test('200 — GET /api-keys is reachable with internal signature and user headers', async () => {
+    db.query.mockImplementation((sql) => {
+      if (sql.includes('FROM api_keys')) {
+        return Promise.resolve([
+          { id: 1, name: 'Primary key', key_prefix: 'pk_live_123', scopes: '[]', is_active: 1, revoked_at: null, created_at: '2026-05-14T00:00:00Z' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const res = await request(app)
+      .get('/api-keys')
+      .set('X-User-Id', '1')
+      .set('X-Org-Id', '5')
+      .set('X-Branch-Id', '10')
+      .set('X-User-Roles', 'org_admin')
+      .set('X-Internal-Sig', signRequest('GET', '/api-keys', '5'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveLength(1);
+  });
+
+  test('201 — POST /api-keys creates a key with internal signature and user headers', async () => {
+    db.query.mockResolvedValueOnce([{ insertId: 1 }]);
+
+    const res = await request(app)
+      .post('/api-keys')
+      .set('X-User-Id', '1')
+      .set('X-Org-Id', '5')
+      .set('X-Branch-Id', '10')
+      .set('X-User-Roles', 'org_admin')
+      .set('X-Internal-Sig', signRequest('POST', '/api-keys', '5'))
+      .send({ name: 'Automation key' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.rawKey).toEqual(expect.any(String));
+  });
+
+  test('200 — GET /admin/rbac/security-alerts is reachable with admin role and internal signature', async () => {
+    db.query.mockImplementation((sql) => {
+      if (sql.includes('FROM security_alerts')) {
+        return Promise.resolve([
+          { id: 10, org_id: 5, alert_type: 'mass_export', severity: 'high' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const res = await request(app)
+      .get('/admin/rbac/security-alerts')
+      .set('X-User-Id', '1')
+      .set('X-Org-Id', '5')
+      .set('X-Branch-Id', '10')
+      .set('X-User-Roles', 'org_admin')
+      .set('X-Internal-Sig', signRequest('GET', '/admin/rbac/security-alerts', '5'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveLength(1);
   });
 });

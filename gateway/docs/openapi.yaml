@@ -54,6 +54,14 @@ tags:
     description: Reportes ejecutivos y KPIs
   - name: Documents
     description: Casillas de correo e inbox documental
+  - name: Notifications
+    description: Notificaciones, recordatorios y mensajería
+  - name: Portal
+    description: Portal de dueños de mascotas
+  - name: AI
+    description: Diagnóstico asistido por IA y análisis de imágenes
+  - name: Platform
+    description: Salud y descubrimiento de servicios internos
 
 components:
   securitySchemes:
@@ -583,6 +591,55 @@ paths:
       responses:
         '200': { description: Política actualizada }
 
+  # ── AUTH ADMIN — FEATURE FLAGS ─────────────────────────────────────────────
+  /auth/admin/features/orgs/{orgId}:
+    get:
+      tags: [Auth]
+      summary: Obtener feature flags de una organización
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: 'Flags, definiciones y valores por defecto' }
+    patch:
+      tags: [Auth]
+      summary: Actualizar feature flags de una organización
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [flags]
+              properties:
+                flags: { type: object, additionalProperties: { type: boolean } }
+      responses:
+        '200': { description: Flags actualizados }
+
+  # ── AUTH ADMIN — RBAC EFFECTIVE ────────────────────────────────────────────
+  /auth/admin/rbac/orgs/{orgId}/roles/{role}/effective:
+    get:
+      tags: [Auth]
+      summary: Permisos efectivos de un rol para una organización (base + overrides)
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: role
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Lista de permisos efectivos }
+
   # ── AUTH AUDIT ─────────────────────────────────────────────────────────────
   /auth/audit/export:
     get:
@@ -609,27 +666,6 @@ paths:
           schema: { type: integer }
       responses:
         '200': { description: Logs de auditoría exportados }
-
-  /auth/audit/alerts:
-    get:
-      tags: [Auth]
-      summary: Listar alertas de auditoría de seguridad
-      responses:
-        '200': { description: Lista de alertas }
-
-  /auth/audit/alerts/scan:
-    post:
-      tags: [Auth]
-      summary: Ejecutar escaneo de patrones sospechosos de acceso
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                windowMinutes: { type: integer }
-      responses:
-        '200': { description: Escaneo completado }
 
   # ── AUTH ADMIN — TABLE PREVIEW ─────────────────────────────────────────────
   /auth/admin/preview:
@@ -1128,6 +1164,24 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 100 }
       responses:
         '200': { description: Lista de Ã³rdenes de patologÃ­a }
+    post:
+      tags: [Pathology]
+      summary: Crear orden de patología
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patientId, medicalRecordId, pathologyTypeId]
+              properties:
+                patientId:        { type: integer }
+                medicalRecordId:  { type: integer }
+                pathologyTypeId:  { type: integer }
+                sampleDescription: { type: string }
+                priority:         { type: string, enum: [routine, urgent, stat], default: routine }
+      responses:
+        '201': { description: Orden de patología creada }
 
   /pathology/types:
     get:
@@ -2200,6 +2254,25 @@ paths:
     get:
       tags: [Documents]
       summary: Listar documentos entrantes
+      parameters:
+        - in: query
+          name: accountId
+          schema: { type: integer }
+        - in: query
+          name: patientId
+          schema: { type: integer }
+        - in: query
+          name: associationStatus
+          schema: { type: string, enum: [unassociated, associated, needs_review] }
+        - in: query
+          name: provider
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
       responses:
         '200': { description: Bandeja }
 
@@ -2574,3 +2647,197 @@ paths:
           schema: { type: integer }
       responses:
         '200': { description: Historial de riesgo }
+
+  # ── SURGERY (rutas faltantes) ───────────────────────────────────────────────
+  /surgeries/types/all:
+    get:
+      tags: [Surgery]
+      summary: Catálogo de tipos de cirugía
+      responses:
+        '200': { description: Lista de tipos de cirugía activos }
+
+  /surgeries/{id}:
+    get:
+      tags: [Surgery]
+      summary: Obtener detalle de una cirugía
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Detalle de la cirugía }
+        '404': { description: Cirugía no encontrada }
+
+  # ── IMAGING (rutas faltantes) ───────────────────────────────────────────────
+  /imaging/types:
+    get:
+      tags: [Imaging]
+      summary: Catálogo de tipos de estudio de imágenes
+      responses:
+        '200': { description: Lista de tipos de imagen activos }
+
+  /imaging/orders/pending-report:
+    get:
+      tags: [Imaging]
+      summary: Órdenes de imágenes pendientes de informe radiológico
+      responses:
+        '200': { description: Órdenes sin informe }
+
+  /imaging/orders/{id}:
+    get:
+      tags: [Imaging]
+      summary: Obtener detalle de una orden de imágenes
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Orden con estudios e informe }
+        '404': { description: Orden no encontrada }
+
+  # ── PATHOLOGY (rutas faltantes) ─────────────────────────────────────────────
+  /pathology/orders/{id}:
+    get:
+      tags: [Pathology]
+      summary: Obtener detalle de una orden de patología
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Orden con resultado }
+        '404': { description: Orden no encontrada }
+
+  /pathology/orders/{id}/result:
+    post:
+      tags: [Pathology]
+      summary: Cargar resultado / informe patológico
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [findings]
+              properties:
+                findings:    { type: string }
+                conclusion:  { type: string }
+                reportUrl:   { type: string }
+      responses:
+        '201': { description: Resultado cargado }
+
+  # ── HOSPITALIZATION (rutas faltantes) ───────────────────────────────────────
+  /hospitalizations/{id}:
+    get:
+      tags: [Hospitalization]
+      summary: Obtener detalle de una internación
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Detalle de la internación con historial de monitoreo }
+        '404': { description: Internación no encontrada }
+
+  /hospitalizations/{id}/medications:
+    post:
+      tags: [Hospitalization]
+      summary: Registrar medicación administrada al paciente internado
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [medicationName, dose, route]
+              properties:
+                medicationName: { type: string }
+                dose:           { type: string }
+                route:          { type: string, enum: [oral, iv, im, sc, topical, other] }
+                administeredAt: { type: string, format: date-time }
+                notes:          { type: string }
+      responses:
+        '201': { description: Medicación registrada }
+
+  # ── VACCINATION (rutas faltantes) ───────────────────────────────────────────
+  /vaccinations/deworming/alerts:
+    get:
+      tags: [Vaccination]
+      summary: Alertas de desparasitaciones vencidas o por vencer
+      responses:
+        '200': { description: Lista de alertas de desparasitación }
+
+  # ── AUTH (rutas faltantes) ──────────────────────────────────────────────────
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Cambiar contraseña del usuario autenticado
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, minLength: 6 }
+                newPassword:     { type: string, minLength: 8 }
+      responses:
+        '204': { description: Contraseña actualizada }
+        '400': { description: Contraseña actual incorrecta o nueva inválida }
+
+  /auth/api-keys/{id}:
+    delete:
+      tags: [Auth]
+      summary: Revocar una API key
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: API key revocada }
+        '404': { description: API key no encontrada }
+
+  # ── GROOMING (rutas faltantes) ──────────────────────────────────────────────
+  /grooming/patient-profile/{patientId}:
+    get:
+      tags: [Grooming]
+      summary: Perfil de grooming de un paciente (historial, notas, preferencias)
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Perfil de grooming del paciente }
+
+  # ── PLATFORM / HEALTH ────────────────────────────────────────────────────────
+  /health/services:
+    get:
+      tags: [Platform]
+      summary: Estado de salud de todos los microservicios
+      security: []
+      responses:
+        '200': { description: Mapa de salud por servicio }
+
+  /platform/services:
+    get:
+      tags: [Platform]
+      summary: Listar servicios registrados y sus targets
+      responses:
+        '200': { description: Registro de servicios con URLs y estado }
