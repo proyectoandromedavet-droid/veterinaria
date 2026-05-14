@@ -10,6 +10,6 @@ RUN npm install --omit=dev
 COPY services/auth/src ./services/auth/src
 COPY shared ./shared
 
-EXPOSE $PORT
+EXPOSE 3000
 USER node
 CMD ["node", "services/auth/src/index.js"]

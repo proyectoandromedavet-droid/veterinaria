@@ -4,7 +4,11 @@
  * Feature Flags - per-org feature toggles persisted in Redis.
  */
 
-const { getClient } = require('./cache');
+const { createLogger } = require('./logger');
+const cache = require('./cache');
+
+const log = createLogger('feature-flags');
+const FLAG_CACHE_TTL_S = Math.max(60, parseInt(process.env.FEATURE_FLAGS_TTL_S || '300', 10));
 
 const DEFAULT_FLAGS = {
   ai_diagnosis:        false,
@@ -46,14 +50,9 @@ function normalizeFlags(input = {}) {
 
 async function readOrgFlags(orgId) {
   if (!orgId) return { ...DEFAULT_FLAGS };
-  try {
-    const redis = await getClient();
-    const raw = await redis.get(`ff:org:${orgId}`);
-    if (!raw) return { ...DEFAULT_FLAGS };
-    return normalizeFlags(JSON.parse(raw));
-  } catch (_) {
-    return { ...DEFAULT_FLAGS };
-  }
+  const raw = await cache.get(`ff:org:${orgId}`);
+  if (!raw) return null;
+  return normalizeFlags(raw);
 }
 
 async function isEnabled(flag, orgId) {
@@ -63,7 +62,14 @@ async function isEnabled(flag, orgId) {
 }
 
 async function getFlags(orgId) {
-  return readOrgFlags(orgId);
+  const cached = await readOrgFlags(orgId);
+  if (cached) return cached;
+
+  const defaults = { ...DEFAULT_FLAGS };
+  if (orgId) {
+    await cache.set(`ff:org:${orgId}`, defaults, FLAG_CACHE_TTL_S);
+  }
+  return defaults;
 }
 
 async function setFlag(orgId, flag, value) {
@@ -72,10 +78,7 @@ async function setFlag(orgId, flag, value) {
 
 async function setFlags(orgId, updates = {}) {
   const next = normalizeFlags({ ...(await readOrgFlags(orgId)), ...updates });
-  try {
-    const redis = await getClient();
-    await redis.set(`ff:org:${orgId}`, JSON.stringify(next));
-  } catch (_) {}
+  await cache.set(`ff:org:${orgId}`, next, FLAG_CACHE_TTL_S);
   return next;
 }
 
@@ -89,7 +92,13 @@ function requireFeature(flag) {
         success: false,
         error:   { message: `Feature '${flag}' is not enabled for your organization`, code: 'FEATURE_DISABLED' },
       });
-    } catch (_) {
+    } catch (err) {
+      log.warn('Feature gate check failed, allowing request', {
+        flag,
+        orgId: req.user?.orgId,
+        message: err?.message,
+        code: err?.code,
+      });
       next();
     }
   };

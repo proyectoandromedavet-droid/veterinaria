@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="documents">
     <section class="hero">
       <div>
@@ -37,7 +37,7 @@
       <div class="filter-grid">
         <label class="field">
           <span>Cuenta</span>
-          <select v-model="filters.accountId" @change="loadInbox">
+          <select id="doc-f-account" name="doc-f-account" v-model="filters.accountId" @change="loadInbox">
             <option value="">Todas</option>
             <option v-for="account in accounts" :key="account.id" :value="String(account.id)">
               {{ account.email_address }}
@@ -47,7 +47,7 @@
 
         <label class="field">
           <span>Estado</span>
-          <select v-model="filters.associationStatus" @change="loadInbox">
+          <select id="doc-f-status" name="doc-f-status" v-model="filters.associationStatus" @change="loadInbox">
             <option value="">Todos</option>
             <option value="unassociated">Sin asociar</option>
             <option value="associated">Asociados</option>
@@ -57,12 +57,12 @@
 
         <label class="field">
           <span>Paciente</span>
-          <input v-model.trim="patientSearch" type="text" placeholder="Buscar paciente..." @input="handlePatientSearch" />
+          <input id="doc-f-patient-search" name="doc-f-patient-search" v-model.trim="patientSearch" type="text" placeholder="Buscar paciente..." @input="handlePatientSearch" />
         </label>
 
         <label class="field">
           <span>Coincidencia</span>
-          <select v-model="filters.patientId" @change="loadInbox">
+          <select id="doc-f-patient" name="doc-f-patient" v-model="filters.patientId" @change="loadInbox">
             <option value="">Cualquiera</option>
             <option v-for="patient in patientOptions" :key="patient.id" :value="String(patient.id)">
               {{ patient.name }}
@@ -364,7 +364,25 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import BaseModal from '../components/base/BaseModal.vue'
-import { documentsApi, patientsApi } from '../api'
+import {
+  associateDocument,
+  badgeClassForAssociation,
+  canIngestDocument,
+  extractDocumentsError,
+  formatDocumentsBytes,
+  formatDocumentsDate,
+  getDocumentDetail,
+  getDocumentDownloadUrl,
+  ingestDocument,
+  loadDocumentProviders,
+  loadDocumentsInbox,
+  loadMailAccounts,
+  saveMailAccount,
+  searchDocumentPatients,
+  syncMailAccount,
+  uploadManualDocuments,
+} from '../composables/documents/useDocumentsDomain'
+import { logError } from '../utils/errors'
 
 const loading = ref(false)
 const globalError = ref('')
@@ -446,58 +464,28 @@ function getPayloadData(payload) {
 }
 
 function formatDate(value) {
-  if (!value) return '—'
-  return new Date(value).toLocaleString('es-AR')
+  return formatDocumentsDate(value)
 }
 
 function formatBytes(value) {
-  const size = Number(value || 0)
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  return formatDocumentsBytes(value)
 }
 
 function badgeClass(status) {
-  if (status === 'associated') return 'badge--active'
-  if (status === 'needs_review') return 'badge--warning'
-  return 'badge--inactive'
+  return badgeClassForAssociation(status)
 }
 
 function canIngest(row) {
-  return row.document_category === 'external_lab' && Boolean(row.patient_id)
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function getWithRetry(requestFn, attempts = 2, delayMs = 250) {
-  let lastError = null
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await requestFn()
-    } catch (error) {
-      lastError = error
-      const status = error?.response?.status
-      const shouldRetry = attempt < attempts && (status === 404 || !status)
-      if (!shouldRetry) throw error
-      await sleep(delayMs)
-    }
-  }
-  throw lastError
+  return canIngestDocument(row)
 }
 
 function apiErrorMessage(error, fallback) {
-  return error?.response?.data?.error?.message
-    || error?.response?.data?.message
-    || error?.message
-    || fallback
+  return extractDocumentsError(error, fallback)
 }
 
 async function loadProviders() {
   try {
-    const { data } = await getWithRetry(() => documentsApi.providers())
-    providers.value = getPayloadData(data) || []
+    providers.value = await loadDocumentProviders()
   } catch (error) {
     providers.value = []
     throw new Error(`Providers: ${apiErrorMessage(error, 'No se pudieron cargar los proveedores.')}`)
@@ -508,8 +496,7 @@ async function loadAccounts() {
   loadingAccounts.value = true
   accountsError.value = ''
   try {
-    const { data } = await getWithRetry(() => documentsApi.accounts.list())
-    accounts.value = getPayloadData(data) || []
+    accounts.value = await loadMailAccounts()
   } catch (error) {
     accountsError.value = apiErrorMessage(error, 'No se pudieron cargar las cuentas.')
   } finally {
@@ -521,12 +508,7 @@ async function loadInbox() {
   loadingInbox.value = true
   inboxError.value = ''
   try {
-    const params = { limit: 50 }
-    if (filters.accountId) params.accountId = Number(filters.accountId)
-    if (filters.associationStatus) params.associationStatus = filters.associationStatus
-    if (filters.patientId) params.patientId = Number(filters.patientId)
-    const { data } = await getWithRetry(() => documentsApi.inbox.list(params))
-    inboxRows.value = getPayloadData(data) || []
+    inboxRows.value = await loadDocumentsInbox(filters)
   } catch (error) {
     inboxError.value = apiErrorMessage(error, 'No se pudo cargar la bandeja documental.')
   } finally {
@@ -536,9 +518,9 @@ async function loadInbox() {
 
 async function searchPatients(query, targetRef) {
   try {
-    const { data } = await getWithRetry(() => patientsApi.list({ search: query || undefined, limit: 30 }))
-    targetRef.value = getPayloadData(data) || []
-  } catch {
+    targetRef.value = await searchDocumentPatients(query)
+  } catch (error) {
+    logError('documentos.searchPatients', error, { search: query })
     targetRef.value = []
   }
 }
@@ -600,29 +582,21 @@ async function submitAccount() {
   accountModalError.value = ''
   savingAccount.value = true
   try {
-    let settings = {}
     try {
-      settings = accountForm.settingsJson.trim() ? JSON.parse(accountForm.settingsJson) : {}
-    } catch {
-      accountModalError.value = 'Settings JSON inválido.'
-      savingAccount.value = false
-      return
+      await saveMailAccount(accountForm)
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        logError('documentos.parseAccountSettings', error, { settingsJson: accountForm.settingsJson })
+        accountModalError.value = 'Settings JSON inválido.'
+        savingAccount.value = false
+        return
+      }
+      throw error
     }
-
-    const payload = {
-      provider: accountForm.provider,
-      emailAddress: accountForm.emailAddress,
-      displayName: accountForm.displayName || undefined,
-      folderName: accountForm.folderName || 'INBOX',
-      isActive: Boolean(accountForm.isActive),
-      settings,
-    }
-    if (accountForm.id) await documentsApi.accounts.update(accountForm.id, payload)
-    else await documentsApi.accounts.create(payload)
     showAccountModal.value = false
     await loadAccounts()
   } catch (error) {
-    accountModalError.value = error.response?.data?.error?.message || 'No se pudo guardar la cuenta.'
+    accountModalError.value = extractDocumentsError(error, 'No se pudo guardar la cuenta.')
   } finally {
     savingAccount.value = false
   }
@@ -658,21 +632,11 @@ async function submitImport() {
       return
     }
 
-    const formData = new FormData()
-    formData.append('fromEmail', importForm.fromEmail)
-    if (importForm.subject) formData.append('subject', importForm.subject)
-    if (importForm.accountId) formData.append('accountId', importForm.accountId)
-    if (importForm.patientId) formData.append('patientId', importForm.patientId)
-    if (importForm.documentCategory) formData.append('documentCategory', importForm.documentCategory)
-    for (const file of selectedFiles.value) {
-      formData.append('files', file)
-    }
-
-    await documentsApi.inbox.upload(formData)
+    await uploadManualDocuments(importForm, selectedFiles.value)
     showImportModal.value = false
     await loadInbox()
   } catch (error) {
-    importModalError.value = error.response?.data?.error?.message || 'No se pudo importar el documento.'
+    importModalError.value = extractDocumentsError(error, 'No se pudo importar el documento.')
   } finally {
     savingImport.value = false
   }
@@ -695,14 +659,11 @@ async function submitAssociation() {
   associateModalError.value = ''
   savingAssociation.value = true
   try {
-    await documentsApi.inbox.associate(selectedRow.value.id, {
-      patientId: Number(associateForm.patientId),
-      documentCategory: associateForm.documentCategory,
-    })
+    await associateDocument(selectedRow.value.id, associateForm)
     showAssociateModal.value = false
     await loadInbox()
   } catch (error) {
-    associateModalError.value = error.response?.data?.error?.message || 'No se pudo asociar el documento.'
+    associateModalError.value = extractDocumentsError(error, 'No se pudo asociar el documento.')
   } finally {
     savingAssociation.value = false
   }
@@ -712,10 +673,10 @@ async function syncAccount(account) {
   syncingAccountId.value = account.id
   accountsError.value = ''
   try {
-    await documentsApi.accounts.sync(account.id)
+    await syncMailAccount(account.id)
     await loadAccounts()
   } catch (error) {
-    accountsError.value = error.response?.data?.error?.message || 'No se pudo disparar la sincronización.'
+    accountsError.value = extractDocumentsError(error, 'No se pudo disparar la sincronización.')
   } finally {
     syncingAccountId.value = null
   }
@@ -725,20 +686,19 @@ async function viewRow(row) {
   detailRow.value = row
   showDetailModal.value = true
   try {
-    const { data } = await documentsApi.inbox.get(row.id)
-    detailRow.value = getPayloadData(data) || row
-  } catch {
+    detailRow.value = await getDocumentDetail(row.id) || row
+  } catch (error) {
+    logError('documentos.openDetail', error, { inboxId: row?.id })
     detailRow.value = row
   }
 }
 
 async function downloadRow(row) {
   try {
-    const { data } = await documentsApi.inbox.downloadUrl(row.id)
-    const url = getPayloadData(data)?.url
+    const url = await getDocumentDownloadUrl(row.id)
     if (url) window.open(url, '_blank', 'noopener')
   } catch (error) {
-    inboxError.value = error.response?.data?.error?.message || 'No se pudo generar el enlace de descarga.'
+    inboxError.value = extractDocumentsError(error, 'No se pudo generar el enlace de descarga.')
   }
 }
 
@@ -746,10 +706,10 @@ async function ingestRow(row) {
   processingRowId.value = row.id
   inboxError.value = ''
   try {
-    await documentsApi.inbox.ingest(row.id)
+    await ingestDocument(row.id)
     await loadInbox()
   } catch (error) {
-    inboxError.value = error.response?.data?.error?.message || 'No se pudo procesar el PDF.'
+    inboxError.value = extractDocumentsError(error, 'No se pudo procesar el PDF.')
   } finally {
     processingRowId.value = null
   }

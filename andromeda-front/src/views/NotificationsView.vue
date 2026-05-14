@@ -153,6 +153,7 @@
 import { onMounted, ref } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import { notificationsApi } from '../api'
+import { extractErrorMessage } from '../utils/errors'
 
 const tabs = [
   { id: 'inbox', label: 'Bandeja' },
@@ -207,7 +208,7 @@ async function loadAll() {
   try {
     await Promise.all([loadInbox(), loadReminders(), loadMessages(), loadRetries()])
   } catch (e) {
-    error.value = e.response?.data?.error?.message || 'No se pudieron cargar las notificaciones.'
+    error.value = extractErrorMessage(e, 'No se pudieron cargar las notificaciones.', { includeRequestId: true })
   } finally {
     loading.value = false
   }
@@ -218,7 +219,7 @@ async function markRead(id) {
     await notificationsApi.markRead(id)
     await loadInbox()
   } catch (e) {
-    error.value = e.response?.data?.error?.message || 'No se pudo marcar la notificacion.'
+    error.value = extractErrorMessage(e, 'No se pudo marcar la notificacion.', { includeRequestId: true })
   }
 }
 
@@ -227,7 +228,7 @@ async function markAllRead() {
     await notificationsApi.markAll()
     await loadInbox()
   } catch (e) {
-    error.value = e.response?.data?.error?.message || 'No se pudo actualizar la bandeja.'
+    error.value = extractErrorMessage(e, 'No se pudo actualizar la bandeja.', { includeRequestId: true })
   }
 }
 

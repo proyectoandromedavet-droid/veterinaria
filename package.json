@@ -69,6 +69,10 @@
     "migrate:dry": "node scripts/migrate.js --dry-run",
     "migrate:rollback": "node scripts/migrate.js --rollback 1",
     "logs:archive": "node scripts/maintenance/archive-logs.js",
-    "audit:export-siem": "node scripts/audit/export-siem.js"
+    "audit:export-siem": "node scripts/audit/export-siem.js",
+    "chaos:scenario": "node scripts/chaos/run-scenario.js",
+    "observability:smoke": "node scripts/observability/smoke.js",
+    "restore:drill": "bash ./scripts/backup/restore-drill.sh",
+    "secrets:validate": "node scripts/secrets/validate-env.js"
   }
 }

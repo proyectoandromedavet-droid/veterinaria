@@ -10,6 +10,6 @@ RUN npm install --omit=dev
 COPY services/lab-imaging/src ./services/lab-imaging/src
 COPY shared ./shared
 
-EXPOSE $PORT
+EXPOSE 3000
 USER node
 CMD ["node", "services/lab-imaging/src/index.js"]

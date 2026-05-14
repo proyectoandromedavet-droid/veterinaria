@@ -1,17 +1,20 @@
 'use strict';
 
 const { createClient } = require('redis');
+const { createLogger } = require('./logger');
+const { getAnySecret, getSecret } = require('./secrets');
 
 const singletons = new Map();
 const connectedLabels = new Set();
 const disabledLabels = new Set();
+const log = createLogger('redis');
 
 function isTruthy(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase());
 }
 
 function hasUsableRedisUrl() {
-  const url = (process.env.REDIS_URL || '').trim();
+  const url = (getSecret('REDIS_URL', { defaultValue: '' }) || '').trim();
   return url && !url.includes('${{');
 }
 
@@ -21,16 +24,23 @@ function parseRedisFamily(url) {
     const family = parsed.searchParams.get('family');
     if (family === '0' || family === '4' || family === '6') return parseInt(family, 10);
     if (parsed.hostname === 'redis.railway.internal') return 0;
-  } catch (_) {}
+  } catch (err) {
+    log.warn('Redis URL family parse failed', { error: err.message });
+  }
   return undefined;
+}
+
+function defaultReconnectStrategy(retries) {
+  if (retries >= 10) return new Error('Redis max reconnect attempts reached');
+  return Math.min(retries * 200, 3000);
 }
 
 function buildRedisOptions(overrides = {}) {
   const connectTimeout = parseInt(process.env.REDIS_CONNECT_TIMEOUT_MS || '3000', 10);
-  const reconnectStrategy = overrides.reconnectStrategy ?? false;
+  const reconnectStrategy = overrides.reconnectStrategy ?? defaultReconnectStrategy;
 
   if (hasUsableRedisUrl()) {
-    const url = process.env.REDIS_URL.trim();
+    const url = getSecret('REDIS_URL', { defaultValue: '' }).trim();
     const family = parseRedisFamily(url);
     return {
       url,
@@ -52,7 +62,7 @@ function buildRedisOptions(overrides = {}) {
       tls: isTruthy(process.env.REDIS_TLS),
     },
     username: process.env.REDIS_USER || process.env.REDIS_USERNAME || undefined,
-    password: process.env.REDIS_PASSWORD || process.env.REDISPASSWORD || undefined,
+    password: getAnySecret(['REDIS_PASSWORD', 'REDISPASSWORD'], { defaultValue: undefined }) || undefined,
     ...overrides,
   };
 }
@@ -104,6 +114,13 @@ async function connectRedis(client, label, { optional = true } = {}) {
 
 async function getRedisSingleton(name, label = name, overrides = {}, opts = {}) {
   let client = singletons.get(name);
+  // Recreate if the client was permanently closed (e.g. max reconnects exhausted)
+  if (client && !client.isOpen && !client.isReady) {
+    singletons.delete(name);
+    connectedLabels.delete(label);
+    disabledLabels.delete(label);
+    client = null;
+  }
   if (!client) {
     client = createRedisClient(label, overrides);
     singletons.set(name, client);

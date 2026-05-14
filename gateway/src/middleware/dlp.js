@@ -1,39 +1,38 @@
 'use strict';
-/**
- * DLP middleware para el gateway.
- *
- * Dos fases:
- *   1. PRE-REQUEST  — si el usuario ya superó el umbral en la ventana actual,
- *                     rechaza con 429 ANTES de proxiar al microservicio.
- *   2. POST-RESPONSE — intercepta la respuesta y acumula el conteo en Redis.
- *                      Si el nuevo total supera el umbral, la respuesta igual
- *                      se entrega pero el usuario queda bloqueado en la próxima.
- */
-
 const dlp    = require('../../../shared/dlp');
 const cache  = require('../../../shared/cache');
-const logger = require('../../../shared/logger');
+const { logger } = require('./logger');
+const { config } = require('../config');
+const { matchDlpPolicy } = require('./dlp.policy');
 
-const LIST_PATH_PATTERN = /\/(patients|clients|medical-records|lab-orders|invoices|appointments|records)/;
-const EXPORT_THRESHOLD   = parseInt(process.env.DLP_EXPORT_THRESHOLD   || '1000');
-const EXPORT_WINDOW_SECS = parseInt(process.env.DLP_EXPORT_WINDOW_SECS || '300');
+function getTrackedRecordCount(body) {
+  if (body?.meta?.total) return parseInt(body.meta.total, 10) || 0;
+  if (Array.isArray(body?.data)) return body.data.length;
+  if (Array.isArray(body)) return body.length;
+  return 0;
+}
 
 async function dlpMiddleware(req, res, next) {
-  // Solo aplicar en métodos GET a paths de listado
-  if (req.method !== 'GET') return next();
-  if (!LIST_PATH_PATTERN.test(req.path)) return next();
+  const policy = matchDlpPolicy(req);
+  if (!policy) return next();
 
   const userId = req.user?.userId || req.headers['x-user-id'];
   const orgId  = req.user?.orgId  || req.headers['x-org-id'];
 
   if (!userId || !orgId) return next();
 
-  // ── Fase 1: pre-check — bloquear si ya excedió en ventana anterior ───────────
   try {
     const client = await cache.getClient();
     const current = parseInt(await client.get(`dlp:export:${orgId}:${userId}`) || '0');
-    if (current > EXPORT_THRESHOLD) {
-      logger.warn('[dlp-middleware] Pre-check blocked — threshold exceeded', { userId, orgId, current });
+    if (current > config.dlp.exportThreshold) {
+      logger.warn('[dlp-middleware] Pre-check blocked - threshold exceeded', {
+        userId,
+        orgId,
+        current,
+        policy: policy.name,
+        kind: policy.kind,
+        path: req.originalUrl,
+      });
       return res.status(429).json({
         success: false,
         error: {
@@ -43,27 +42,38 @@ async function dlpMiddleware(req, res, next) {
       });
     }
   } catch (err) {
-    // DLP is a secondary control — fail-open but log with high severity
-    logger.error('[dlp-middleware] Pre-check failed — Redis unavailable, DLP bypassed', { err: err.message, userId, orgId });
+    logger.error('[dlp-middleware] Pre-check failed - Redis unavailable, DLP bypassed', {
+      err: err.message,
+      userId,
+      orgId,
+      policy: policy.name,
+      path: req.originalUrl,
+    });
   }
 
-  // ── Fase 2: post-response — acumular conteo después de recibir la respuesta ──
   const originalJson = res.json.bind(res);
   res.json = function (body) {
     try {
-      let recordCount = 0;
-      if (body?.meta?.total) {
-        recordCount = parseInt(body.meta.total) || 0;
-      } else if (Array.isArray(body?.data)) {
-        recordCount = body.data.length;
-      }
-
+      const recordCount = getTrackedRecordCount(body);
       if (recordCount > 0) {
         dlp.trackExport(userId, orgId, recordCount).catch(err => {
-          logger.warn('[dlp-middleware] trackExport failed', { err: err.message });
+          logger.warn('[dlp-middleware] trackExport failed', {
+            err: err.message,
+            userId,
+            orgId,
+            policy: policy.name,
+            recordCount,
+          });
         });
       }
-    } catch { /* ignorar */ }
+    } catch (error) {
+      logger.warn('[dlp-middleware] response inspection failed', {
+        err: error.message,
+        userId,
+        orgId,
+        policy: policy.name,
+      });
+    }
 
     return originalJson(body);
   };

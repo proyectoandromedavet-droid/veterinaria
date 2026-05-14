@@ -13,6 +13,10 @@ const compression = require('compression');
 const crypto      = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const db          = require('./db');
+const R = require('./response');
+const { createLogger } = require('./logger');
+
+const log = createLogger('security');
 
 // ── Helmet (HTTP security headers) ───────────────────────────────────────────
 // Incluye Permissions-Policy para controlar acceso a cámara, micrófono y geoloc.
@@ -120,6 +124,7 @@ function sanitize(req, _res, next) {
 function requestId(req, res, next) {
   const id = req.headers['x-request-id'] || uuidv4();
   req.requestId = id;
+  res.locals.requestId = id;
   res.setHeader('X-Request-Id', id);
   next();
 }
@@ -153,10 +158,10 @@ function ipGuard(req, res, next) {
   const clean = ip.replace('::ffff:', '');
 
   if (blacklist.length && blacklist.some(cidr => ipInCidr(clean, cidr))) {
-    return res.status(403).json({ success: false, error: { message: 'Access denied' } });
+    return R.error(res, 403, 'Access denied', null, 'RBAC_001');
   }
   if (whitelist.length && !whitelist.some(cidr => ipInCidr(clean, cidr))) {
-    return res.status(403).json({ success: false, error: { message: 'Access denied' } });
+    return R.error(res, 403, 'Access denied', null, 'RBAC_001');
   }
   next();
 }
@@ -193,10 +198,14 @@ async function idempotency(req, res, next) {
     res.json = async function(body) {
       try {
         await redis.setEx(redisKey, 86400, JSON.stringify({ status: res.statusCode, body }));
-      } catch (_) {}
+      } catch (err) {
+        log.warn('Idempotency cache write failed', { error: err.message, key: redisKey });
+      }
       return origJson(body);
     };
-  } catch (_) {}
+  } catch (err) {
+    log.warn('Idempotency middleware unavailable', { error: err.message, key: redisKey });
+  }
 
   next();
 }

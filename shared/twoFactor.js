@@ -13,8 +13,10 @@
 
 const { authenticator } = require('otplib');
 const QRCode            = require('qrcode');
+const { createLogger }  = require('./logger');
 
 const APP_NAME = process.env.APP_NAME || 'VetManager Pro';
+const log = createLogger('two-factor');
 
 // OTP window: accept 1 period before/after to handle clock drift
 authenticator.options = { window: 1 };
@@ -47,7 +49,8 @@ async function setupTwoFactor(userId, email) {
 function verifyTwoFactor(secret, token) {
   try {
     return authenticator.verify({ token: String(token), secret });
-  } catch (_) {
+  } catch (err) {
+    log.warn('2FA verification failed', { error: err.message });
     return false;
   }
 }

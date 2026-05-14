@@ -10,6 +10,6 @@ RUN npm install --omit=dev
 COPY services/ai/src ./services/ai/src
 COPY shared ./shared
 
-EXPOSE $PORT
+EXPOSE 3000
 USER node
 CMD ["node", "services/ai/src/index.js"]

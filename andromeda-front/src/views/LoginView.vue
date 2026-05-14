@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="login-page" data-testid="login-page">
 
     <!-- Fondo ilustrado veterinario -->
@@ -751,9 +751,16 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { authApi } from '../api/auth'
 import AppLogo from '../components/AppLogo.vue'
 import { t } from '../i18n'
+import {
+  getLoginError,
+  login as loginRequest,
+  loginErrorScope,
+  requestPasswordReset,
+  startSso,
+  verifyTwoFactor as verifyTwoFactorRequest,
+} from '../composables/auth/useLoginDomain'
 
 const router = useRouter()
 const route = useRoute()
@@ -774,7 +781,7 @@ async function handleLogin() {
   if (!form.email || !form.password) { error.value = 'Completá todos los campos'; return }
   loading.value = true
   try {
-    const result = await auth.login({ email: form.email, password: form.password })
+    const result = await loginRequest(auth, { email: form.email, password: form.password })
     if (result.requiresTwoFactor) {
       pendingToken.value = result.pendingToken
       step.value = 'twofa'
@@ -782,7 +789,7 @@ async function handleLogin() {
       router.push('/')
     }
   } catch (e) {
-    const msg = e.response?.data?.message || e.response?.data?.error
+    const msg = getLoginError(e, 'Error al iniciar sesión')
     if (e.response?.status === 401) error.value = 'Credenciales incorrectas'
     else if (e.response?.status === 429) error.value = 'Demasiados intentos. Esperá unos minutos.'
     else error.value = msg || 'Error al iniciar sesión'
@@ -795,11 +802,10 @@ async function handleTwoFa() {
   error.value = ''
   loading.value = true
   try {
-    await auth.twoFaChallenge(pendingToken.value, form.code)
+    await verifyTwoFactorRequest(auth, pendingToken.value, form.code)
     router.push('/')
   } catch (e) {
-    const msg = e.response?.data?.message || e.response?.data?.error
-    error.value = msg || 'Código incorrecto'
+    error.value = getLoginError(e, 'Código incorrecto')
   } finally {
     loading.value = false
   }
@@ -811,10 +817,11 @@ async function handleForgot() {
   if (!form.email) { error.value = 'Ingresá tu correo'; return }
   loading.value = true
   try {
-    await authApi.resetRequest(form.email)
+    await requestPasswordReset(form.email)
     success.value = 'Si el correo existe, recibirás el enlace en minutos.'
-  } catch {
-    error.value = 'No se pudo enviar el correo. Intentá más tarde.'
+  } catch (err) {
+    loginErrorScope('login.resetRequest', err, { email: form.email })
+    error.value = getLoginError(err, 'No se pudo enviar el correo. Intentá más tarde.')
   } finally {
     loading.value = false
   }
@@ -822,10 +829,7 @@ async function handleForgot() {
 
 function handleSso(provider) {
   error.value = ''
-  authApi.ssoRedirect(provider, {
-    email: form.email || '',
-    redirectTo: `${window.location.origin}/`,
-  })
+  startSso(provider, form.email)
 }
 
 onMounted(() => {

@@ -4,9 +4,12 @@ const { Router }        = require('express');
 const cache             = require('../../../../shared/cache');
 const { generateUiSchema } = require('../../../../shared/uiSchema');
 const { getFlags }      = require('../../../../shared/featureFlags');
+const { createLogger }   = require('../../../../shared/logger');
+const R = require('../../../../shared/response');
 
 const router = Router();
 const UI_SCHEMA_TTL = 60; // segundos
+const log = createLogger('auth-ui-schema');
 
 /**
  * GET /me/ui-schema
@@ -22,10 +25,7 @@ router.get('/me/ui-schema', async (req, res, next) => {
     const email    = req.headers['x-user-email'] || '';
 
     if (!userId || !orgId) {
-      return res.status(401).json({
-        success: false,
-        error: { message: 'Authentication required', code: 'AUTH_001' },
-      });
+      return R.error(res, 401, 'Authentication required', null, 'AUTH_001');
     }
 
     const roles = rolesRaw.split(',').map(r => r.trim()).filter(Boolean);
@@ -41,13 +41,17 @@ router.get('/me/ui-schema', async (req, res, next) => {
       if (cached) {
         return res.json({ success: true, data: JSON.parse(cached), cached: true });
       }
-    } catch { /* Redis opcional */ }
+    } catch (err) {
+      log.warn('UI schema cache unavailable', { error: err.message, userId, orgId });
+    }
 
     // Obtener feature flags del org
     let flags = {};
     try {
       flags = await getFlags(orgId);
-    } catch { /* flags vacíos si no disponibles */ }
+    } catch (err) {
+      log.warn('Feature flags unavailable for UI schema', { error: err.message, orgId });
+    }
 
     const schema = await generateUiSchema(user, flags);
 
@@ -56,7 +60,9 @@ router.get('/me/ui-schema', async (req, res, next) => {
       if (redisClient) {
         await redisClient.setEx(cacheKey, UI_SCHEMA_TTL, JSON.stringify(schema));
       }
-    } catch { /* ignorar error de cache */ }
+    } catch (err) {
+      log.warn('UI schema cache write failed', { error: err.message, userId, orgId });
+    }
 
     res.json({ success: true, data: schema, cached: false });
   } catch (err) {

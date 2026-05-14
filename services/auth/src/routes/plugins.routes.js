@@ -11,13 +11,14 @@ const { Router } = require('express');
 const { body, param, validationResult } = require('express-validator');
 const db       = require('../../../../shared/db');
 const registry = require('../../../../shared/pluginRegistry');
+const R = require('../../../../shared/response');
 
 const router = Router();
 
 function adminOnly(req, res, next) {
   const roles = (req.headers['x-user-roles'] || '').split(',').map(r => r.trim());
   if (roles.includes('superadmin') || roles.includes('org_admin')) return next();
-  return res.status(403).json({ success: false, error: { message: 'Admin access required', code: 'RBAC_001' } });
+  return R.error(res, 403, 'Admin access required', null, 'RBAC_001');
 }
 
 router.use(adminOnly);

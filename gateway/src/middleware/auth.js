@@ -1,123 +1,120 @@
 'use strict';
 
-/**
- * gateway/src/middleware/auth.js
- * Verifica JWT RS256 usando la clave pública de shared/jwt.
- * Ya no depende de JWT_ACCESS_SECRET ni de node-fetch.
- *
- * Cambios vs versión anterior:
- *   - Usa verifyAccess() de shared/jwt (RS256 asimétrico)
- *   - Usa fetch global de Node 18+ en lugar de node-fetch
- *   - Propaga X-Trace-Id desde req.traceId
- */
-
 const { verifyAccess } = require('../../../shared/jwt');
 const { getRedisSingleton } = require('../../../shared/redis');
-const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
-const { resolveRuntimeServiceTarget } = require('../../../shared/serviceTargets');
-const { logger }       = require('./logger');
+const { callInternalService, buildSignedInternalHeaders } = require('../../../shared/internalService');
+const {
+  getDependencyMode,
+  recordDependencyDegradation,
+  logDependencyIssue,
+  dependencyFailureResponse,
+} = require('../../../shared/dependencyPolicy');
+const { logger } = require('./logger');
 const { checkDeviceFingerprint } = require('../../../shared/deviceFingerprint');
+const R = require('../../../shared/response');
 
 async function getRedis() {
   return getRedisSingleton('gateway-auth', 'gateway-auth');
 }
 
+function getRevocationMode() {
+  return getDependencyMode('auth_revocation', 'degraded');
+}
+
 function extractToken(req) {
-  const auth = req.headers['authorization'];
+  const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) return auth.slice(7);
   if (req.cookies?.accessToken) return req.cookies.accessToken;
   return null;
 }
 
-/**
- * Middleware principal: verifica JWT RS256 + lista de revocación en Redis.
- */
 async function authenticate(req, res, next) {
   const token = extractToken(req);
-  if (!token) {
-    return res.status(401).json({ success: false, error: { message: 'Missing authorization token' } });
-  }
+  if (!token) return R.unauthorized(res, 'Missing authorization token', 'AUTH_001');
 
   let decoded;
   try {
     decoded = verifyAccess(token);
   } catch (err) {
     const msg = err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token';
-    return res.status(401).json({ success: false, error: { message: msg } });
+    return R.unauthorized(res, msg, err.name === 'TokenExpiredError' ? 'AUTH_003' : 'AUTH_002');
   }
 
-  // Verificar revocación en Redis (lista negra de jti)
   if (decoded.jti) {
+    const revocationMode = getRevocationMode();
     try {
       const redis = await getRedis();
       if (redis.isReady) {
         const revoked = await redis.get(`revoked:${decoded.jti}`);
-        if (revoked) {
-          return res.status(401).json({ success: false, error: { message: 'Token has been revoked' } });
-        }
+        if (revoked) return R.unauthorized(res, 'Token has been revoked', 'AUTH_004');
+      } else if (revocationMode === 'strict') {
+        recordDependencyDegradation('auth_revocation', revocationMode, 'blocked', { service: 'gateway' });
+        return dependencyFailureResponse(res, {
+          statusCode: 503,
+          message: 'Token revocation backend unavailable',
+          code: 'AUTH_013',
+        });
       }
-    } catch (e) {
-      logger.warn('Redis revocation check failed — continuing', { error: e.message, traceId: req.traceId });
+    } catch (err) {
+      recordDependencyDegradation('auth_revocation', revocationMode, revocationMode === 'strict' ? 'blocked' : 'degraded', { service: 'gateway' });
+      logDependencyIssue(logger, 'auth_revocation', revocationMode, 'Redis revocation check failed', err, { traceId: req.traceId });
+      if (revocationMode === 'strict') {
+        return dependencyFailureResponse(res, {
+          statusCode: 503,
+          message: 'Token revocation backend unavailable',
+          code: 'AUTH_013',
+        });
+      }
     }
   }
 
-  req.user  = decoded;
+  req.user = decoded;
   req.token = token;
   return checkDeviceFingerprint(req, res, next);
 }
 
-/**
- * Valida un API key contra el auth service.
- * Usa fetch nativo de Node 18+ (sin node-fetch).
- */
 async function authenticateApiKey(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return next();
 
   try {
     const path = '/internal/validate-api-key';
-    const authTarget = await resolveRuntimeServiceTarget('auth');
-    const response = await fetch(`${authTarget}${path}`, {
-      method:  'POST',
+    const response = await callInternalService('auth', {
+      method: 'POST',
+      path,
+      body: { apiKey },
       headers: {
-        'Content-Type': 'application/json',
-        'X-Trace-Id':   req.traceId || '',
-        [INTERNAL_SIG_HEADER]: signRequest('POST', path, ''),
+        'X-Trace-Id': req.traceId || '',
+        ...buildSignedInternalHeaders('POST', path, ''),
       },
-      body: JSON.stringify({ apiKey }),
-      signal: AbortSignal.timeout(3000),   // timeout de 3s
+      traceContext: { traceId: req.traceId, spanId: req.spanId, serviceName: 'gateway' },
+      timeoutMs: 3000,
     });
 
     if (response.ok) {
       const { data } = await response.json();
-      req.user      = data;
-      req.isApiKey  = true;
+      req.user = data;
+      req.isApiKey = true;
       return next();
     }
-  } catch (e) {
-    logger.error('API key validation error', { error: e.message, traceId: req.traceId });
+  } catch (err) {
+    logger.error('API key validation error', { error: err.message, traceId: req.traceId });
   }
 
-  return res.status(401).json({ success: false, error: { message: 'Invalid API key' } });
+  return R.unauthorized(res, 'Invalid API key', 'AUTH_012');
 }
 
-/**
- * Middleware combinado: API key primero, luego JWT.
- */
 async function authMiddleware(req, res, next) {
   if (req.headers['x-api-key']) return authenticateApiKey(req, res, next);
   return authenticate(req, res, next);
 }
 
-/**
- * Auth opcional — adjunta usuario si hay token pero no bloquea si falta.
- */
 async function optionalAuth(req, res, next) {
   const token = extractToken(req);
   if (!token) return next();
   try {
     req.user = verifyAccess(token);
-  } catch (_) { /* token inválido/expirado — continuar sin usuario */ }
+  } catch (_) {}
   next();
 }
 

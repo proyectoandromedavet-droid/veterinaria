@@ -10,6 +10,6 @@ RUN npm install --omit=dev
 COPY services/telemedicine/src ./services/telemedicine/src
 COPY shared ./shared
 
-EXPOSE $PORT
+EXPOSE 3000
 USER node
 CMD ["node", "services/telemedicine/src/index.js"]

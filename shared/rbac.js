@@ -1,5 +1,11 @@
 'use strict';
 
+const { createLogger } = require('./logger');
+const log = createLogger('rbac');
+
+const R = require('./response');
+const { checkRowTenantAccess } = require('./tenantScope');
+
 /**
  * RBAC permission map.
  * Keys = role names (matching DB roles.name).
@@ -133,7 +139,9 @@ const ROLE_PERMISSIONS = {
 let _rbacDenials;
 function getRbacDenials() {
   if (!_rbacDenials) {
-    try { _rbacDenials = require('./metrics').rbacDenials; } catch (_) {}
+    try { _rbacDenials = require('./metrics').rbacDenials; } catch (err) {
+      log.warn('RBAC denials metric unavailable', { error: err.message });
+    }
   }
   return _rbacDenials;
 }
@@ -175,10 +183,7 @@ function requirePermission(perm) {
     const allowed = await hasPermissionDynamic(roles, perm, orgId);
     if (!allowed) {
       getRbacDenials()?.inc({ permission: perm, role: roles[0] || 'none', service: 'unknown' });
-      return res.status(403).json({
-        success: false,
-        error:   { message: `Forbidden: requires permission '${perm}'` },
-      });
+      return R.error(res, 403, `Forbidden: requires permission '${perm}'`, null, 'RBAC_003');
     }
     next();
   };
@@ -196,10 +201,7 @@ function requireAny(...perms) {
     if (checks.some(Boolean)) return next();
 
     getRbacDenials()?.inc({ permission: perms.join('|'), role: roles[0] || 'none', service: 'unknown' });
-    res.status(403).json({
-      success: false,
-      error:   { message: `Forbidden: requires one of [${perms.join(', ')}]` },
-    });
+    R.error(res, 403, `Forbidden: requires one of [${perms.join(', ')}]`, null, 'RBAC_003');
   };
 }
 
@@ -216,10 +218,7 @@ function requireAll(...perms) {
     if (!missing.length) return next();
 
     getRbacDenials()?.inc({ permission: missing[0], role: roles[0] || 'none', service: 'unknown' });
-    res.status(403).json({
-      success: false,
-      error:   { message: `Forbidden: missing permissions [${missing.join(', ')}]` },
-    });
+    R.error(res, 403, `Forbidden: missing permissions [${missing.join(', ')}]`, null, 'RBAC_003');
   };
 }
 
@@ -229,12 +228,10 @@ function requireAll(...perms) {
  */
 function requireSameOrg(req, res, next) {
   const user = req.user;
-  if (!user) return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
-  if (user.roles?.includes('superadmin')) return next();
-
-  const resourceOrgId = req.resource?.organization_id || req.resource?.orgId;
-  if (resourceOrgId && String(resourceOrgId) !== String(user.orgId)) {
-    return res.status(403).json({ success: false, error: { message: 'Cross-organization access denied' } });
+  if (!user) return R.error(res, 401, 'Unauthorized', null, 'AUTH_001');
+  const access = checkRowTenantAccess(req.resource, req, { orgField: 'organization_id', allowSuperadmin: true });
+  if (!access.ok && access.reason === 'org_mismatch') {
+    return R.error(res, 403, 'Cross-organization access denied', null, 'RBAC_005');
   }
   next();
 }
@@ -257,7 +254,9 @@ const RBAC_OVERRIDE_TTL = parseInt(process.env.RBAC_OVERRIDE_TTL || '300'); // 5
 let _cache;
 function _getCache() {
   if (!_cache) {
-    try { _cache = require('./cache'); } catch (_) {}
+    try { _cache = require('./cache'); } catch (err) {
+      log.warn('RBAC cache helper unavailable', { error: err.message });
+    }
   }
   return _cache;
 }
@@ -286,7 +285,12 @@ async function getEffectivePermissions(roleName, orgId) {
     const revoke = new Set(override.revoke || []);
     const merged = [...new Set([...base, ...grant])].filter(p => !revoke.has(p));
     return merged;
-  } catch (_) {
+  } catch (err) {
+    log.warn('RBAC dynamic permission lookup failed, using base permissions', {
+      roleName,
+      orgId,
+      error: err.message,
+    });
     return base;
   }
 }
@@ -318,7 +322,13 @@ async function setRoleOverride(orgId, roleName, grant = [], revoke = []) {
          updated_at          = NOW()`,
       { orgId, roleName, grant: JSON.stringify(grant), revoke: JSON.stringify(revoke) }
     );
-  } catch (_) { /* DB unavailable — Redis-only fallback */ }
+  } catch (err) {
+    log.warn('RBAC override DB persistence skipped', {
+      orgId,
+      roleName,
+      error: err.message,
+    });
+  }
 }
 
 /**
@@ -344,7 +354,12 @@ async function loadOrgOverridesFromDb(orgId) {
       const key    = `rbac:org:${row.org_id}:role:${row.role_name}`;
       await cache.set(key, { grant, revoke }, RBAC_OVERRIDE_TTL);
     }
-  } catch (_) { /* non-fatal — static permissions still work */ }
+  } catch (err) {
+    log.warn('RBAC override DB sync failed', {
+      orgId,
+      error: err.message,
+    });
+  }
 }
 
 /**

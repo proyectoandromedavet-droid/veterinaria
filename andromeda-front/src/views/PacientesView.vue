@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
@@ -14,8 +14,10 @@
 
     <!-- Búsqueda -->
     <div class="filters">
-      <input v-model.trim="search" type="search" :placeholder="t('patients.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
-      <select v-model="speciesFilter" class="filter-select" @change="load()">
+      <label for="pat-search" class="sr-only">{{ t('patients.searchPlaceholder') }}</label>
+      <input id="pat-search" name="pat-search" v-model.trim="search" type="search" :placeholder="t('patients.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <label for="pat-species" class="sr-only">{{ t('patients.allSpecies') }}</label>
+      <select id="pat-species" name="pat-species" v-model="speciesFilter" class="filter-select" @change="load()">
         <option value="">{{ t('patients.allSpecies') }}</option>
         <option v-for="sp in speciesList" :key="sp.id" :value="sp.common_name">
           {{ petEmoji(sp.slug) }} {{ sp.common_name }}
@@ -172,13 +174,13 @@
               <div class="form-section-title">{{ t('patients.petData') }}</div>
               <div class="form-grid">
                 <div class="field">
-                  <label>Nombre <span class="req">*</span></label>
-                  <input v-model.trim="form.name" type="text" placeholder="Max" :disabled="saving" required />
+                  <label for="pat-name">Nombre <span class="req">*</span></label>
+                  <input id="pat-name" name="pat-name" v-model.trim="form.name" type="text" placeholder="Max" :disabled="saving" required />
                   <span v-if="fe.name" class="field-error">{{ fe.name }}</span>
                 </div>
                 <div class="field">
-                  <label>Especie <span class="req">*</span></label>
-                  <select v-model="form.speciesId" :disabled="saving || !!editingId" required>
+                  <label for="pat-species-id">Especie <span class="req">*</span></label>
+                  <select id="pat-species-id" name="pat-species-id" v-model="form.speciesId" :disabled="saving || !!editingId" required>
                     <option value="">{{ t('common.choose') }}</option>
                     <option v-for="sp in speciesList" :key="sp.id" :value="sp.id">
                       {{ petEmoji(sp.slug) }} {{ sp.common_name }}
@@ -188,8 +190,8 @@
                   <span v-if="fe.speciesId" class="field-error">{{ fe.speciesId || t('patients.selectSpecies') }}</span>
                 </div>
                 <div class="field">
-                  <label>Sexo <span class="req">*</span></label>
-                  <select v-model="form.sex" :disabled="saving" required>
+                  <label for="pat-sex">Sexo <span class="req">*</span></label>
+                  <select id="pat-sex" name="pat-sex" v-model="form.sex" :disabled="saving" required>
                     <option value="unknown">{{ t('common.none') }}</option>
                     <option value="male">Macho</option>
                     <option value="female">Hembra</option>
@@ -197,52 +199,52 @@
                   <span v-if="fe.sex" class="field-error">{{ fe.sex }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('patients.birthdate') }}</label>
-                  <input v-model="form.birthDate" type="date" :disabled="saving" />
+                  <label for="pat-birth">{{ t('patients.birthdate') }}</label>
+                  <input id="pat-birth" name="pat-birth" v-model="form.birthDate" type="date" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Peso (kg)</label>
-                  <input v-model.number="form.weight" type="number" step="0.1" min="0" placeholder="3.5" :disabled="saving" />
+                  <label for="pat-weight">Peso (kg)</label>
+                  <input id="pat-weight" name="pat-weight" v-model.number="form.weight" type="number" step="0.1" min="0" placeholder="3.5" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Condición corporal</label>
-                  <input v-model.number="form.bodyConditionScore" type="number" min="1" max="9" step="0.5" placeholder="5" :disabled="saving" />
+                  <label for="pat-bcs">Condición corporal</label>
+                  <input id="pat-bcs" name="pat-bcs" v-model.number="form.bodyConditionScore" type="number" min="1" max="9" step="0.5" placeholder="5" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Microchip</label>
-                  <input v-model.trim="form.microchip" type="text" placeholder="123456789012345" :disabled="saving" />
+                  <label for="pat-microchip">Microchip</label>
+                  <input id="pat-microchip" name="pat-microchip" v-model.trim="form.microchip" type="text" placeholder="123456789012345" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Raza ID</label>
-                  <input v-model.number="form.breedId" type="number" min="1" placeholder="Opcional" :disabled="saving" />
+                  <label for="pat-breed">Raza ID</label>
+                  <input id="pat-breed" name="pat-breed" v-model.number="form.breedId" type="number" min="1" placeholder="Opcional" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Color ID</label>
-                  <input v-model.number="form.coatColorId" type="number" min="1" placeholder="Opcional" :disabled="saving" />
+                  <label for="pat-color">Color ID</label>
+                  <input id="pat-color" name="pat-color" v-model.number="form.coatColorId" type="number" min="1" placeholder="Opcional" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Tatuaje</label>
-                  <input v-model.trim="form.tattooNumber" type="text" placeholder="Opcional" :disabled="saving" />
+                  <label for="pat-tattoo">Tatuaje</label>
+                  <input id="pat-tattoo" name="pat-tattoo" v-model.trim="form.tattooNumber" type="text" placeholder="Opcional" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Pasaporte</label>
-                  <input v-model.trim="form.passportNumber" type="text" placeholder="Opcional" :disabled="saving" />
+                  <label for="pat-passport">Pasaporte</label>
+                  <input id="pat-passport" name="pat-passport" v-model.trim="form.passportNumber" type="text" placeholder="Opcional" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Foto URL</label>
-                  <input v-model.trim="form.photoUrl" type="url" placeholder="https://..." :disabled="saving" />
+                  <label for="pat-photo">Foto URL</label>
+                  <input id="pat-photo" name="pat-photo" v-model.trim="form.photoUrl" type="url" placeholder="https://..." :disabled="saving" />
                 </div>
                 <label class="checkbox-label">
-                  <input v-model="form.isNeutered" type="checkbox" :disabled="saving" />
+                  <input id="pat-neutered" name="pat-neutered" v-model="form.isNeutered" type="checkbox" :disabled="saving" />
                   Esterilizado
                 </label>
                 <label class="checkbox-label">
-                  <input v-model="form.isDeceased" type="checkbox" :disabled="saving" />
+                  <input id="pat-deceased" name="pat-deceased" v-model="form.isDeceased" type="checkbox" :disabled="saving" />
                   Fallecido
                 </label>
                 <div class="field field--full">
-                  <label>Notas</label>
-                  <textarea v-model.trim="form.notes" rows="2" placeholder="Observaciones generales" :disabled="saving" />
+                  <label for="pat-notes">Notas</label>
+                  <textarea id="pat-notes" name="pat-notes" v-model.trim="form.notes" rows="2" placeholder="Observaciones generales" :disabled="saving" />
                 </div>
               </div>
 
@@ -251,23 +253,23 @@
               <div class="form-section-title" style="margin-top:16px">{{ t('patients.owner') }}</div>
                 <div class="form-grid">
                   <div class="field">
-                    <label>Nombre <span class="req">*</span></label>
-                    <input v-model.trim="form.ownerFirstName" type="text" placeholder="María" :disabled="saving" required />
+                    <label for="own-first-name">Nombre <span class="req">*</span></label>
+                    <input id="own-first-name" name="own-first-name" v-model.trim="form.ownerFirstName" type="text" placeholder="María" :disabled="saving" required />
                     <span v-if="fe.ownerFirstName" class="field-error">{{ fe.ownerFirstName }}</span>
                   </div>
                   <div class="field">
-                    <label>Apellido <span class="req">*</span></label>
-                    <input v-model.trim="form.ownerLastName" type="text" placeholder="García" :disabled="saving" required />
+                    <label for="own-last-name">Apellido <span class="req">*</span></label>
+                    <input id="own-last-name" name="own-last-name" v-model.trim="form.ownerLastName" type="text" placeholder="García" :disabled="saving" required />
                     <span v-if="fe.ownerLastName" class="field-error">{{ fe.ownerLastName }}</span>
                   </div>
                   <div class="field">
-                    <label>Teléfono <span class="req">*</span></label>
-                    <input v-model.trim="form.ownerPhone" type="tel" placeholder="+54 9 11 1234-5678" :disabled="saving" required />
+                    <label for="own-phone">Teléfono <span class="req">*</span></label>
+                    <input id="own-phone" name="own-phone" v-model.trim="form.ownerPhone" type="tel" placeholder="+54 9 11 1234-5678" :disabled="saving" required />
                     <span v-if="fe.ownerPhone" class="field-error">{{ fe.ownerPhone }}</span>
                   </div>
                   <div class="field">
-                    <label>Email</label>
-                    <input v-model.trim="form.ownerEmail" type="email" placeholder="maria@email.com" :disabled="saving" />
+                    <label for="own-email">Email</label>
+                    <input id="own-email" name="own-email" v-model.trim="form.ownerEmail" type="email" placeholder="maria@email.com" :disabled="saving" />
                   </div>
                 </div>
               </template>
@@ -291,8 +293,25 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
-import http from '../api/client'
+import {
+  createOwnerAndPatient,
+  extractPatientError,
+  formatPatientAge,
+  formatPatientDate,
+  formatPatientSaveError,
+  getPatientDetail,
+  listPatients,
+  loadSpeciesCatalog,
+  normalizePatient,
+  petEmoji,
+  sexLabel,
+  speciesBg,
+  speciesColor,
+  updatePatient,
+  validatePatientForm,
+} from '../composables/patients/usePatientsDomain'
 import { t } from '../i18n'
+import { logError } from '../utils/errors'
 
 const items        = ref([])
 const loading      = ref(false)
@@ -302,97 +321,21 @@ const speciesFilter = ref('')
 const pagination   = ref({ page: 1, totalPages: 1 })
 const speciesList  = ref([])   // [{ id, common_name, slug }]
 
-function asArray(value) {
-  return Array.isArray(value) ? value : []
-}
-
-function normalizePatient(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    species: row.species || row.species_name || row.speciesName || '',
-    breed_name: row.breed_name || row.breedName || row.breed || '',
-    breed: row.breed || row.breed_name || row.breedName || '',
-    primary_owner: row.primary_owner || row.owner_name || row.ownerName || '',
-    owner_name: row.owner_name || row.primary_owner || row.ownerName || '',
-    owner_phone: row.owner_phone || row.ownerPhone || '',
-    owner_id: row.owner_id ?? row.ownerId ?? null,
-    hc_number: row.hc_number || row.hcNumber || '',
-    weight_kg: row.weight_kg ?? row.weightKg ?? null,
-    body_condition_score: row.body_condition_score ?? row.bodyConditionScore ?? null,
-    chip_number: row.chip_number || row.microchip_number || row.microchipNumber || '',
-    scientific_name: row.scientific_name || '',
-    coat_color_name: row.coat_color_name || row.coatColorName || row.coat_color || '',
-    photo_url: row.photo_url || row.photoUrl || '',
-    tattoo_number: row.tattoo_number || row.tattooNumber || row.tattoo_code || '',
-    passport_number: row.passport_number || row.passportNumber || '',
-    notes: row.notes || '',
-    owners: asArray(row.owners),
-    allergies: asArray(row.allergies),
-    chronicConditions: asArray(row.chronicConditions),
-    is_active: row.is_active ?? row.active ?? true,
-  }
-}
-
-// ── Species display helpers ──────────────────────────────────────────────────
-
-const SPECIES_COLORS = {
-  perro:   { text: '#8B5E3C', bg: '#FFF0E0' },
-  gato:    { text: '#7A3DAA', bg: '#F0E8FF' },
-  conejo:  { text: '#2E8B57', bg: '#E0FFE8' },
-  ave:     { text: '#1A7A9A', bg: '#E0F5FF' },
-  pez:     { text: '#1A5FAA', bg: '#E0EEFF' },
-  reptil:  { text: '#5A8A2E', bg: '#EEFFD0' },
-  hámster: { text: '#A05028', bg: '#FFE8D0' },
-}
-
-function speciesKey(s) {
-  if (!s) return ''
-  const lower = s.toLowerCase()
-  if (lower.includes('perro') || lower.includes('dog'))    return 'perro'
-  if (lower.includes('gato') || lower.includes('cat'))     return 'gato'
-  if (lower.includes('conejo') || lower.includes('rabbit')) return 'conejo'
-  if (lower.includes('ave') || lower.includes('bird'))     return 'ave'
-  if (lower.includes('pez') || lower.includes('fish'))     return 'pez'
-  if (lower.includes('reptil'))                            return 'reptil'
-  if (lower.includes('hámster') || lower.includes('hamster')) return 'hámster'
-  return lower
-}
-
-function speciesColor(s) { return SPECIES_COLORS[speciesKey(s)]?.text || 'var(--text-2)' }
-function speciesBg(s)    { return SPECIES_COLORS[speciesKey(s)]?.bg   || 'var(--surface-2)' }
-
-function petEmoji(s) {
-  const k = speciesKey(s || '')
-  const map = { perro:'🐶', gato:'🐱', conejo:'🐰', ave:'🐦', pez:'🐟', reptil:'🦎', hámster:'🐹' }
-  return map[k] || '🐾'
-}
-
-function sexLabel(sex) {
-  return sex === 'male' ? 'Macho' : sex === 'female' ? 'Hembra' : '—'
-}
-
 function formatAge(bd) {
-  const diff = Date.now() - new Date(bd).getTime()
-  const years  = Math.floor(diff / (1000 * 60 * 60 * 24 * 365))
-  const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30))
-  if (years >= 1) return `${years} año${years !== 1 ? 's' : ''}`
-  return `${months} mes${months !== 1 ? 'es' : ''}`
+  return formatPatientAge(bd)
 }
 
 function formatDate(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return formatPatientDate(iso)
 }
 
 // ── Load species list ────────────────────────────────────────────────────────
 
 async function loadSpecies() {
   try {
-    const { data } = await http.get('/patients/species/all')
-    speciesList.value = asArray(data?.data || data)
-  } catch {
-    // Si falla, no bloqueamos la vista; el select quedará vacío
+    speciesList.value = await loadSpeciesCatalog()
+  } catch (error) {
+    logError('pacientes.loadSpecies', error)
   }
 }
 
@@ -401,15 +344,16 @@ async function loadSpecies() {
 async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
-    const params = { page, limit: 12 }
-    if (search.value)        params.search  = search.value
-    if (speciesFilter.value) params.species = speciesFilter.value
-    const { data } = await http.get('/patients', { params })
-    items.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    const m = data.meta || data.pagination || {}
-    pagination.value = { page: m.page || page, totalPages: m.totalPages || m.total_pages || 1 }
+    const payload = await listPatients({
+      page,
+      limit: 12,
+      search: search.value,
+      species: speciesFilter.value,
+    })
+    items.value = payload.rows
+    pagination.value = payload.meta
   } catch (e) {
-    error.value = e.response?.data?.error?.message || 'No se pudieron cargar los pacientes'
+    error.value = extractPatientError(e, 'No se pudieron cargar los pacientes.')
   } finally {
     loading.value = false
   }
@@ -435,10 +379,9 @@ async function openDetail(p) {
   showDetail.value = true
   detailLoading.value = true
   try {
-    const { data } = await http.get(`/patients/${p.id}`)
-    detailPatient.value = normalizePatient(data?.data || data)
+    detailPatient.value = await getPatientDetail(p.id)
   } catch (e) {
-    detailError.value = e.response?.data?.error?.message || 'No se pudo cargar el detalle del paciente'
+    detailError.value = extractPatientError(e, 'No se pudo cargar el detalle del paciente.')
   } finally {
     detailLoading.value = false
   }
@@ -499,15 +442,7 @@ function openEdit(p) {
 }
 
 function validate() {
-  Object.keys(fe).forEach(k => delete fe[k])
-  if (!form.name) fe.name = 'El nombre es requerido'
-  if (!editingId.value) {
-    if (!form.speciesId)       fe.speciesId    = t('patients.selectSpecies')
-    if (!form.ownerFirstName)  fe.ownerFirstName = 'El nombre es requerido'
-    if (!form.ownerLastName)   fe.ownerLastName  = 'El apellido es requerido'
-    if (!form.ownerPhone)      fe.ownerPhone     = 'El teléfono es requerido'
-  }
-  return Object.keys(fe).length === 0
+  return validatePatientForm(form, editingId.value, fe, t)
 }
 
 async function handleSave() {
@@ -515,61 +450,14 @@ async function handleSave() {
   saving.value = true; saveError.value = ''
   try {
     if (editingId.value) {
-      // ── EDITAR paciente ──────────────────────────────────────────────────
-      const payload = { name: form.name, sex: form.sex }
-      if (form.birthDate) payload.birthDate        = form.birthDate
-      if (form.weight)    payload.weightKg          = parseFloat(form.weight)
-      if (form.microchip) payload.microchipNumber   = form.microchip
-      if (form.breedId)   payload.breedId           = parseInt(form.breedId)
-      if (form.coatColorId) payload.coatColorId     = parseInt(form.coatColorId)
-      if (form.tattooNumber) payload.tattooNumber   = form.tattooNumber
-      if (form.passportNumber) payload.passportNumber = form.passportNumber
-      if (form.bodyConditionScore) payload.bodyConditionScore = parseFloat(form.bodyConditionScore)
-      payload.isNeutered = !!form.isNeutered
-      payload.isDeceased = !!form.isDeceased
-      if (form.photoUrl) payload.photoUrl = form.photoUrl
-      if (form.notes) payload.notes = form.notes
-      await http.put(`/patients/${editingId.value}`, payload)
+      await updatePatient(editingId.value, form)
     } else {
-      // ── CREAR: primero el cliente (dueño), luego el paciente ─────────────
-      const clientRes = await http.post('/clients', {
-        firstName: form.ownerFirstName,
-        lastName:  form.ownerLastName,
-        phone:     form.ownerPhone,
-        email:     form.ownerEmail || undefined,
-      })
-      const clientId = clientRes.data?.data?.id || clientRes.data?.id
-
-      const patientPayload = {
-        name:           form.name,
-        speciesId:      parseInt(form.speciesId),
-        primaryOwnerId: clientId,
-        sex:            form.sex || 'unknown',
-      }
-      if (form.birthDate) patientPayload.birthDate        = form.birthDate
-      if (form.weight)    patientPayload.weightKg          = parseFloat(form.weight)
-      if (form.microchip) patientPayload.microchipNumber   = form.microchip
-      if (form.breedId) patientPayload.breedId = parseInt(form.breedId)
-      if (form.coatColorId) patientPayload.coatColorId = parseInt(form.coatColorId)
-      if (form.tattooNumber) patientPayload.tattooNumber = form.tattooNumber
-      if (form.passportNumber) patientPayload.passportNumber = form.passportNumber
-      if (form.bodyConditionScore) patientPayload.bodyConditionScore = parseFloat(form.bodyConditionScore)
-      patientPayload.isNeutered = !!form.isNeutered
-      patientPayload.isDeceased = !!form.isDeceased
-      if (form.photoUrl) patientPayload.photoUrl = form.photoUrl
-      if (form.notes) patientPayload.notes = form.notes
-
-      await http.post('/patients', patientPayload)
+      await createOwnerAndPatient(form)
     }
     closeModal()
     await load()
   } catch (e) {
-    const detail = e.response?.data?.error?.details
-    if (detail?.length) {
-      saveError.value = detail.map(d => `${d.path}: ${d.msg}`).join(', ')
-    } else {
-      saveError.value = e.response?.data?.error?.message || 'No se pudo guardar el paciente'
-    }
+    saveError.value = formatPatientSaveError(e)
   } finally {
     saving.value = false
   }
@@ -586,6 +474,7 @@ function boolLabel(value) {
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }

@@ -16,6 +16,8 @@
 const rateLimit       = require('express-rate-limit');
 const { RedisStore }  = require('rate-limit-redis');
 const { getRedisSingleton } = require('../../../shared/redis');
+const { createLogger } = require('../../../shared/logger');
+const log = createLogger('gateway-rate-limit');
 
 // ── Redis client para rate limiting ───────────────────────────────────────────
 async function getRlRedis() {
@@ -34,14 +36,17 @@ async function buildStore(prefix) {
       try {
         await client.sendCommand(['SCRIPT', 'EXISTS', '0000000000000000000000000000000000000000']);
         _redisScriptSupported = true;
-      } catch (_) {
+      } catch (error) {
+        log.warn('Rate limiter Redis scripting unavailable - using memory fallback', { error: error?.message });
         _redisScriptSupported = false;
       }
     }
     if (!_redisScriptSupported) return undefined;  // fallback to MemoryStore
 
     return new RedisStore({ sendCommand: (...args) => client.sendCommand(args), prefix });
-  } catch (_) {}
+  } catch (error) {
+    log.warn('Rate limiter Redis store unavailable - using memory fallback', { prefix, error: error?.message });
+  }
   return undefined;   // fallback a MemoryStore
 }
 
@@ -167,18 +172,27 @@ function lazyLimiter(builderFn) {
   return async function(req, res, next) {
     if (instance) {
       try { return instance(req, res, next); }
-      catch (_) { return next(); }  // Redis SCRIPT error fallback
+      catch (error) {
+        log.warn('Rate limiter instance failed - continuing', { error: error?.message, path: req.originalUrl });
+        return next();
+      }  // Redis SCRIPT error fallback
     }
     if (!building) {
       building = true;
-      instance = await builderFn().catch(() => rateLimit({ windowMs, max: maxApi }));
+      instance = await builderFn().catch((error) => {
+        log.warn('Rate limiter initialization failed - using memory fallback', { error: error?.message });
+        return rateLimit({ windowMs, max: maxApi });
+      });
       queue.forEach(fn => fn());
       queue.length = 0;
     } else {
       await new Promise(resolve => queue.push(resolve));
     }
     try { return instance(req, res, next); }
-    catch (_) { return next(); }
+    catch (error) {
+      log.warn('Rate limiter execution failed - continuing', { error: error?.message, path: req.originalUrl });
+      return next();
+    }
   };
 }
 

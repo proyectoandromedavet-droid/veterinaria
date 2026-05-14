@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="dashboard" aria-live="polite">
     <div class="welcome">
       <div>
@@ -26,6 +26,9 @@
       </div>
       <div v-if="loadingAppts" class="loading-placeholder" role="status" :aria-label="t('dashboard.loadingAppointments')">
         {{ t('common.loading') }}
+      </div>
+      <div v-else-if="appointmentsError" class="alert alert--error" role="alert">
+        {{ appointmentsError }}
       </div>
       <div v-else-if="todayAppointments.length === 0" class="empty-state">
         <span aria-hidden="true">📅</span> {{ t('dashboard.noAppointments') }}
@@ -73,6 +76,7 @@ import { RouterLink } from 'vue-router'
 import http from '../api/client'
 import { t } from '../i18n'
 import { useAuthStore } from '../stores/auth'
+import { extractErrorMessage, logError } from '../utils/errors'
 
 type AppointmentStatus = 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show'
 
@@ -125,6 +129,7 @@ const kpis = ref<KpiCard[]>([
 
 const todayAppointments = ref<AppointmentRow[]>([])
 const loadingAppts = ref(true)
+const appointmentsError = ref('')
 
 function formatTime(dt?: string) {
   if (!dt) return '—'
@@ -142,8 +147,10 @@ onMounted(async () => {
     kpis.value[0].value = list.length
     kpis.value[2].value = list.filter((item) => item.status === 'scheduled' || item.status === 'confirmed').length
     kpis.value[3].value = list.filter((item) => item.status === 'completed').length
-  } catch {
+  } catch (error) {
+    logError('dashboard.loadAppointments', error)
     todayAppointments.value = []
+    appointmentsError.value = extractErrorMessage(error, 'No se pudieron cargar los turnos de hoy.', { includeRequestId: true })
   } finally {
     loadingAppts.value = false
   }
@@ -151,8 +158,9 @@ onMounted(async () => {
   try {
     const { data } = await http.get('/patients', { params: { limit: 1 } })
     kpis.value[1].value = data.total ?? data.pagination?.total ?? '—'
-  } catch {
-    kpis.value[1].value = '—'
+  } catch (error) {
+    logError('dashboard.loadPatientsKpi', error)
+    kpis.value[1].value = '???'
   }
 })
 </script>
@@ -256,6 +264,13 @@ onMounted(async () => {
 
 .quick-card__icon { font-size: 1.6rem; }
 .loading-placeholder { color: var(--text-3); font-size: 0.9rem; text-align: center; padding: 20px; }
+.alert--error {
+  background: #FDEAEA;
+  color: #c0392b;
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
 .empty-state {
   text-align: center;
   padding: 28px;

@@ -58,6 +58,9 @@ npm run dev
 - [Runbook](docs/runbook.md)
 - [Rollback](docs/rollback.md)
 - [Backups y restore](docs/backup-restore.md)
+- [Retencion y costo](docs/RETENTION_AND_COST_POLICY.txt)
+- [Secrets management](docs/SECRETS_MANAGEMENT_BASELINE.txt)
+- [Chaos scenarios](docs/CHAOS_SCENARIOS_MATRIX.txt)
 
 ## Estado
 

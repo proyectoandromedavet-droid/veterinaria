@@ -15,6 +15,10 @@
 const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
 const fs     = require('fs');
+const { createLogger } = require('./logger');
+const { getSecret } = require('./secrets');
+
+const log = createLogger('jwt');
 
 // ─── Gestión de claves ────────────────────────────────────────────────────────
 //
@@ -35,7 +39,7 @@ let _keyId         = null;
 let _oldPublicKey  = null;  // clave anterior — solo para verificación durante rotación
 
 function _loadPem(envVar) {
-  const raw = process.env[envVar];
+  const raw = getSecret(envVar, { trim: false });
   if (!raw) return null;
   // Soporte para PEM en base64 (útil en variables de entorno sin saltos de línea)
   if (!raw.includes('-----')) return Buffer.from(raw, 'base64').toString('utf8');
@@ -58,7 +62,7 @@ function _initKeys() {
   }
 
   // Fallback: archivo PEM (staging)
-  const keyFile = process.env.JWT_KEY_FILE;
+  const keyFile = getSecret('JWT_KEY_FILE');
   if (keyFile) {
     try {
       const privFile = fs.readFileSync(keyFile, 'utf8');
@@ -68,7 +72,9 @@ function _initKeys() {
       _publicKey  = pubObj.export({ type: 'spki', format: 'pem' });
       _keyId = crypto.createHash('sha256').update(_publicKey).digest('hex').slice(0, 16);
       return;
-    } catch (_) { /* continuar al siguiente fallback */ }
+    } catch (err) {
+      log.warn('JWT key file fallback failed', { error: err.message, keyFile });
+    }
   }
 
   // Producción sin claves → error explícito

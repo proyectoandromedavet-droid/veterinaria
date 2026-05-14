@@ -60,6 +60,75 @@ async function toOrg(orgId, type, data, options = {}) {
 }
 
 /**
+ * Send notification to all users with one or more roles.
+ * Can optionally scope the role broadcast to an org and/or branch.
+ * @param {string|string[]} roles
+ * @param {string} type
+ * @param {object} data
+ * @param {object} [options] { orgId, branchId, severity, actionUrl }
+ */
+async function toRoles(roles, type, data, options = {}) {
+  const pub = await getPublisher();
+  const roleList = (Array.isArray(roles) ? roles : [roles])
+    .map((role) => String(role).trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!roleList.length) {
+    throw new Error('toRoles requires at least one role');
+  }
+
+  await pub.publish('notifications', JSON.stringify({
+    type,
+    targetRoles: roleList,
+    orgId: options.orgId != null ? String(options.orgId) : undefined,
+    branchId: options.branchId != null ? String(options.branchId) : undefined,
+    data: {
+      ...data,
+      severity: options.severity || 'info',
+      actionUrl: options.actionUrl,
+    },
+    ts: new Date().toISOString(),
+  }));
+}
+
+/**
+ * Send notification with arbitrary combined scopes.
+ * Supported scopes:
+ *   - targetUserIds
+ *   - targetRoles
+ *   - orgId
+ *   - branchId
+ * If no scope is provided, the notification is broadcast globally.
+ * @param {object} scope
+ * @param {string} type
+ * @param {object} data
+ * @param {object} [options] { severity, actionUrl }
+ */
+async function toScoped(scope = {}, type, data, options = {}) {
+  const pub = await getPublisher();
+  const targetUserIds = Array.isArray(scope.targetUserIds)
+    ? scope.targetUserIds.map((id) => String(id))
+    : undefined;
+  const targetRoles = Array.isArray(scope.targetRoles)
+    ? scope.targetRoles.map((role) => String(role).trim().toLowerCase()).filter(Boolean)
+    : undefined;
+
+  await pub.publish('notifications', JSON.stringify({
+    type,
+    targetUserIds,
+    targetRoles,
+    orgId: scope.orgId != null ? String(scope.orgId) : undefined,
+    branchId: scope.branchId != null ? String(scope.branchId) : undefined,
+    data: {
+      ...data,
+      severity: options.severity || 'info',
+      actionUrl: options.actionUrl,
+    },
+    ts: new Date().toISOString(),
+  }));
+}
+
+/**
  * Predefined critical events (match with DB trigger alerts)
  */
 const events = {
@@ -82,4 +151,4 @@ const events = {
     toUsers([clientUserId], 'invoice_overdue', { invoiceNumber, amount }, { severity: 'warning' }),
 };
 
-module.exports = { toUsers, toBranch, toOrg, events };
+module.exports = { toUsers, toBranch, toOrg, toRoles, toScoped, events };

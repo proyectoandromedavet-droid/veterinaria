@@ -1,6 +1,7 @@
 'use strict';
 
 const mysql = require('mysql2/promise');
+const { getSecret } = require('./secrets');
 
 // Slow-query threshold (ms). Override via SLOW_QUERY_MS env var.
 const SLOW_QUERY_MS = parseInt(process.env.SLOW_QUERY_MS || '500');
@@ -24,7 +25,7 @@ function createPoolFromEnv(prefix = 'MYSQL') {
     port:               parseInt(process.env[`${prefix}_PORT`] || '3306'),
     database:           process.env[`${prefix}_DATABASE`] || 'vetmanager',
     user:               process.env[`${prefix}_USER`]     || 'vetapp',
-    password:           process.env[`${prefix}_PASSWORD`] || '',
+    password:           getSecret(`${prefix}_PASSWORD`, { defaultValue: '' }) || '',
     waitForConnections: true,
     connectionLimit:    parseInt(process.env[`${prefix}_POOL_MAX`] || process.env.MYSQL_POOL_MAX || '10'),
     queueLimit:         0,
@@ -176,7 +177,9 @@ async function callProc(name, args = []) {
  * @returns {mysql.PoolConnection & { query, queryOne, savepoint, releaseSavepoint, rollbackToSavepoint }}
  */
 function decorateConn(conn) {
-  const rawQuery = conn.query.bind(conn);
+  const rawQuery = typeof conn.query === 'function'
+    ? conn.query.bind(conn)
+    : conn.execute.bind(conn);
   conn.query = async function(sql, params) {
     const [rows] = await rawQuery(sql, params);
     if (!Array.isArray(rows)) return [rows];

@@ -49,6 +49,7 @@ export default defineConfig(({ mode }) => {
         // En dev local reenvía /api/v1/* → gateway:4050 — mismo prefijo que en producción
         '/api/v1': { target: env.VITE_API_URL || 'http://localhost:4050', changeOrigin: true },
         '/csrf-token': { target: env.VITE_API_URL || 'http://localhost:4050', changeOrigin: true },
+        '/health': { target: env.VITE_API_URL || 'http://localhost:4050', changeOrigin: true },
       },
     },
   }

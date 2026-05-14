@@ -20,6 +20,10 @@
  */
 
 const crypto = require('crypto');
+const { createLogger } = require('./logger');
+const { getAnySecret, getSecret } = require('./secrets');
+
+const log = createLogger('encryption');
 
 // ─── Clave maestra ────────────────────────────────────────────────────────────
 
@@ -32,9 +36,9 @@ const TAG_LENGTH   = 16;   // 128 bits auth tag
 let _masterKey = null;
 function getMasterKey () {
   if (_masterKey) return _masterKey;
-  const secret = process.env.FIELD_ENCRYPTION_SECRET || process.env.JWT_SECRET;
+  const secret = getAnySecret(['FIELD_ENCRYPTION_SECRET', 'JWT_SECRET']);
   if (!secret) throw new Error('FIELD_ENCRYPTION_SECRET no configurado');
-  const salt = Buffer.from(process.env.FIELD_ENCRYPTION_SALT || 'vetmanager_enc_salt_v1');
+  const salt = Buffer.from(getSecret('FIELD_ENCRYPTION_SALT', { defaultValue: 'vetmanager_enc_salt_v1' }) || 'vetmanager_enc_salt_v1');
   _masterKey = crypto.pbkdf2Sync(secret, salt, 100_000, KEY_LENGTH, 'sha256');
   return _masterKey;
 }
@@ -85,7 +89,8 @@ function decrypt (ciphertext) {
     decipher.setAuthTag(tag);
 
     return decipher.update(data) + decipher.final('utf8');
-  } catch (_) {
+  } catch (err) {
+    log.warn('Decrypt fallback used', { error: err.message });
     return ciphertext;  // no se pudo descifrar → devolver original
   }
 }
@@ -150,7 +155,7 @@ function decryptRows (rows, fields) {
  */
 function hashForSearch (value) {
   if (!value) return null;
-  const secret = process.env.FIELD_ENCRYPTION_SECRET || 'default';
+  const secret = getSecret('FIELD_ENCRYPTION_SECRET', { defaultValue: 'default' }) || 'default';
   return crypto.createHmac('sha256', secret).update(String(value).toLowerCase().trim()).digest('hex');
 }
 

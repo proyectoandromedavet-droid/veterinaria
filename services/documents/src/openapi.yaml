@@ -10,12 +10,12 @@ paths:
       responses:
         '200':
           description: OK
-  /providers:
+  /documents/providers:
     get:
       responses:
         '200':
           description: OK
-  /mail-accounts:
+  /documents/mail-accounts:
     get:
       responses:
         '200':
@@ -24,7 +24,7 @@ paths:
       responses:
         '201':
           description: Created
-  /mail-accounts/{id}:
+  /documents/mail-accounts/{id}:
     patch:
       parameters:
         - in: path
@@ -34,7 +34,7 @@ paths:
       responses:
         '204':
           description: No content
-  /mail-accounts/{id}/sync:
+  /documents/mail-accounts/{id}/sync:
     post:
       parameters:
         - in: path
@@ -44,22 +44,22 @@ paths:
       responses:
         '202':
           description: Accepted
-  /inbox:
+  /documents/inbox:
     get:
       responses:
         '200':
           description: OK
-  /inbox/manual:
+  /documents/inbox/manual:
     post:
       responses:
         '201':
           description: Created
-  /inbox/upload:
+  /documents/inbox/upload:
     post:
       responses:
         '201':
           description: Created
-  /inbox/{id}:
+  /documents/inbox/{id}:
     get:
       parameters:
         - in: path
@@ -69,7 +69,7 @@ paths:
       responses:
         '200':
           description: OK
-  /inbox/{id}/download-url:
+  /documents/inbox/{id}/download-url:
     get:
       parameters:
         - in: path
@@ -79,7 +79,7 @@ paths:
       responses:
         '200':
           description: OK
-  /inbox/{id}/associate:
+  /documents/inbox/{id}/associate:
     patch:
       parameters:
         - in: path
@@ -89,7 +89,7 @@ paths:
       responses:
         '200':
           description: OK
-  /inbox/{id}/ingest:
+  /documents/inbox/{id}/ingest:
     post:
       parameters:
         - in: path
@@ -99,7 +99,7 @@ paths:
       responses:
         '200':
           description: OK
-  /inbox/patients/{patientId}:
+  /documents/inbox/patients/{patientId}:
     get:
       parameters:
         - in: path

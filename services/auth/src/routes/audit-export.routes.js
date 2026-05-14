@@ -22,30 +22,25 @@ const { exportAuditLogs, rowsToCsv, rowsToNdjson } = require('../../../../shared
 const { scanSuspiciousAccessPatterns } = require('../../../../shared/securityAlerts');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
+const { fromHeaders, requireOrgContext } = require('../../../../shared/requestContext');
+const { requireAdminRole } = require('../../../../shared/adminAuth');
 
 const router = Router();
+let securityAlertsSchemaPromise;
 
-// Read user from gateway-injected headers (same pattern as auth.routes.js)
-function fromHeaders(req, _res, next) {
-  req.user = {
-    userId:   req.headers['x-user-id'],
-    orgId:    req.headers['x-org-id'],
-    branchId: req.headers['x-branch-id'],
-    roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
-  };
-  next();
+async function getSecurityAlertsColumns() {
+  if (!securityAlertsSchemaPromise) {
+    securityAlertsSchemaPromise = db.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'security_alerts'`
+    ).then((rows) => new Set(rows.map((row) => row.COLUMN_NAME)));
+  }
+  return securityAlertsSchemaPromise;
 }
 
-function requireAdminRole(req, res, next) {
-  const roles = req.user?.roles || [];
-  if (roles.some(r => ['superadmin', 'org_admin'].includes(r))) return next();
-  return res.status(403).json({
-    success: false,
-    error: { message: 'Audit export requires org_admin or superadmin role', code: 'FORBIDDEN' },
-  });
-}
-
-router.get('/export', fromHeaders, requireAdminRole, async (req, res, next) => {
+router.get('/export', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const orgId = req.user.orgId;
     if (!orgId) return R.unauthorized(res, 'Missing org context');
@@ -88,12 +83,21 @@ router.get('/export', fromHeaders, requireAdminRole, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get('/alerts', fromHeaders, requireAdminRole, async (req, res, next) => {
+router.get('/alerts', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
+    const cols = await getSecurityAlertsColumns();
+    const orgColumn = cols.has('organization_id') ? 'organization_id' : (cols.has('org_id') ? 'org_id' : null);
+    if (!orgColumn) return R.serverError(res, 'security_alerts schema missing org column', 'SCHEMA_MISMATCH');
+    const descriptionExpr = cols.has('description')
+      ? 'description'
+      : (cols.has('details') ? 'details AS description' : 'NULL AS description');
+    const metadataExpr = cols.has('metadata')
+      ? 'metadata'
+      : (cols.has('details') ? 'details AS metadata' : 'NULL AS metadata');
     const rows = await db.query(
-      `SELECT id, alert_type, severity, description, metadata, created_at
+      `SELECT id, alert_type, severity, ${descriptionExpr}, ${metadataExpr}, created_at
        FROM security_alerts
-       WHERE organization_id = :orgId
+       WHERE ${orgColumn} = :orgId
        ORDER BY created_at DESC
        LIMIT 200`,
       { orgId: req.user.orgId }
@@ -102,7 +106,7 @@ router.get('/alerts', fromHeaders, requireAdminRole, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post('/alerts/scan', fromHeaders, requireAdminRole, async (req, res, next) => {
+router.post('/alerts/scan', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const generated = await scanSuspiciousAccessPatterns(parseInt(req.body?.windowMinutes || '1', 10));
     return R.ok(res, { generated });

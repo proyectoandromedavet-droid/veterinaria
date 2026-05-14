@@ -3,15 +3,16 @@
 const { Client } = require('minio');
 const path       = require('path');
 const crypto     = require('crypto');
+const { getAnySecret, getSecret } = require('./secrets');
 
 let minioClient;
 
 function getClient() {
   if (!minioClient) {
-    const accessKey = process.env.MINIO_USER;
-    const secretKey = process.env.MINIO_PASSWORD;
+    const accessKey = getAnySecret(['MINIO_USER', 'MINIO_ACCESS_KEY']);
+    const secretKey = getAnySecret(['MINIO_PASSWORD', 'MINIO_SECRET_KEY']);
     if (!accessKey || !secretKey) {
-      throw new Error('MINIO_USER and MINIO_PASSWORD must be set as environment variables');
+      throw new Error('MinIO credentials must be configured');
     }
     minioClient = new Client({
       endPoint:  process.env.MINIO_ENDPOINT || 'minio',
@@ -62,8 +63,8 @@ async function uploadFile(buffer, originalName, bucket = BUCKETS.patients, folde
     'Content-Type': mimeType,
   });
 
-  const endpoint = process.env.MINIO_ENDPOINT || 'minio';
-  const port     = process.env.MINIO_PORT || '9000';
+  const endpoint = getSecret('MINIO_ENDPOINT', { defaultValue: 'minio' }) || 'minio';
+  const port     = getSecret('MINIO_PORT', { defaultValue: '9000' }) || '9000';
   return `http://${endpoint}:${port}/${bucket}/${name}`;
 }
 

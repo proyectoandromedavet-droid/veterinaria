@@ -15,21 +15,20 @@ const { body, validationResult } = require('express-validator');
 const db     = require('../../../../shared/db');
 const stripe = require('../../../../shared/stripe');
 const logger = require('../../../../shared/logger');
+const R = require('../../../../shared/response');
+const { logBillingError } = require('./billing.common');
 
 const router = Router();
 
 function validate(req, res, next) {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ success: false, error: { message: 'Validation failed', details: errors.array() } });
+  if (!errors.isEmpty()) return R.error(res, 400, 'Validation failed', errors.array(), 'VALIDATION_ERROR');
   next();
 }
 
 function stripeAvailable(req, res, next) {
   if (!process.env.STRIPE_SECRET_KEY) {
-    return res.status(501).json({
-      success: false,
-      error: { message: 'Stripe billing not configured', code: 'SVC_005' },
-    });
+    return R.error(res, 501, 'Stripe billing not configured', null, 'SVC_005');
   }
   next();
 }
@@ -57,7 +56,7 @@ router.post('/subscriptions',
         },
       });
     } catch (err) {
-      if (err.http) return res.status(err.http).json({ success: false, error: { message: err.message, code: err.code } });
+      if (err.http) return R.error(res, err.http, err.message, null, err.code);
       next(err);
     }
   },
@@ -72,10 +71,13 @@ router.get('/subscriptions/current', async (req, res, next) => {
       { orgId },
     );
 
-    if (!tenant) return res.status(404).json({ success: false, error: { message: 'Tenant not found', code: 'TENANT_001' } });
+    if (!tenant) return R.error(res, 404, 'Tenant not found', null, 'TENANT_001');
 
     res.json({ success: true, data: tenant });
-  } catch (err) { next(err); }
+  } catch (err) {
+    logBillingError('GET /billing/subscriptions/current', err, { orgId: req.user?.orgId });
+    next(err);
+  }
 });
 
 // DELETE /billing/subscriptions
@@ -85,7 +87,7 @@ router.delete('/subscriptions', async (req, res, next) => {
     await stripe.cancelSubscription(orgId);
     res.json({ success: true, message: 'Subscription cancelled. Plan downgraded to free.' });
   } catch (err) {
-    if (err.http) return res.status(err.http).json({ success: false, error: { message: err.message } });
+    if (err.http) return R.error(res, err.http, err.message);
     next(err);
   }
 });
@@ -98,7 +100,7 @@ router.get('/subscriptions/portal', async (req, res, next) => {
     const url = await stripe.getBillingPortalUrl(orgId, returnUrl);
     res.json({ success: true, data: { portalUrl: url } });
   } catch (err) {
-    if (err.http) return res.status(err.http).json({ success: false, error: { message: err.message } });
+    if (err.http) return R.error(res, err.http, err.message);
     next(err);
   }
 });

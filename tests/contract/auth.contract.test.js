@@ -78,12 +78,12 @@ const db = require('../../shared/db');
 const { signRequest } = require('../../shared/internalAuth');
 const app = require('../../services/auth/src/index');
 
-function adminHeaders() {
+function adminHeaders(path = '/admin/rbac/roles') {
   return {
     'X-User-Id': '1',
     'X-Org-Id': '1',
     'X-User-Roles': 'org_admin',
-    'X-Internal-Sig': signRequest('GET', '/roles', '1'),
+    'X-Internal-Sig': signRequest('GET', path, '1'),
   };
 }
 
@@ -227,7 +227,7 @@ describe('Contract — GET /health', () => {
 
 describe('Contract — GET /admin/rbac/roles', () => {
   it('returns array of role objects with name and permissions', async () => {
-    const res = await request(app).get('/admin/rbac/roles').set(adminHeaders());
+    const res = await request(app).get('/admin/rbac/roles').set(adminHeaders('/admin/rbac/roles'));
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -240,7 +240,7 @@ describe('Contract — GET /admin/rbac/roles', () => {
   });
 
   it('includes superadmin role', async () => {
-    const res = await request(app).get('/admin/rbac/roles').set(adminHeaders());
+    const res = await request(app).get('/admin/rbac/roles').set(adminHeaders('/admin/rbac/roles'));
     const superadmin = res.body.data.find(r => r.name === 'superadmin');
     expect(superadmin).toBeDefined();
     expect(superadmin.permissions).toContain('*');

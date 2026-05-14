@@ -1,54 +1,46 @@
 'use strict';
 
 /**
- * Admin RBAC routes — manage per-org role permission overrides.
+ * Admin RBAC routes â€” manage per-org role permission overrides.
  * All endpoints require superadmin or org_admin role.
  *
- * GET  /admin/rbac/roles                    → list roles + static permissions
- * GET  /admin/rbac/orgs/:orgId/overrides    → get all overrides for an org
- * PUT  /admin/rbac/orgs/:orgId/roles/:role  → set override (grant/revoke)
- * DELETE /admin/rbac/orgs/:orgId/roles/:role → remove override
- * POST /admin/rbac/orgs/:orgId/sync         → reload DB → Redis for this org
+ * GET  /admin/rbac/roles                    â†’ list roles + static permissions
+ * GET  /admin/rbac/orgs/:orgId/overrides    â†’ get all overrides for an org
+ * PUT  /admin/rbac/orgs/:orgId/roles/:role  â†’ set override (grant/revoke)
+ * DELETE /admin/rbac/orgs/:orgId/roles/:role â†’ remove override
+ * POST /admin/rbac/orgs/:orgId/sync         â†’ reload DB â†’ Redis for this org
  */
 
 const { Router } = require('express');
-const { body, param, validationResult } = require('express-validator');
+const { body, param } = require('express-validator');
 const db   = require('../../../../shared/db');
 const { requireInternalSig } = require('../../../../shared/internalAuth');
+const { fromHeaders, requireOrgContext } = require('../../../../shared/requestContext');
+const { requireAdminRole } = require('../../../../shared/adminAuth');
+const { validateRequest } = require('../../../../shared/validation');
 const {
   ROLE_PERMISSIONS,
   setRoleOverride,
   getEffectivePermissions,
   loadOrgOverridesFromDb,
 } = require('../../../../shared/rbac');
+const R = require('../../../../shared/response');
+const { createLogger } = require('../../../../shared/logger');
 
 const router = Router();
+const log = createLogger('auth-admin-rbac');
 
-// ── Auth guard helpers (same as admin-users.routes.js) ───────────────────────
-function fromHeaders(req, _res, next) {
-  req.user = {
-    userId:   req.headers['x-user-id'],
-    orgId:    req.headers['x-org-id'],
-    branchId: req.headers['x-branch-id'],
-    roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
-    email:    req.headers['x-user-email'],
-  };
-  next();
-}
-
-function requireAdmin(req, res, next) {
-  if (!req.user?.roles?.some(r => ['superadmin', 'org_admin'].includes(r))) {
-    return res.status(403).json({ success: false, error: { message: 'Se requiere rol org_admin o superadmin' } });
+function parsePermissionList(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
-  next();
-}
-
-function validate(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, error: { message: 'Validation failed', details: errors.array() } });
-  }
-  next();
+  return [];
 }
 
 async function auditPermissionChange(req, {
@@ -57,39 +49,40 @@ async function auditPermissionChange(req, {
   previousValue = null,
   newValue = null,
 }) {
-  await db.query(
-    `INSERT INTO permission_change_audit
-       (org_id, actor_user_id, target_role_name, action_type,
-        previous_value_json, new_value_json, request_id, ip_address)
-     VALUES
-       (:orgId, :actorUserId, :targetRoleName, :actionType,
-        :previousValue, :newValue, :requestId, :ipAddress)`,
-    {
-      orgId: req.user.orgId,
-      actorUserId: req.user.userId || null,
-      targetRoleName,
-      actionType,
-      previousValue: previousValue ? JSON.stringify(previousValue) : null,
-      newValue: newValue ? JSON.stringify(newValue) : null,
-      requestId: req.headers['x-request-id'] || req.requestId || null,
-      ipAddress: req.ip || null,
-    }
-  ).catch(() => {});
+  try {
+    await db.query(
+      `INSERT INTO permission_change_audit
+         (org_id, actor_user_id, target_role_name, action_type,
+          previous_value_json, new_value_json, request_id, ip_address)
+       VALUES
+         (:orgId, :actorUserId, :targetRoleName, :actionType,
+          :previousValue, :newValue, :requestId, :ipAddress)`,
+      {
+        orgId: req.user.orgId,
+        actorUserId: req.user.userId || null,
+        targetRoleName,
+        actionType,
+        previousValue: previousValue ? JSON.stringify(previousValue) : null,
+        newValue: newValue ? JSON.stringify(newValue) : null,
+        requestId: req.headers['x-request-id'] || req.requestId || null,
+        ipAddress: req.ip || null,
+      }
+    );
+  } catch (err) {
+    log.warn('RBAC audit write failed', { error: err.message, orgId: req.user?.orgId, actionType });
+  }
 }
 
-// Apply internal signature + role check to ALL routes in this router
-router.use(requireInternalSig, fromHeaders, requireAdmin);
+router.use(requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole);
 
-// ── GET /admin/rbac/roles ─────────────────────────────────────────────────────
 router.get('/roles', (req, res) => {
   const roles = Object.entries(ROLE_PERMISSIONS).map(([name, perms]) => ({ name, permissions: perms }));
   res.json({ success: true, data: roles });
 });
 
-// ── GET /admin/rbac/orgs/:orgId/overrides ─────────────────────────────────────
 router.get('/orgs/:orgId/overrides',
   param('orgId').isInt({ min: 1 }),
-  validate,
+  validateRequest,
   async (req, res, next) => {
     try {
       const { orgId } = req.params;
@@ -108,11 +101,10 @@ router.get('/orgs/:orgId/overrides',
   }
 );
 
-// ── GET /admin/rbac/orgs/:orgId/roles/:role/effective ─────────────────────────
 router.get('/orgs/:orgId/roles/:role/effective',
   param('orgId').isInt({ min: 1 }),
   param('role').notEmpty(),
-  validate,
+  validateRequest,
   async (req, res, next) => {
     try {
       const { orgId, role } = req.params;
@@ -122,13 +114,12 @@ router.get('/orgs/:orgId/roles/:role/effective',
   }
 );
 
-// ── PUT /admin/rbac/orgs/:orgId/roles/:role ───────────────────────────────────
 router.put('/orgs/:orgId/roles/:role',
   param('orgId').isInt({ min: 1 }),
   param('role').notEmpty(),
   body('grant').optional().isArray(),
   body('revoke').optional().isArray(),
-  validate,
+  validateRequest,
   async (req, res, next) => {
     try {
       const { orgId, role } = req.params;
@@ -140,7 +131,7 @@ router.put('/orgs/:orgId/roles/:role',
       );
 
       if (!ROLE_PERMISSIONS[role]) {
-        return res.status(404).json({ success: false, error: { message: `Role '${role}' not found` } });
+        return R.notFound(res, `Role '${role}' not found`, 'RBAC_002');
       }
 
       await setRoleOverride(orgId, role, grant, revoke);
@@ -149,8 +140,8 @@ router.put('/orgs/:orgId/roles/:role',
         targetRoleName: role,
         actionType: 'role_override_updated',
         previousValue: previousRow ? {
-          grant: JSON.parse(previousRow.added_permissions || '[]'),
-          revoke: JSON.parse(previousRow.removed_permissions || '[]'),
+          grant: parsePermissionList(previousRow.added_permissions),
+          revoke: parsePermissionList(previousRow.removed_permissions),
         } : null,
         newValue: { grant, revoke, effective },
       });
@@ -159,11 +150,10 @@ router.put('/orgs/:orgId/roles/:role',
   }
 );
 
-// ── DELETE /admin/rbac/orgs/:orgId/roles/:role ────────────────────────────────
 router.delete('/orgs/:orgId/roles/:role',
   param('orgId').isInt({ min: 1 }),
   param('role').notEmpty(),
-  validate,
+  validateRequest,
   async (req, res, next) => {
     try {
       const { orgId, role } = req.params;
@@ -171,7 +161,7 @@ router.delete('/orgs/:orgId/roles/:role',
         'SELECT added_permissions, removed_permissions FROM org_role_overrides WHERE org_id = :orgId AND role_name = :role',
         { orgId, role }
       );
-      await setRoleOverride(orgId, role, [], []); // clear overrides
+      await setRoleOverride(orgId, role, [], []);
       await db.query(
         'DELETE FROM org_role_overrides WHERE org_id = :orgId AND role_name = :role',
         { orgId, role }
@@ -180,8 +170,8 @@ router.delete('/orgs/:orgId/roles/:role',
         targetRoleName: role,
         actionType: 'role_override_deleted',
         previousValue: previousRow ? {
-          grant: JSON.parse(previousRow.added_permissions || '[]'),
-          revoke: JSON.parse(previousRow.removed_permissions || '[]'),
+          grant: parsePermissionList(previousRow.added_permissions),
+          revoke: parsePermissionList(previousRow.removed_permissions),
         } : null,
         newValue: { grant: [], revoke: [] },
       });
@@ -190,10 +180,9 @@ router.delete('/orgs/:orgId/roles/:role',
   }
 );
 
-// ── POST /admin/rbac/orgs/:orgId/sync ─────────────────────────────────────────
 router.post('/orgs/:orgId/sync',
   param('orgId').isInt({ min: 1 }),
-  validate,
+  validateRequest,
   async (req, res, next) => {
     try {
       const { orgId } = req.params;
@@ -203,7 +192,6 @@ router.post('/orgs/:orgId/sync',
   }
 );
 
-// ── GET /admin/security-alerts ────────────────────────────────────────────────
 router.get('/security-alerts', async (req, res, next) => {
   try {
     const orgId              = req.headers['x-org-id'];
@@ -214,7 +202,6 @@ router.get('/security-alerts', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── POST /admin/security-alerts/:id/acknowledge ───────────────────────────────
 router.post('/security-alerts/:id/acknowledge', async (req, res, next) => {
   try {
     const { acknowledgeAlert } = require('../../../../shared/dlp');

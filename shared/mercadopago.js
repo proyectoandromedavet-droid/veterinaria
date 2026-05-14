@@ -13,6 +13,9 @@
 
 const { MercadoPagoConfig, Preference, Payment, Refund } = require('mercadopago');
 const crypto = require('crypto');
+const { createLogger } = require('./logger');
+
+const log = createLogger('mercadopago');
 
 // ── Cliente ───────────────────────────────────────────────────────────────────
 function getClient() {
@@ -145,7 +148,8 @@ function validateWebhookSignature(xSignature, xRequestId, dataId, opts = {}) {
     const expected = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
     if (expected.length !== received.length) return false;
     return crypto.timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(received, 'utf8'));
-  } catch (_) {
+  } catch (err) {
+    log.warn('MercadoPago webhook signature validation failed', { error: err.message });
     return false;
   }
 }

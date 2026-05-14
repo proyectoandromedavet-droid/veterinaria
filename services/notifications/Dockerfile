@@ -10,6 +10,6 @@ RUN npm install --omit=dev
 COPY services/notifications/src ./services/notifications/src
 COPY shared ./shared
 
-EXPOSE $PORT
+EXPOSE 3000
 USER node
 CMD ["node", "services/notifications/src/index.js"]

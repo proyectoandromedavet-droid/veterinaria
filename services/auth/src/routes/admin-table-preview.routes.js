@@ -3,24 +3,10 @@
 const { Router } = require('express');
 const db = require('../../../../shared/db');
 const R  = require('../../../../shared/response');
+const { fromHeaders, requireOrgContext } = require('../../../../shared/requestContext');
+const { requireAdminRole } = require('../../../../shared/adminAuth');
 
 const router = Router();
-
-function fromHeaders(req, _res, next) {
-  req.user = {
-    userId:   req.headers['x-user-id'],
-    orgId:    req.headers['x-org-id'],
-    branchId: req.headers['x-branch-id'],
-    roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
-  };
-  next();
-}
-
-function requireAdmin(req, res, next) {
-  const roles = req.user?.roles || [];
-  if (roles.some(r => ['superadmin', 'org_admin'].includes(r))) return next();
-  return res.status(403).json({ success: false, error: { message: 'Requiere org_admin', code: 'FORBIDDEN' } });
-}
 
 // Tablas de negocio con sus metadatos y filtro de organización
 const TABLES = [
@@ -49,16 +35,16 @@ const TABLES = [
 const TABLE_MAP = Object.fromEntries(TABLES.map(t => [t.key, t]));
 
 // GET /admin/preview — lista de tablas
-router.get('/', fromHeaders, requireAdmin, (_req, res) => {
+router.get('/', fromHeaders, requireOrgContext, requireAdminRole, (_req, res) => {
   return R.ok(res, { tables: TABLES.map(({ key, label, description }) => ({ key, label, description })) });
 });
 
 // GET /admin/preview/:tableName — columnas reales (DESCRIBE) + 10 registros
-router.get('/:tableName', fromHeaders, requireAdmin, async (req, res, next) => {
+router.get('/:tableName', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const def = TABLE_MAP[req.params.tableName];
     if (!def) {
-      return res.status(404).json({ success: false, error: { message: 'Tabla no disponible', code: 'NOT_FOUND' } });
+      return R.notFound(res, 'Tabla no disponible', 'NOT_FOUND');
     }
 
     const orgId    = req.user.orgId;

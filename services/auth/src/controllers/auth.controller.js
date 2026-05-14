@@ -14,6 +14,9 @@ const { captureFingerprint } = require('../../../../shared/deviceFingerprint');
 const { enqueueJob } = require('../../../../shared/notificationRetry');
 const oidc = require('../../../../shared/oidc');
 const { getEffectivePermissions } = require('../../../../shared/rbac');
+const { createLogger } = require('../../../../shared/logger');
+
+const log = createLogger('auth-controller');
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 async function getRedis() {
@@ -58,14 +61,13 @@ function parseUserAgent(ua = '') {
 }
 
 function setSessionCookies(res, accessToken, refreshToken) {
-  const isProd = process.env.NODE_ENV === 'production';
+  const configuredSameSite = String(process.env.AUTH_COOKIE_SAME_SITE || 'none').toLowerCase();
+  const sameSite = ['lax', 'strict', 'none'].includes(configuredSameSite) ? configuredSameSite : 'none';
+  const secureCookies = process.env.AUTH_COOKIE_SECURE === 'true' || sameSite === 'none';
   const cookieBase = {
     httpOnly: true,
-    secure:   isProd,
-    // 'none' required for cross-site deployments where frontend and API are on
-    // different railway.app subdomains (up.railway.app is in the public suffix list).
-    // httpOnly + Secure + CORS credentials policy mitigate the reduced SameSite protection.
-    sameSite: isProd ? 'none' : 'lax',
+    secure: secureCookies,
+    sameSite,
   };
 
   res.cookie('accessToken', accessToken, {
@@ -139,7 +141,8 @@ async function checkBruteForce(email, ip) {
     }
 
     return { locked: false };
-  } catch (_) {
+  } catch (err) {
+    log.warn('Brute force status lookup failed', { error: err.message, email });
     return { locked: false };
   }
 }
@@ -167,7 +170,9 @@ async function recordFailedAttempt(email, ip) {
     if (acctRule) {
       await redis.setEx(acctLockKey, acctRule.lockSecs, '1');
     }
-  } catch (_) {}
+  } catch (err) {
+    log.warn('Brute force counter update failed', { error: err.message, email, ip });
+  }
 }
 
 async function clearBruteForce(email, ip) {
@@ -178,7 +183,9 @@ async function clearBruteForce(email, ip) {
     await redis.del(`bf:lock:${email}:${ip}`);
     await redis.del(`bf:acct:${email}`);
     await redis.del(`bf:acct:lock:${email}`);
-  } catch (_) {}
+  } catch (err) {
+    log.warn('Brute force counter clear failed', { error: err.message, email, ip });
+  }
 }
 
 async function buildTokenPair(user, roles) {
@@ -218,7 +225,7 @@ async function getUserPermissions(roles, orgId) {
 async function persistSession(req, user, refreshToken, jti) {
   const ip = req.ip;
   const ua = req.headers['user-agent'] || '';
-  const [sessionResult] = await db.query(
+  const sessionWriteResult = await db.query(
     `INSERT INTO sessions
        (user_id, session_token, jti, ip_address, user_agent, device_type, expires_at)
      VALUES (:userId, :token, :jti, :ip, :ua, :device, DATE_ADD(NOW(), INTERVAL 7 DAY))`,
@@ -231,8 +238,14 @@ async function persistSession(req, user, refreshToken, jti) {
       device: parseUserAgent(ua),
     }
   );
-  await captureFingerprint(sessionResult.insertId, req.headers['x-device-fingerprint']).catch(() => {});
-  return sessionResult.insertId;
+  const sessionResult = Array.isArray(sessionWriteResult)
+    ? sessionWriteResult[0]
+    : sessionWriteResult;
+  const sessionId = sessionResult?.insertId || null;
+  if (sessionId) {
+    await captureFingerprint(sessionId, req.headers['x-device-fingerprint']).catch(() => {});
+  }
+  return sessionId;
 }
 
 async function finalizeLogin(res, req, user, roles, responseData = null) {
@@ -280,6 +293,19 @@ async function loadSsoConfig(provider, options = {}) {
       return false;
     }
   }) || null;
+}
+
+let apiKeysSchemaPromise;
+async function getApiKeysColumns() {
+  if (!apiKeysSchemaPromise) {
+    apiKeysSchemaPromise = db.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'api_keys'`
+    ).then((rows) => new Set(rows.map((row) => row.COLUMN_NAME)));
+  }
+  return apiKeysSchemaPromise;
 }
 
 // ── Controllers ───────────────────────────────────────────────────────────────
@@ -415,7 +441,8 @@ async function refresh(req, res) {
   let decoded;
   try {
     decoded = jwt.verifyRefresh(refreshToken);
-  } catch (_) {
+  } catch (err) {
+    log.warn('Refresh token verification failed', { error: err.message });
     logAuth401(req, 'POST /auth/refresh', { reason: 'invalid_or_expired_refresh_token' });
     return R.unauthorized(res, 'Invalid or expired refresh token');
   }
@@ -761,12 +788,20 @@ async function revokeSession(req, res) {
  * GET /auth/api-keys
  */
 async function listApiKeys(req, res) {
+  const limit = Math.min(Math.max(parseInt(`${req.query.limit || '100'}`, 10) || 100, 1), 200);
+  const cols = await getApiKeysColumns();
+  const activeExpr = cols.has('is_active') ? 'is_active' : (cols.has('active') ? 'active' : '1');
+  const revokedExpr = cols.has('revoked_at') ? 'revoked_at' : 'NULL';
   const rows = await db.query(
-    `SELECT id, name, key_prefix, scopes, last_used_at, expires_at, is_active, created_at
-     FROM api_keys WHERE user_id = :uid ORDER BY created_at DESC`,
-    { uid: req.user.userId }
+    `SELECT id, name, key_prefix, scopes, last_used_at, expires_at,
+            ${activeExpr} AS is_active, ${revokedExpr} AS revoked_at, created_at
+     FROM api_keys
+     WHERE user_id = :uid
+     ORDER BY created_at DESC
+     LIMIT :limit`,
+    { uid: req.user.userId, limit }
   );
-  return R.ok(res, rows);
+  return R.ok(res, rows, { limit });
 }
 
 /**
@@ -774,22 +809,47 @@ async function listApiKeys(req, res) {
  */
 async function createApiKey(req, res) {
   const { name, scopes = [], expiresAt } = req.body;
+  const cols = await getApiKeysColumns();
   const rawKey   = jwt.generateOpaqueToken();
   const keyHash  = jwt.hashToken(rawKey);
   const prefix   = rawKey.slice(0, 16);  // 16 chars = 64-bit entropy prefix
+  const insertCols = ['user_id', 'name', 'key_hash', 'key_prefix', 'scopes', 'expires_at'];
+  const insertVals = [':userId', ':name', ':hash', ':prefix', ':scopes', ':expires'];
+  const params = {
+    userId: req.user.userId,
+    orgId: req.user.orgId,
+    branchId: req.user.branchId,
+    name,
+    hash: keyHash,
+    prefix,
+    scopes: JSON.stringify(scopes),
+    expires: expiresAt || null,
+  };
+  if (cols.has('organization_id')) {
+    insertCols.push('organization_id');
+    insertVals.push(':orgId');
+  }
+  if (cols.has('branch_id')) {
+    insertCols.push('branch_id');
+    insertVals.push(':branchId');
+  }
+  if (cols.has('allowed_ips')) {
+    insertCols.push('allowed_ips');
+    insertVals.push('NULL');
+  }
+  if (cols.has('active') && !cols.has('is_active')) {
+    insertCols.push('active');
+    insertVals.push('1');
+  }
+  if (cols.has('is_active')) {
+    insertCols.push('is_active');
+    insertVals.push('1');
+  }
 
   await db.query(
-    `INSERT INTO api_keys (user_id, branch_id, name, key_hash, key_prefix, scopes, expires_at)
-     VALUES (:userId, :branchId, :name, :hash, :prefix, :scopes, :expires)`,
-    {
-      userId:   req.user.userId,
-      branchId: req.user.branchId,
-      name,
-      hash:     keyHash,
-      prefix,
-      scopes:   JSON.stringify(scopes),
-      expires:  expiresAt || null,
-    }
+    `INSERT INTO api_keys (${insertCols.join(', ')})
+     VALUES (${insertVals.join(', ')})`,
+    params
   );
 
   // Only return raw key once
@@ -801,8 +861,15 @@ async function createApiKey(req, res) {
  */
 async function deleteApiKey(req, res) {
   const { id } = req.params;
+  const cols = await getApiKeysColumns();
+  const setClauses = [];
+  if (cols.has('is_active')) setClauses.push('is_active = FALSE');
+  if (cols.has('active')) setClauses.push('active = FALSE');
+  if (cols.has('revoked_at')) setClauses.push('revoked_at = NOW()');
+  if (cols.has('deleted_at')) setClauses.push('deleted_at = COALESCE(deleted_at, NOW())');
+  if (!setClauses.length) return R.badRequest(res, 'API key schema missing disable columns');
   await db.query(
-    `UPDATE api_keys SET is_active = FALSE WHERE id = :id AND user_id = :uid`,
+    `UPDATE api_keys SET ${setClauses.join(', ')} WHERE id = :id AND user_id = :uid`,
     { id, uid: req.user.userId }
   );
   return R.noContent(res);
@@ -815,14 +882,20 @@ async function validateApiKey(req, res) {
   const { apiKey } = req.body;
   if (!apiKey) return R.badRequest(res, 'apiKey required');
 
+  const cols = await getApiKeysColumns();
+  const activePredicate = cols.has('is_active')
+    ? 'ak.is_active = TRUE'
+    : (cols.has('active') ? 'ak.active = TRUE' : '1 = 1');
+  const deletedPredicate = cols.has('deleted_at') ? 'AND ak.deleted_at IS NULL' : '';
   const hash = jwt.hashToken(apiKey);
   const key = await db.queryOne(
-    `SELECT ak.*, u.email, b.organization_id
+    `SELECT ak.*, u.email, u.branch_id, b.organization_id
      FROM api_keys ak
      JOIN users u ON ak.user_id = u.id
-     JOIN branches b ON ak.branch_id = b.id
+     JOIN branches b ON u.branch_id = b.id
      WHERE ak.key_hash = :hash
-       AND ak.is_active = TRUE
+       AND ${activePredicate}
+       ${deletedPredicate}
        AND (ak.expires_at IS NULL OR ak.expires_at > NOW())`,
     { hash }
   );
@@ -962,7 +1035,8 @@ async function challenge2fa(req, res) {
   let pending;
   try {
     pending = jwt.verifyAccess(pendingToken);
-  } catch (_) {
+  } catch (err) {
+    log.warn('2FA pending token verification failed', { error: err.message });
     logAuth401(req, 'POST /auth/2fa/challenge', { reason: 'invalid_or_expired_pending_token' });
     return R.unauthorized(res, 'Invalid or expired pending token');
   }

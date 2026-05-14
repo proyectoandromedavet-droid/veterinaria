@@ -1,31 +1,7 @@
-version: "3.9"
+# Base de datos: AWS RDS — no hay contenedor MySQL local.
+# Todas las credenciales MYSQL_* se leen desde .env (copiar de .env.example).
 
 services:
-  mysql:
-    image: mysql:8.0
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: vetmanager
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    # Port NOT exposed to host — only reachable inside vetnet
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ../vetmanager_COMPLETO_FINAL.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "2"
-          memory: 2G
-    networks:
-      - vetnet
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -56,6 +32,11 @@ services:
     env_file: .env
     environment:
       - PORT=4050
+      - MYSQL_HOST=${RDS_HOST}
+      - MYSQL_POOL_MAX=1
+      - TRACING_ENABLED=true
+      - TRACING_EXPORTER_URL=http://tempo:9411/api/v2/spans
+      - SERVICE_DISCOVERY_MODE=env
       - SERVICE_AUTH=http://auth:4051
       - SERVICE_PATIENTS=http://patients:4052
       - SERVICE_MEDICAL=http://medical:4053
@@ -68,13 +49,12 @@ services:
       - SERVICE_PORTAL=http://portal:4060
       - SERVICE_AI=http://ai:4061
       - SERVICE_DOCUMENTS=http://documents:4062
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
     depends_on:
-      mysql:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4050/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4050/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -95,13 +75,17 @@ services:
     env_file: .env
     environment:
       PORT: 4051
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     depends_on:
-      mysql:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4051/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4051/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -122,11 +106,14 @@ services:
     env_file: .env
     environment:
       PORT: 4052
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4052/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4052/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -147,11 +134,14 @@ services:
     env_file: .env
     environment:
       PORT: 4053
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4053/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4053/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -172,11 +162,14 @@ services:
     env_file: .env
     environment:
       PORT: 4054
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4054/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4054/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -197,11 +190,14 @@ services:
     env_file: .env
     environment:
       PORT: 4055
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4055/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4055/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -222,11 +218,14 @@ services:
     env_file: .env
     environment:
       PORT: 4056
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4056/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4056/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -247,11 +246,14 @@ services:
     env_file: .env
     environment:
       PORT: 4057
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4057/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4057/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -272,11 +274,14 @@ services:
     env_file: .env
     environment:
       PORT: 4058
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4058/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4058/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -297,11 +302,17 @@ services:
     env_file: .env
     environment:
       PORT: 4059
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4059/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4059/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -322,13 +333,17 @@ services:
     env_file: .env
     environment:
       PORT: 4060
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     depends_on:
-      mysql:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4060/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4060/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -349,11 +364,14 @@ services:
     env_file: .env
     environment:
       PORT: 4061
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4061/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4061/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -374,11 +392,14 @@ services:
     env_file: .env
     environment:
       PORT: 4062
-    depends_on:
-      mysql:
-        condition: service_healthy
+      MYSQL_HOST: ${RDS_HOST}
+      MYSQL_POOL_MAX: 1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      TRACING_ENABLED: "true"
+      TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
+      SERVICE_DISCOVERY_MODE: hybrid
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4062/health/live"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4062/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -391,18 +412,30 @@ services:
     networks:
       - vetnet
 
+  andromeda-front:
+    build:
+      context: ./andromeda-front
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:4050/api/v1
+    restart: unless-stopped
+    ports:
+      - "5174:8080"
+    networks:
+      - vetnet
+
   minio:
     image: minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     # Ports NOT exposed to host — access via gateway presigned URLs only
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9000/minio/health/live"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -419,18 +452,56 @@ services:
     restart: unless-stopped
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-lifecycle'
     # Port NOT exposed to host — scrape via internal network only
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./docker/prometheus/synthetics.yml:/etc/prometheus/synthetics.yml:ro
       - prometheus_data:/prometheus
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: 512M
+    networks:
+      - vetnet
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    volumes:
+      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - vetnet
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/blackbox/blackbox.yml'
+    volumes:
+      - ./docker/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks:
+      - vetnet
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/tempo/tempo.yml
+    volumes:
+      - ./docker/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     networks:
       - vetnet
 
@@ -448,6 +519,7 @@ services:
       - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     depends_on:
       - prometheus
+      - tempo
     deploy:
       resources:
         limits:
@@ -457,7 +529,6 @@ services:
       - vetnet
 
 volumes:
-  mysql_data:
   redis_data:
   minio_data:
   prometheus_data:

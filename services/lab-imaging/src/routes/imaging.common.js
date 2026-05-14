@@ -1,0 +1,31 @@
+'use strict';
+
+const { validationResult } = require('express-validator');
+const db = require('../../../../shared/db');
+const R = require('../../../../shared/response');
+const { resolveMedicalRecordId } = require('../lib/clinicalContext');
+
+const validate = (req, res, next) => {
+  const e = validationResult(req);
+  if (!e.isEmpty()) return R.badRequest(res, 'Validation failed', e.array());
+  next();
+};
+
+function logImagingError(scope, error, meta = {}) {
+  console.error(`[lab-imaging:imaging] ${scope}`, {
+    message: error?.message,
+    code: error?.code,
+    errno: error?.errno,
+    sqlState: error?.sqlState,
+    sqlMessage: error?.sqlMessage,
+    meta,
+  });
+}
+
+module.exports = {
+  db,
+  R,
+  validate,
+  resolveMedicalRecordId,
+  logImagingError,
+};

@@ -50,14 +50,18 @@
     <!-- ── VISTA LISTA ── -->
     <template v-if="viewMode === 'list'">
       <div class="filters">
+        <label for="hosp-search" class="sr-only">{{ t('hospitalizations.searchPlaceholder') }}</label>
         <input
+          id="hosp-search"
+          name="hosp-search"
           v-model.trim="search"
           type="search"
           :placeholder="t('hospitalizations.searchPlaceholder')"
           class="filter-input filter-input--grow"
           @input="debouncedLoad()"
         />
-        <select v-model="statusFilter" class="filter-select" @change="load()">
+        <label for="hosp-status" class="sr-only">{{ t('common.allStatuses') }}</label>
+        <select id="hosp-status" name="hosp-status" v-model="statusFilter" class="filter-select" @change="load()">
           <option value="">{{ t('common.allStatuses') }}</option>
           <option value="admitted">{{ t('hospitalizations.admittedStatus') }}</option>
           <option value="discharged">{{ t('hospitalizations.dischargedStatus') }}</option>
@@ -196,8 +200,10 @@
 
               <!-- Paciente autocomplete -->
               <div class="field field--full" style="position:relative">
-                <label>{{ t('hospitalizations.patientLabel') }} <span class="req">*</span></label>
+                <label for="hosp-m-patient">{{ t('hospitalizations.patientLabel') }} <span class="req">*</span></label>
                 <input
+                  id="hosp-m-patient"
+                  name="hosp-m-patient"
                   v-model.trim="patientSearch"
                   type="search"
                   :placeholder="t('hospitalizations.patientSearchPlaceholder')"
@@ -219,8 +225,8 @@
               <!-- Sala y jaula -->
               <div class="form-grid">
                 <div class="field">
-                  <label>{{ t('hospitalizations.wardLabel') }} <span class="req">*</span></label>
-                  <select v-model="admitForm.wardId" :disabled="admitSaving || wardsLoading" @change="admitForm.kennelId = ''">
+                  <label for="hosp-m-ward">{{ t('hospitalizations.wardLabel') }} <span class="req">*</span></label>
+                  <select id="hosp-m-ward" name="hosp-m-ward" v-model="admitForm.wardId" :disabled="admitSaving || wardsLoading" @change="admitForm.kennelId = ''">
                     <option value="">{{ wardsLoading ? t('hospitalizations.wardLoading') : t('hospitalizations.wardPlaceholder') }}</option>
                     <option v-for="w in availableWards" :key="w.id" :value="w.id">
                       {{ w.name }} ({{ w.available_kennels }} {{ t('hospitalizations.free') }})
@@ -230,8 +236,8 @@
                 </div>
 
                 <div class="field">
-                  <label>{{ t('hospitalizations.kennelLabel') }}</label>
-                  <select v-model="admitForm.kennelId" :disabled="admitSaving || !admitForm.wardId">
+                  <label for="hosp-m-kennel">{{ t('hospitalizations.kennelLabel') }}</label>
+                  <select id="hosp-m-kennel" name="hosp-m-kennel" v-model="admitForm.kennelId" :disabled="admitSaving || !admitForm.wardId">
                     <option value="">{{ t('hospitalizations.noKennel') }}</option>
                     <option
                       v-for="k in freeKennelsForWard"
@@ -244,8 +250,10 @@
                 </div>
 
                 <div class="field field--full">
-                  <label>{{ t('hospitalizations.vetInCharge') }} <span class="req">*</span></label>
+                  <label for="hosp-m-vet">{{ t('hospitalizations.vetInCharge') }} <span class="req">*</span></label>
                   <input
+                    id="hosp-m-vet"
+                    name="hosp-m-vet"
                     v-model.trim="admitForm.attendingVetId"
                     type="text"
                     placeholder="ID del veterinario responsable…"
@@ -255,8 +263,10 @@
                 </div>
 
                 <div class="field field--full">
-                  <label>{{ t('hospitalizations.admissionReason') }} <span class="req">*</span></label>
+                  <label for="hosp-m-reason">{{ t('hospitalizations.admissionReason') }} <span class="req">*</span></label>
                   <textarea
+                    id="hosp-m-reason"
+                    name="hosp-m-reason"
                     v-model.trim="admitForm.admissionReason"
                     rows="3"
                     :placeholder="t('hospitalizations.admissionReasonPlaceholder')"
@@ -265,20 +275,20 @@
                   <span v-if="afe.admissionReason" class="field-error">{{ afe.admissionReason }}</span>
                 </div>
                 <div class="field">
-                  <label>Peso ingreso</label>
-                  <input v-model.number="admitForm.admissionWeight" type="number" min="0" step="0.01" placeholder="ej: 12.4" :disabled="admitSaving" />
+                  <label for="hosp-m-weight">Peso ingreso</label>
+                  <input id="hosp-m-weight" name="hosp-m-weight" v-model.number="admitForm.admissionWeight" type="number" min="0" step="0.01" placeholder="ej: 12.4" :disabled="admitSaving" />
                 </div>
                 <div class="field">
-                  <label>Alta estimada</label>
-                  <input v-model="admitForm.estimatedDischargeDate" type="date" :disabled="admitSaving" />
+                  <label for="hosp-m-discharge-est">Alta estimada</label>
+                  <input id="hosp-m-discharge-est" name="hosp-m-discharge-est" v-model="admitForm.estimatedDischargeDate" type="date" :disabled="admitSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Diagnostico de ingreso</label>
-                  <textarea v-model.trim="admitForm.admissionDiagnosis" rows="2" placeholder="Diagnostico inicial" :disabled="admitSaving" />
+                  <label for="hosp-m-diag">Diagnostico de ingreso</label>
+                  <textarea id="hosp-m-diag" name="hosp-m-diag" v-model.trim="admitForm.admissionDiagnosis" rows="2" placeholder="Diagnostico inicial" :disabled="admitSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>Indicaciones especiales</label>
-                  <textarea v-model.trim="admitForm.specialInstructions" rows="2" placeholder="Cuidados, aislamiento, dieta..." :disabled="admitSaving" />
+                  <label for="hosp-m-instructions">Indicaciones especiales</label>
+                  <textarea id="hosp-m-instructions" name="hosp-m-instructions" v-model.trim="admitForm.specialInstructions" rows="2" placeholder="Cuidados, aislamiento, dieta..." :disabled="admitSaving" />
                 </div>
               </div>
 
@@ -398,32 +408,32 @@
                 <div class="section-title" style="margin-bottom:12px">{{ t('hospitalizations.vitalSignsLabel') }}</div>
                 <div class="form-grid">
                   <div class="field">
-                    <label>{{ t('hospitalizations.heartRate') }}</label>
-                    <input v-model.number="monForm.heartRate" type="number" min="0" max="400" placeholder="80" :disabled="monSaving" />
+                    <label for="hosp-mon-hr">{{ t('hospitalizations.heartRate') }}</label>
+                    <input id="hosp-mon-hr" name="hosp-mon-hr" v-model.number="monForm.heartRate" type="number" min="0" max="400" placeholder="80" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.respiratoryRate') }}</label>
-                    <input v-model.number="monForm.respiratoryRate" type="number" min="0" max="200" placeholder="20" :disabled="monSaving" />
+                    <label for="hosp-mon-rr">{{ t('hospitalizations.respiratoryRate') }}</label>
+                    <input id="hosp-mon-rr" name="hosp-mon-rr" v-model.number="monForm.respiratoryRate" type="number" min="0" max="200" placeholder="20" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.temperature') }}</label>
-                    <input v-model.number="monForm.temperature" type="number" step="0.1" min="30" max="45" placeholder="38.5" :disabled="monSaving" />
+                    <label for="hosp-mon-temp">{{ t('hospitalizations.temperature') }}</label>
+                    <input id="hosp-mon-temp" name="hosp-mon-temp" v-model.number="monForm.temperature" type="number" step="0.1" min="30" max="45" placeholder="38.5" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.systolicBp') }}</label>
-                    <input v-model.number="monForm.systolicBp" type="number" min="0" max="300" placeholder="120" :disabled="monSaving" />
+                    <label for="hosp-mon-bp">{{ t('hospitalizations.systolicBp') }}</label>
+                    <input id="hosp-mon-bp" name="hosp-mon-bp" v-model.number="monForm.systolicBp" type="number" min="0" max="300" placeholder="120" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.mucousMembranes') }}</label>
-                    <input v-model.trim="monForm.mucousMembranes" type="text" placeholder="Rosadas, húmedas…" :disabled="monSaving" />
+                    <label for="hosp-mon-mucous">{{ t('hospitalizations.mucousMembranes') }}</label>
+                    <input id="hosp-mon-mucous" name="hosp-mon-mucous" v-model.trim="monForm.mucousMembranes" type="text" placeholder="Rosadas, húmedas…" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.hydrationStatus') }}</label>
-                    <input v-model.trim="monForm.hydrationStatus" type="text" placeholder="Normotenso, deshidratado…" :disabled="monSaving" />
+                    <label for="hosp-mon-hydration">{{ t('hospitalizations.hydrationStatus') }}</label>
+                    <input id="hosp-mon-hydration" name="hosp-mon-hydration" v-model.trim="monForm.hydrationStatus" type="text" placeholder="Normotenso, deshidratado…" :disabled="monSaving" />
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.consciousnessLevel') }}</label>
-                    <select v-model="monForm.consciousnessLevel" :disabled="monSaving">
+                    <label for="hosp-mon-consciousness">{{ t('hospitalizations.consciousnessLevel') }}</label>
+                    <select id="hosp-mon-consciousness" name="hosp-mon-consciousness" v-model="monForm.consciousnessLevel" :disabled="monSaving">
                       <option value="">— {{ t('common.none') }} —</option>
                       <option value="alert">{{ t('hospitalizations.consciousnessAlert') }}</option>
                       <option value="lethargic">{{ t('hospitalizations.consciousnessLethargic') }}</option>
@@ -432,8 +442,8 @@
                     </select>
                   </div>
                   <div class="field field--full">
-                    <label>{{ t('hospitalizations.notes') }}</label>
-                    <textarea v-model.trim="monForm.notes" rows="2" :placeholder="t('common.notes')" :disabled="monSaving" />
+                    <label for="hosp-mon-notes">{{ t('hospitalizations.notes') }}</label>
+                    <textarea id="hosp-mon-notes" name="hosp-mon-notes" v-model.trim="monForm.notes" rows="2" :placeholder="t('common.notes')" :disabled="monSaving" />
                   </div>
                 </div>
                 <div v-if="monError" class="alert alert--error" style="margin-top:8px" role="alert">{{ monError }}</div>
@@ -467,27 +477,27 @@
                 <div class="section-title" style="margin-bottom:12px">{{ t('hospitalizations.prescribeMedication') }}</div>
                 <div class="form-grid">
                   <div class="field field--full">
-                    <label>{{ t('hospitalizations.medication') }} <span class="req">*</span></label>
-                    <input v-model.trim="medForm.medicationName" type="text" :placeholder="t('common.name')" :disabled="medSaving" />
+                    <label for="hosp-med-name">{{ t('hospitalizations.medication') }} <span class="req">*</span></label>
+                    <input id="hosp-med-name" name="hosp-med-name" v-model.trim="medForm.medicationName" type="text" :placeholder="t('common.name')" :disabled="medSaving" />
                     <span v-if="mfe.medicationName" class="field-error">{{ mfe.medicationName }}</span>
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.dose') }} <span class="req">*</span></label>
-                    <input v-model.trim="medForm.dose" type="text" :placeholder="t('hospitalizations.dose')" :disabled="medSaving" />
+                    <label for="hosp-med-dose">{{ t('hospitalizations.dose') }} <span class="req">*</span></label>
+                    <input id="hosp-med-dose" name="hosp-med-dose" v-model.trim="medForm.dose" type="text" :placeholder="t('hospitalizations.dose')" :disabled="medSaving" />
                     <span v-if="mfe.dose" class="field-error">{{ mfe.dose }}</span>
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.unit') }}</label>
-                    <input v-model.trim="medForm.doseUnit" type="text" :placeholder="t('hospitalizations.unit')" :disabled="medSaving" />
+                    <label for="hosp-med-unit">{{ t('hospitalizations.unit') }}</label>
+                    <input id="hosp-med-unit" name="hosp-med-unit" v-model.trim="medForm.doseUnit" type="text" :placeholder="t('hospitalizations.unit')" :disabled="medSaving" />
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.frequency') }} <span class="req">*</span></label>
-                    <input v-model.trim="medForm.frequency" type="text" :placeholder="t('hospitalizations.frequency')" :disabled="medSaving" />
+                    <label for="hosp-med-frequency">{{ t('hospitalizations.frequency') }} <span class="req">*</span></label>
+                    <input id="hosp-med-frequency" name="hosp-med-frequency" v-model.trim="medForm.frequency" type="text" :placeholder="t('hospitalizations.frequency')" :disabled="medSaving" />
                     <span v-if="mfe.frequency" class="field-error">{{ mfe.frequency }}</span>
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.route') }} <span class="req">*</span></label>
-                    <select v-model="medForm.route" :disabled="medSaving">
+                    <label for="hosp-med-route">{{ t('hospitalizations.route') }} <span class="req">*</span></label>
+                    <select id="hosp-med-route" name="hosp-med-route" v-model="medForm.route" :disabled="medSaving">
                       <option value="">{{ t('common.choose') }}</option>
                       <option value="oral">Oral</option>
                       <option value="iv">IV</option>
@@ -499,17 +509,17 @@
                     <span v-if="mfe.route" class="field-error">{{ mfe.route }}</span>
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.start') }} <span class="req">*</span></label>
-                    <input v-model="medForm.startDatetime" type="datetime-local" :disabled="medSaving" />
+                    <label for="hosp-med-start">{{ t('hospitalizations.start') }} <span class="req">*</span></label>
+                    <input id="hosp-med-start" name="hosp-med-start" v-model="medForm.startDatetime" type="datetime-local" :disabled="medSaving" />
                     <span v-if="mfe.startDatetime" class="field-error">{{ mfe.startDatetime }}</span>
                   </div>
                   <div class="field">
-                    <label>{{ t('hospitalizations.durationHours') }}</label>
-                    <input v-model.number="medForm.durationHours" type="number" min="1" :placeholder="t('hospitalizations.durationHours')" :disabled="medSaving" />
+                    <label for="hosp-med-duration">{{ t('hospitalizations.durationHours') }}</label>
+                    <input id="hosp-med-duration" name="hosp-med-duration" v-model.number="medForm.durationHours" type="number" min="1" :placeholder="t('hospitalizations.durationHours')" :disabled="medSaving" />
                   </div>
                   <div class="field field--full">
-                    <label>{{ t('hospitalizations.notes') }}</label>
-                    <textarea v-model.trim="medForm.notes" rows="2" :placeholder="t('common.notes')" :disabled="medSaving" />
+                    <label for="hosp-med-notes">{{ t('hospitalizations.notes') }}</label>
+                    <textarea id="hosp-med-notes" name="hosp-med-notes" v-model.trim="medForm.notes" rows="2" :placeholder="t('common.notes')" :disabled="medSaving" />
                   </div>
                 </div>
                 <div v-if="medError" class="alert alert--error" style="margin-top:8px" role="alert">{{ medError }}</div>
@@ -551,8 +561,10 @@
                 <p>{{ t('hospitalizations.dischargeConfirm', { patient: dischargeTarget?.patient_name || '' }) }}</p>
               </div>
               <div class="field field--full">
-                <label>{{ t('hospitalizations.dischargeNotes') }}</label>
+                <label for="hosp-dis-notes">{{ t('hospitalizations.dischargeNotes') }}</label>
                 <textarea
+                  id="hosp-dis-notes"
+                  name="hosp-dis-notes"
                   v-model.trim="dischargeForm.dischargeNotes"
                   rows="3"
                   :placeholder="t('common.notes')"
@@ -560,8 +572,8 @@
                 />
               </div>
               <div class="field field--full">
-                <label>{{ t('hospitalizations.followUpDate') }}</label>
-                <input v-model="dischargeForm.followUpDate" type="date" :disabled="dischargeSaving" />
+                <label for="hosp-dis-followup">{{ t('hospitalizations.followUpDate') }}</label>
+                <input id="hosp-dis-followup" name="hosp-dis-followup" v-model="dischargeForm.followUpDate" type="date" :disabled="dischargeSaving" />
               </div>
             </div>
             <div v-if="dischargeError" class="alert alert--error mx" role="alert">{{ dischargeError }}</div>
@@ -582,67 +594,20 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import http from '../api/client'
 import { t } from '../i18n'
 import BaseButton from '../components/base/BaseButton.vue'
-
-function asArray(value) {
-  if (Array.isArray(value)) return value
-  if (value == null) return []
-  return [value]
-}
-
-function normalizeHospitalization(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.hospitalization_id ?? row.hospitalizationId ?? null,
-    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
-    species: row.species ?? row.species_name ?? row.speciesName ?? '',
-    responsible_vet: row.responsible_vet ?? row.attending_vet_name ?? row.attendingVetName ?? '',
-    ward_name: row.ward_name ?? row.ward?.name ?? row.wardName ?? '',
-    kennel_number: row.kennel_number ?? row.kennel?.number ?? row.kennelNumber ?? '',
-    status: row.status ?? '',
-    discharge_date: row.discharge_date ?? row.dischargeDate ?? null,
-    days_hospitalized: row.days_hospitalized ?? row.daysHospitalized ?? null,
-    estimated_discharge_date: row.estimated_discharge_date ?? row.estimatedDischargeDate ?? null,
-    last_temp: row.last_temp ?? row.lastTemp ?? null,
-    last_hr: row.last_hr ?? row.lastHr ?? null,
-    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
-    admission_diagnosis: row.admission_diagnosis ?? row.admissionDiagnosis ?? '',
-    admission_weight: row.admission_weight ?? row.admissionWeight ?? null,
-    special_instructions: row.special_instructions ?? row.specialInstructions ?? '',
-  }
-}
-
-function normalizeWard(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.ward_id ?? row.wardId ?? null,
-    name: row.name ?? row.ward_name ?? row.wardName ?? '',
-    available_kennels: row.available_kennels ?? row.availableKennels ?? 0,
-    kennels: asArray(row.kennels).map((k) => ({
-      ...k,
-      id: k.id ?? k.kennel_id ?? k.kennelId ?? null,
-      number: k.number ?? k.kennel_number ?? k.kennelNumber ?? '',
-      status: k.status ?? '',
-      kennel_type: k.kennel_type ?? k.kennelType ?? '',
-    })),
-  }
-}
-
-function normalizePatient(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.patient_id ?? row.patientId ?? null,
-    name: row.name ?? row.full_name ?? row.fullName ?? '',
-    species: row.species ?? row.species_name ?? row.speciesName ?? '',
-    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
-    hc_number: row.hc_number ?? row.hcNumber ?? '',
-  }
-}
+import { logError } from '../utils/errors'
+import {
+  addMedication as addMedicationRequest,
+  addMonitoringRecord as addMonitoringRecordRequest,
+  admitPatient as admitPatientRequest,
+  dischargeHospitalization as dischargeHospitalizationRequest,
+  getHospitalizationDetail as getHospitalizationDetailRequest,
+  loadAvailableWards as loadAvailableWardsRequest,
+  loadHospitalizations as loadHospitalizationsRequest,
+  loadHospitalizationsBoard as loadHospitalizationsBoardRequest,
+  searchPatients as searchPatientsRequest,
+} from '../composables/hospitalizations/useHospitalizationsDomain'
 
 // ── Vista ────────────────────────────────────────────────────────────────────
 const viewMode = ref('list')
@@ -661,10 +626,7 @@ async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
     const pageSize = 15
-    const params = {}
-    if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await http.get('/hospitalizations', { params })
-    const rows = asArray(data?.data || data?.hospitalizations || data).map(normalizeHospitalization).filter(Boolean)
+    const rows = await loadHospitalizationsRequest({ status: statusFilter.value })
     const needle = search.value.trim().toLowerCase()
     const filtered = needle
       ? rows.filter((row) => [row.patient_name, row.species, row.responsible_vet, row.ward_name, row.kennel_number]
@@ -705,8 +667,7 @@ const boardError   = ref('')
 async function loadBoard() {
   boardLoading.value = true; boardError.value = ''
   try {
-    const { data } = await http.get('/hospitalizations/board')
-    boardData.value = asArray(data?.data || data?.board || data).map(normalizeHospitalization).filter(Boolean)
+    boardData.value = await loadHospitalizationsBoardRequest()
   } catch (e) {
     boardError.value = e.response?.data?.message || 'No se pudo cargar el tablero'
   } finally { boardLoading.value = false }
@@ -724,9 +685,11 @@ const wardsLoading   = ref(false)
 async function loadWards() {
   wardsLoading.value = true
   try {
-    const { data } = await http.get('/hospitalizations/wards/availability')
-    availableWards.value = asArray(data?.data || data?.wards || data).map(normalizeWard).filter(Boolean)
-  } catch { availableWards.value = [] }
+    availableWards.value = await loadAvailableWardsRequest()
+  } catch (error) {
+    logError('hospitalizaciones.loadWards', error)
+    availableWards.value = []
+  }
   finally { wardsLoading.value = false }
 }
 
@@ -787,9 +750,11 @@ async function searchPatients() {
   if (patientSearch.value.length < 2) { patientResults.value = []; return }
   patientTimer = setTimeout(async () => {
     try {
-      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { patientResults.value = [] }
+      patientResults.value = await searchPatientsRequest(patientSearch.value)
+    } catch (error) {
+      logError('hospitalizaciones.searchPatients', error, { search: patientSearch.value })
+      patientResults.value = []
+    }
   }, 300)
 }
 
@@ -845,22 +810,11 @@ async function handleAdmit() {
   if (!validateAdmit()) return
   admitSaving.value = true; admitError.value = ''
   try {
-    const payload = {
-      patientId:       admitForm.patientId,
-      wardId:          admitForm.wardId,
-      attendingVetId:  admitForm.attendingVetId,
-      admissionReason: admitForm.admissionReason,
-    }
-    if (admitForm.kennelId) payload.kennelId = admitForm.kennelId
-    if (admitForm.admissionDiagnosis) payload.admissionDiagnosis = admitForm.admissionDiagnosis
-    if (admitForm.admissionWeight) payload.admissionWeight = admitForm.admissionWeight
-    if (admitForm.estimatedDischargeDate) payload.estimatedDischargeDate = admitForm.estimatedDischargeDate
-    if (admitForm.specialInstructions) payload.specialInstructions = admitForm.specialInstructions
-    await http.post('/hospitalizations', payload)
+    await admitPatientRequest(admitForm)
     showAdmit.value = false
     await load()
   } catch (e) {
-    admitError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo admitir el paciente'
+    admitError.value = e.response?.data?.message || 'No se pudo admitir el paciente.'
   } finally { admitSaving.value = false }
 }
 
@@ -878,9 +832,11 @@ async function openHospDetail(hosp) {
   resetMonForm()
   resetMedForm()
   try {
-    const { data } = await http.get(`/hospitalizations/${hosp.id}`)
-    detailData.value = data.data || data
-  } catch { detailData.value = hosp }
+    detailData.value = await getHospitalizationDetailRequest(hosp.id)
+  } catch (error) {
+    logError('hospitalizaciones.openDetail', error, { hospitalizationId: hosp?.id })
+    detailData.value = hosp
+  }
   finally { detailLoading.value = false }
 }
 
@@ -906,22 +862,11 @@ function resetMonForm() {
 async function handleMonitoring() {
   monSaving.value = true; monError.value = ''
   try {
-    const payload = {}
-    if (monForm.heartRate)          payload.heartRate          = monForm.heartRate
-    if (monForm.respiratoryRate)    payload.respiratoryRate    = monForm.respiratoryRate
-    if (monForm.temperature)        payload.temperature        = monForm.temperature
-    if (monForm.systolicBp)         payload.systolicBp         = monForm.systolicBp
-    if (monForm.mucousMembranes)    payload.mucousMembranes    = monForm.mucousMembranes
-    if (monForm.hydrationStatus)    payload.hydrationStatus    = monForm.hydrationStatus
-    if (monForm.consciousnessLevel) payload.consciousnessLevel = monForm.consciousnessLevel
-    if (monForm.notes)              payload.notes              = monForm.notes
-    await http.post(`/hospitalizations/${detailData.value.id}/monitoring`, payload)
-    // Refrescar detalle
-    const { data } = await http.get(`/hospitalizations/${detailData.value.id}`)
-    detailData.value = data.data || data
+    await addMonitoringRecordRequest(detailData.value.id, monForm)
+    detailData.value = await getHospitalizationDetailRequest(detailData.value.id)
     resetMonForm()
   } catch (e) {
-    monError.value = e.response?.data?.message || 'No se pudo registrar el monitoreo'
+    monError.value = e.response?.data?.message || 'No se pudo registrar el monitoreo.'
   } finally { monSaving.value = false }
 }
 
@@ -960,22 +905,11 @@ async function handleMedication() {
   if (!validateMed()) return
   medSaving.value = true; medError.value = ''
   try {
-    const payload = {
-      medicationName: medForm.medicationName,
-      dose:           medForm.dose,
-      frequency:      medForm.frequency,
-      route:          medForm.route,
-      startDatetime:  medForm.startDatetime,
-    }
-    if (medForm.doseUnit)      payload.doseUnit      = medForm.doseUnit
-    if (medForm.durationHours) payload.durationHours = medForm.durationHours
-    if (medForm.notes)         payload.notes         = medForm.notes
-    await http.post(`/hospitalizations/${detailData.value.id}/medications`, payload)
-    const { data } = await http.get(`/hospitalizations/${detailData.value.id}`)
-    detailData.value = data.data || data
+    await addMedicationRequest(detailData.value.id, medForm)
+    detailData.value = await getHospitalizationDetailRequest(detailData.value.id)
     resetMedForm()
   } catch (e) {
-    medError.value = e.response?.data?.message || 'No se pudo prescribir el medicamento'
+    medError.value = e.response?.data?.message || 'No se pudo prescribir el medicamento.'
   } finally { medSaving.value = false }
 }
 
@@ -996,14 +930,11 @@ function openDischarge(hosp) {
 async function handleDischarge() {
   dischargeSaving.value = true; dischargeError.value = ''
   try {
-    const payload = {}
-    if (dischargeForm.dischargeNotes) payload.dischargeNotes = dischargeForm.dischargeNotes
-    if (dischargeForm.followUpDate)   payload.followUpDate   = dischargeForm.followUpDate
-    await http.patch(`/hospitalizations/${dischargeTarget.value.id}/discharge`, payload)
+    await dischargeHospitalizationRequest(dischargeTarget.value.id, dischargeForm)
     showDischarge.value = false
     await load()
   } catch (e) {
-    dischargeError.value = e.response?.data?.message || 'No se pudo registrar el alta'
+    dischargeError.value = e.response?.data?.message || 'No se pudo registrar el alta.'
   } finally { dischargeSaving.value = false }
 }
 
@@ -1011,6 +942,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

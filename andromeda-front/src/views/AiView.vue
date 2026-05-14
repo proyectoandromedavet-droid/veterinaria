@@ -16,19 +16,19 @@
       <section class="card">
         <h3>Diagnostico asistido</h3>
         <div class="field">
-          <label>Paciente</label>
-          <select v-model="diagnosisForm.patientId">
+          <label for="diag-patient">Paciente</label>
+          <select id="diag-patient" name="diag-patient" v-model="diagnosisForm.patientId">
             <option value="">Seleccionar</option>
             <option v-for="p in patients" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
           </select>
         </div>
         <div class="field">
-          <label>Sintomas</label>
-          <input v-model.trim="diagnosisForm.symptoms" type="text" placeholder="vomitos, diarrea, letargo" />
+          <label for="diag-symptoms">Sintomas</label>
+          <input id="diag-symptoms" name="diag-symptoms" v-model.trim="diagnosisForm.symptoms" type="text" placeholder="vomitos, diarrea, letargo" />
         </div>
         <div class="field">
-          <label>Anamnesis</label>
-          <textarea v-model.trim="diagnosisForm.anamnesis" rows="4" placeholder="Contexto clinico adicional" />
+          <label for="diag-anamnesis">Anamnesis</label>
+          <textarea id="diag-anamnesis" name="diag-anamnesis" v-model.trim="diagnosisForm.anamnesis" rows="4" placeholder="Contexto clinico adicional" />
         </div>
         <BaseButton @click="runDiagnosis" :disabled="loadingDiagnosis">Analizar</BaseButton>
 
@@ -51,8 +51,8 @@
       <section class="card">
         <h3>Riesgo del paciente</h3>
         <div class="field">
-          <label>Paciente</label>
-          <select v-model="riskPatientId">
+          <label for="risk-patient">Paciente</label>
+          <select id="risk-patient" name="risk-patient" v-model="riskPatientId">
             <option value="">Seleccionar</option>
             <option v-for="p in patients" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
           </select>
@@ -83,8 +83,8 @@
       <h3>Chat clinico</h3>
       <div class="chat-toolbar">
         <div class="field field--grow">
-          <label>Paciente opcional</label>
-          <select v-model="chatPatientId">
+          <label for="chat-patient">Paciente opcional</label>
+          <select id="chat-patient" name="chat-patient" v-model="chatPatientId">
             <option value="">Sin contexto</option>
             <option v-for="p in patients" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
           </select>
@@ -99,7 +99,7 @@
         <div v-if="!chatMessages.length" class="empty-state">Todavia no hay mensajes.</div>
       </div>
       <div class="chat-input">
-        <textarea v-model.trim="chatInput" rows="3" placeholder="Escribi una consulta clinica..." />
+        <textarea id="chat-input" name="chat-input" v-model.trim="chatInput" rows="3" placeholder="Escribi una consulta clinica..." />
         <BaseButton @click="sendChat" :disabled="loadingChat || !chatInput">Enviar</BaseButton>
       </div>
     </section>
@@ -110,6 +110,7 @@
 import { onMounted, ref } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import { aiApi, patientsApi } from '../api'
+import { extractErrorMessage } from '../utils/errors'
 
 const error = ref('')
 const loadingPatients = ref(false)
@@ -156,7 +157,7 @@ async function loadPatients() {
       name: row.name || row.patient_name || `Paciente ${row.id}`,
     }))
   } catch (e) {
-    error.value = e.response?.data?.error?.message || 'No se pudieron cargar los pacientes.'
+    error.value = extractErrorMessage(e, 'No se pudieron cargar los pacientes.', { includeRequestId: true })
   } finally {
     loadingPatients.value = false
   }
@@ -175,7 +176,7 @@ async function runDiagnosis() {
     const { data } = await aiApi.diagnosis(payload)
     diagnosisResult.value = data?.data || null
   } catch (e) {
-    error.value = e.response?.data?.error?.message || 'No se pudo ejecutar el diagnostico asistido.'
+    error.value = extractErrorMessage(e, 'No se pudo ejecutar el diagnostico asistido.', { includeRequestId: true })
   } finally {
     loadingDiagnosis.value = false
   }
@@ -193,7 +194,7 @@ async function loadRisk() {
     riskResult.value = risk?.data || null
     riskHistory.value = asArray(history?.data)
   } catch (e) {
-    error.value = e.response?.data?.error?.message || 'No se pudo calcular el riesgo del paciente.'
+    error.value = extractErrorMessage(e, 'No se pudo calcular el riesgo del paciente.', { includeRequestId: true })
   } finally {
     loadingRisk.value = false
   }
@@ -227,7 +228,7 @@ async function sendChat() {
     }
   } catch (e) {
     chatMessages.value.pop()
-    error.value = e.response?.data?.error?.message || 'No se pudo completar la conversacion.'
+    error.value = extractErrorMessage(e, 'No se pudo completar la conversacion.', { includeRequestId: true })
   } finally {
     loadingChat.value = false
   }

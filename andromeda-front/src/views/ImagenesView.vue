@@ -39,12 +39,18 @@
 
     <!-- Filtros -->
     <div class="filters">
+      <label for="img-search" class="sr-only">{{ t('imaging.searchPlaceholder') }}</label>
       <input
+        id="img-search"
+        name="img-search"
         v-model.trim="search"
         type="search"
         :placeholder="t('imaging.searchPlaceholder')"
+        class="filter-input filter-input--grow"
+        @input="debouncedLoad()"
         />
-      <select v-model="statusFilter" class="filter-select" @change="load()">
+      <label for="img-status" class="sr-only">{{ t('imaging.allStatuses') }}</label>
+      <select id="img-status" name="img-status" v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">{{ t('imaging.allStatuses') }}</option>
         <option value="pending">{{ t('imaging.pendingStatus') }}</option>
         <option value="scheduled">{{ t('imaging.scheduledStatus') }}</option>
@@ -150,8 +156,10 @@
 
               <!-- Paciente autocomplete -->
               <div class="field field--full" style="position:relative">
-                <label>{{ t('imaging.patientLabel') }} <span class="req">*</span></label>
+                <label for="img-m-patient">{{ t('imaging.patientLabel') }} <span class="req">*</span></label>
                 <input
+                  id="img-m-patient"
+                  name="img-m-patient"
                   v-model.trim="patientSearch"
                   type="search"
                   :placeholder="t('imaging.patientSearchPlaceholder')"
@@ -181,8 +189,8 @@
               <div class="form-grid">
                 <!-- Tipo de imagen -->
                 <div class="field field--full">
-                  <label>{{ t('imaging.typeLabel') }} <span class="req">*</span></label>
-                  <select v-model="orderForm.imagingTypeId" :disabled="saving || typesLoading">
+                  <label for="img-m-type">{{ t('imaging.typeLabel') }} <span class="req">*</span></label>
+                  <select id="img-m-type" name="img-m-type" v-model="orderForm.imagingTypeId" :disabled="saving || typesLoading">
                     <option value="">{{ typesLoading ? t('imaging.typeLoading') : t('imaging.typePlaceholder') }}</option>
                     <option v-for="t in imagingTypes" :key="t.id" :value="t.id">
                       {{ t.name }} ({{ t.modality ? t.modality.toUpperCase() : '' }})
@@ -200,8 +208,8 @@
                 </div>
 
                 <div class="field">
-                  <label>{{ t('imaging.priorityLabel') }}</label>
-                  <select v-model="orderForm.priority" :disabled="saving">
+                  <label for="img-m-priority">{{ t('imaging.priorityLabel') }}</label>
+                  <select id="img-m-priority" name="img-m-priority" v-model="orderForm.priority" :disabled="saving">
                     <option value="routine">{{ t('imaging.routine') }}</option>
                     <option value="urgent">{{ t('imaging.urgent') }}</option>
                     <option value="emergency">{{ t('imaging.emergency') }}</option>
@@ -216,8 +224,10 @@
                 </div>
 
                 <div class="field field--full">
-                  <label>{{ t('imaging.clinicalNotes') }}</label>
+                  <label for="img-m-notes">{{ t('imaging.clinicalNotes') }}</label>
                   <textarea
+                    id="img-m-notes"
+                    name="img-m-notes"
                     v-model.trim="orderForm.clinicalNotes"
                     rows="3"
                     :placeholder="t('imaging.clinicalNotes')"
@@ -282,8 +292,10 @@
               <div class="form-body">
                 <div class="form-grid">
                   <div class="field field--full">
-                    <label>{{ t('imaging.findings') }} <span class="req">*</span></label>
+                    <label for="img-r-findings">{{ t('imaging.findings') }} <span class="req">*</span></label>
                     <textarea
+                      id="img-r-findings"
+                      name="img-r-findings"
                       v-model.trim="reportForm.findings"
                       rows="4"
                       :placeholder="t('imaging.findings')"
@@ -292,8 +304,10 @@
                     <span v-if="rfe.findings" class="field-error">{{ rfe.findings }}</span>
                   </div>
                   <div class="field field--full">
-                    <label>{{ t('imaging.conclusion') }} <span class="req">*</span></label>
+                    <label for="img-r-conclusion">{{ t('imaging.conclusion') }} <span class="req">*</span></label>
                     <textarea
+                      id="img-r-conclusion"
+                      name="img-r-conclusion"
                       v-model.trim="reportForm.conclusion"
                       rows="3"
                       :placeholder="t('imaging.conclusion')"
@@ -302,8 +316,10 @@
                     <span v-if="rfe.conclusion" class="field-error">{{ rfe.conclusion }}</span>
                   </div>
                   <div class="field field--full">
-                    <label>{{ t('imaging.recommendations') }}</label>
+                    <label for="img-r-recommendations">{{ t('imaging.recommendations') }}</label>
                     <textarea
+                      id="img-r-recommendations"
+                      name="img-r-recommendations"
                       v-model.trim="reportForm.recommendations"
                       rows="2"
                       :placeholder="t('imaging.recommendations')"
@@ -311,8 +327,10 @@
                     />
                   </div>
                   <div class="field">
-                    <label>{{ t('imaging.radiologist') }}</label>
+                    <label for="img-r-radiologist">{{ t('imaging.radiologist') }}</label>
                     <input
+                      id="img-r-radiologist"
+                      name="img-r-radiologist"
                       v-model.trim="reportForm.radiologistName"
                       type="text"
                       :placeholder="t('imaging.radiologist')"
@@ -344,6 +362,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
 import { t } from '../i18n'
+import { extractErrorMessage, logError } from '../utils/errors'
 import BaseButton from '../components/base/BaseButton.vue'
 
 // ── Lista de órdenes ────────────────────────────────────────────────────────
@@ -422,7 +441,7 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las órdenes'
+    error.value = extractErrorMessage(e, 'No se pudieron cargar las órdenes.', { includeRequestId: true })
   } finally { loading.value = false }
 }
 
@@ -497,7 +516,7 @@ async function loadImagingTypes() {
   try {
     const { data } = await http.get('/imaging/types')
     imagingTypes.value = asArray(data?.data || data).map(normalizeImagingType).filter(Boolean)
-  } catch { imagingTypes.value = [] }
+  } catch (error) { logError('imagenes.loadTypes', error); imagingTypes.value = [] }
   finally { typesLoading.value = false }
 }
 
@@ -535,7 +554,7 @@ async function searchPatients() {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { patientResults.value = [] }
+    } catch (error) { logError('imagenes.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
 }
 
@@ -579,7 +598,7 @@ async function handleCreateOrder() {
     showNewOrder.value = false
     await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo crear la orden'
+    saveError.value = extractErrorMessage(e, 'No se pudo crear la orden.', { includeRequestId: true })
   } finally { saving.value = false }
 }
 
@@ -608,7 +627,7 @@ async function openReport(order) {
     existingReport.value = detail?.report || null
     // Pre-rellenar si ya tiene informe para edición futura (solo lectura en este caso)
   } catch (e) {
-    reportError.value = e.response?.data?.message || 'No se pudo cargar el detalle'
+    reportError.value = extractErrorMessage(e, 'No se pudo cargar el detalle.', { includeRequestId: true })
   } finally { detailLoading.value = false }
 }
 
@@ -630,7 +649,7 @@ async function handleSubmitReport() {
     showReport.value = false
     await load()
   } catch (e) {
-    reportError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo guardar el informe'
+    reportError.value = extractErrorMessage(e, 'No se pudo guardar el informe.', { includeRequestId: true })
   } finally { savingReport.value = false }
 }
 
@@ -638,6 +657,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

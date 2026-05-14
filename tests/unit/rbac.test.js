@@ -37,58 +37,58 @@ function mockRes() {
 }
 
 describe('requirePermission middleware', () => {
-  test('calls next() when permission is granted', () => {
+  test('calls next() when permission is granted', async () => {
     const req  = { user: { roles: ['veterinarian'] } };
     const res  = mockRes();
     const next = jest.fn();
-    requirePermission('appointments:read')(req, res, next);
+    await requirePermission('appointments:read')(req, res, next);
     expect(next).toHaveBeenCalledTimes(1);
     expect(res._status).toBe(200);
   });
 
-  test('returns 403 when permission is denied', () => {
+  test('returns 403 when permission is denied', async () => {
     const req  = { user: { roles: ['groomer'] } };
     const res  = mockRes();
     const next = jest.fn();
-    requirePermission('surgery:create')(req, res, next);
+    await requirePermission('surgery:create')(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res._status).toBe(403);
   });
 });
 
 describe('requireAny middleware', () => {
-  test('passes when any permission is met', () => {
+  test('passes when any permission is met', async () => {
     const req  = { user: { roles: ['receptionist'] } };
     const res  = mockRes();
     const next = jest.fn();
-    requireAny('surgery:create', 'appointments:read')(req, res, next);
+    await requireAny('surgery:create', 'appointments:read')(req, res, next);
     expect(next).toHaveBeenCalled();
   });
 
-  test('blocks when no permission is met', () => {
+  test('blocks when no permission is met', async () => {
     const req  = { user: { roles: ['groomer'] } };
     const res  = mockRes();
     const next = jest.fn();
-    requireAny('surgery:create', 'lab:delete')(req, res, next);
+    await requireAny('surgery:create', 'lab:delete')(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res._status).toBe(403);
   });
 });
 
 describe('requireAll middleware', () => {
-  test('passes when all permissions are met', () => {
+  test('passes when all permissions are met', async () => {
     const req  = { user: { roles: ['org_admin'] } };
     const res  = mockRes();
     const next = jest.fn();
-    requireAll('patients:read', 'invoices:create', 'reports:read')(req, res, next);
+    await requireAll('patients:read', 'invoices:create', 'reports:read')(req, res, next);
     expect(next).toHaveBeenCalled();
   });
 
-  test('blocks when any permission is missing', () => {
+  test('blocks when any permission is missing', async () => {
     const req  = { user: { roles: ['groomer'] } };
     const res  = mockRes();
     const next = jest.fn();
-    requireAll('grooming:read', 'invoices:delete')(req, res, next);
+    await requireAll('grooming:read', 'invoices:delete')(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res._status).toBe(403);
   });

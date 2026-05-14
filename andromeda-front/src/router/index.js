@@ -9,6 +9,12 @@ const routes = [
     meta: { public: true },
   },
   {
+    path: '/portal',
+    name: 'portal',
+    component: () => import('../views/PortalView.vue'),
+    meta: { public: true },
+  },
+  {
     path: '/',
     component: () => import('../layouts/AppLayout.vue'),
     meta: { requiresAuth: true },
@@ -25,7 +31,6 @@ const routes = [
       { path: 'reportes',  name: 'reportes',     component: () => import('../views/ReportesView.vue') },
       { path: 'notificaciones', name: 'notificaciones', component: () => import('../views/NotificationsView.vue') },
       { path: 'documentos', name: 'documentos', component: () => import('../views/DocumentosView.vue') },
-      { path: 'portal', name: 'portal', component: () => import('../views/PortalView.vue') },
       { path: 'ai', name: 'ai', component: () => import('../views/AiView.vue') },
       { path: 'laboratorio',      name: 'laboratorio',      component: () => import('../views/LaboratorioView.vue') },
       { path: 'imagenes',         name: 'imagenes',         component: () => import('../views/ImagenesView.vue') },

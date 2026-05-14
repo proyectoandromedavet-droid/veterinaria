@@ -10,6 +10,9 @@
 
 const crypto = require('crypto');
 const db = require('./db');
+const { createLogger } = require('./logger');
+
+const log = createLogger('audit');
 
 // Fields that should never be stored in audit logs
 const REDACT = new Set([
@@ -106,7 +109,9 @@ function auditMiddleware(options = {}) {
       };
 
       // Fire-and-forget — don't block the response
-      writeAuditLog(entry).catch(() => {});
+      writeAuditLog(entry).catch((err) => {
+        log.warn('Audit log enqueue failed', { error: err.message, resource: autoRes });
+      });
     });
 
     next();
@@ -131,8 +136,8 @@ async function writeAuditLog(entry) {
       { ...entry, prev_hash: prevHash, entry_hash: entryHash },
     );
     await writeImmutableAuditLog({ auditEntry: entry, immutablePayload, prevHash, entryHash });
-  } catch (_) {
-    // Audit write failures must not crash the application
+  } catch (err) {
+    log.warn('Audit write failed', { error: err.message, orgId: entry.org_id, resource: entry.resource });
   }
 }
 

@@ -4,9 +4,10 @@
  * Si la clave no está configurada, todos los métodos lanzan un error controlado.
  */
 const logger = require('./logger');
+const { getSecret } = require('./secrets');
 
 function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
+  const key = getSecret('STRIPE_SECRET_KEY');
   if (!key) {
     throw Object.assign(
       new Error('Stripe not configured (STRIPE_SECRET_KEY missing)'),
@@ -155,7 +156,7 @@ async function getBillingPortalUrl(orgId, returnUrl) {
  */
 function constructWebhookEvent(payload, signature) {
   const stripe = getStripe();
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  const secret = getSecret('STRIPE_WEBHOOK_SECRET');
   if (!secret) throw Object.assign(new Error('STRIPE_WEBHOOK_SECRET not configured'), { http: 500 });
   return stripe.webhooks.constructEvent(payload, signature, secret);
 }

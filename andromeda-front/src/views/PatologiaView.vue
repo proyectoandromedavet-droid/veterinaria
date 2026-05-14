@@ -27,13 +27,15 @@
 
     <!-- Filtros -->
     <div class="filters">
-      <select v-model="statusFilter" class="filter-select" @change="load()">
+      <label for="path-status" class="sr-only">{{ t('common.allStatuses') }}</label>
+      <select id="path-status" name="path-status" v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">{{ t('common.allStatuses') }}</option>
         <option value="pending">{{ t('common.pending') }}</option>
         <option value="processing">{{ t('pathology.processing') }}</option>
         <option value="reported">{{ t('pathology.reported') }}</option>
       </select>
-      <input v-model.trim="search" type="search" :placeholder="t('pathology.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <label for="path-search" class="sr-only">{{ t('pathology.searchPlaceholder') }}</label>
+      <input id="path-search" name="path-search" v-model.trim="search" type="search" :placeholder="t('pathology.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
     <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> {{ t('pathology.loading') }}</div>
@@ -92,8 +94,8 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>{{ t('pathology.patientLabel') }} <span class="req">*</span></label>
-                  <input v-model.trim="patientSearch" type="search" :placeholder="t('pathology.patientPlaceholder')" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <label for="path-m-patient">{{ t('pathology.patientLabel') }} <span class="req">*</span></label>
+                  <input id="path-m-patient" name="path-m-patient" v-model.trim="patientSearch" type="search" :placeholder="t('pathology.patientPlaceholder')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                   <div v-if="patientResults.length" class="autocomplete">
                     <div v-for="pt in patientResults" :key="pt.id" class="autocomplete__item" @click="selectPatient(pt)">
                       🐾 <b>{{ pt.name }}</b>
@@ -104,16 +106,16 @@
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.typeLabel') }} <span class="req">*</span></label>
-                  <select v-model="orderForm.pathologyTypeId" :disabled="saving" required>
+                  <label for="path-m-type">{{ t('pathology.typeLabel') }} <span class="req">*</span></label>
+                  <select id="path-m-type" name="path-m-type" v-model="orderForm.pathologyTypeId" :disabled="saving" required>
                     <option value="">{{ t('pathology.typePlaceholder') }}</option>
                     <option v-for="t in pathologyTypes" :key="t.id" :value="t.id">{{ t.name }}</option>
                   </select>
                   <span v-if="fe.pathologyTypeId" class="field-error">{{ fe.pathologyTypeId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.historyLabel') }}</label>
-                  <textarea v-model.trim="orderForm.clinicalHistory" rows="3" :placeholder="t('pathology.historyPlaceholder')" :disabled="saving" />
+                  <label for="path-m-history">{{ t('pathology.historyLabel') }}</label>
+                  <textarea id="path-m-history" name="path-m-history" v-model.trim="orderForm.clinicalHistory" rows="3" :placeholder="t('pathology.historyPlaceholder')" :disabled="saving" />
                 </div>
 
                 <!-- Muestras -->
@@ -129,8 +131,8 @@
                     </div>
                     <div class="sample-grid">
                       <div class="field">
-                        <label>{{ t('pathology.sampleType') }}</label>
-                        <select v-model="s.sampleType" :disabled="saving">
+                        <label :for="`path-s-type-${i}`">{{ t('pathology.sampleType') }}</label>
+                        <select :id="`path-s-type-${i}`" :name="`path-s-type-${i}`" v-model="s.sampleType" :disabled="saving">
                           <option value="">{{ t('common.none') }}</option>
                           <option value="biopsy">{{ t('pathology.sampleBiopsy') }}</option>
                           <option value="cytology">{{ t('pathology.sampleCytology') }}</option>
@@ -141,16 +143,16 @@
                         </select>
                       </div>
                       <div class="field">
-                        <label>{{ t('pathology.anatomicalLocation') }}</label>
-                        <input v-model.trim="s.anatomicalLocation" type="text" :placeholder="t('pathology.anatomicalLocation')" :disabled="saving" />
+                        <label :for="`path-s-loc-${i}`">{{ t('pathology.anatomicalLocation') }}</label>
+                        <input :id="`path-s-loc-${i}`" :name="`path-s-loc-${i}`" v-model.trim="s.anatomicalLocation" type="text" :placeholder="t('pathology.anatomicalLocation')" :disabled="saving" />
                       </div>
                       <div class="field">
-                        <label>{{ t('pathology.collectionDate') }}</label>
-                        <input v-model="s.collectionDate" type="date" :disabled="saving" />
+                        <label :for="`path-s-date-${i}`">{{ t('pathology.collectionDate') }}</label>
+                        <input :id="`path-s-date-${i}`" :name="`path-s-date-${i}`" v-model="s.collectionDate" type="date" :disabled="saving" />
                       </div>
                       <div class="field">
-                        <label>{{ t('pathology.fixationMethod') }}</label>
-                        <select v-model="s.fixationMethod" :disabled="saving">
+                        <label :for="`path-s-fix-${i}`">{{ t('pathology.fixationMethod') }}</label>
+                        <select :id="`path-s-fix-${i}`" :name="`path-s-fix-${i}`" v-model="s.fixationMethod" :disabled="saving">
                           <option value="">{{ t('common.none') }}</option>
                           <option value="formalin_10">{{ t('pathology.fixationFormalin10') }}</option>
                           <option value="fresh">{{ t('pathology.fixationFresh') }}</option>
@@ -159,8 +161,8 @@
                         </select>
                       </div>
                       <div class="field field--full-sample">
-                        <label>{{ t('pathology.macroscopicDescription') }}</label>
-                        <textarea v-model.trim="s.macroscopicDescription" rows="2" :placeholder="t('pathology.macroscopicDescription')" :disabled="saving" />
+                        <label :for="`path-s-macro-${i}`">{{ t('pathology.macroscopicDescription') }}</label>
+                        <textarea :id="`path-s-macro-${i}`" :name="`path-s-macro-${i}`" v-model.trim="s.macroscopicDescription" rows="2" :placeholder="t('pathology.macroscopicDescription')" :disabled="saving" />
                       </div>
                     </div>
                   </div>
@@ -260,18 +262,18 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>{{ t('pathology.microscopicDescription') }} <span class="req">*</span></label>
-                  <textarea v-model.trim="resultForm.microscopicDescription" rows="4" :placeholder="t('pathology.microscopicDescription')" :disabled="resultSaving" required />
+                  <label for="path-r-micro">{{ t('pathology.microscopicDescription') }} <span class="req">*</span></label>
+                  <textarea id="path-r-micro" name="path-r-micro" v-model.trim="resultForm.microscopicDescription" rows="4" :placeholder="t('pathology.microscopicDescription')" :disabled="resultSaving" required />
                   <span v-if="rfe.microscopicDescription" class="field-error">{{ rfe.microscopicDescription }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.diagnosis') }} <span class="req">*</span></label>
-                  <textarea v-model.trim="resultForm.diagnosis" rows="3" :placeholder="t('pathology.diagnosis')" :disabled="resultSaving" required />
+                  <label for="path-r-diag">{{ t('pathology.diagnosis') }} <span class="req">*</span></label>
+                  <textarea id="path-r-diag" name="path-r-diag" v-model.trim="resultForm.diagnosis" rows="3" :placeholder="t('pathology.diagnosis')" :disabled="resultSaving" required />
                   <span v-if="rfe.diagnosis" class="field-error">{{ rfe.diagnosis }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('pathology.behavior') }}</label>
-                  <select v-model="resultForm.behavior" :disabled="resultSaving">
+                  <label for="path-r-behav">{{ t('pathology.behavior') }}</label>
+                  <select id="path-r-behav" name="path-r-behav" v-model="resultForm.behavior" :disabled="resultSaving">
                     <option value="">{{ t('common.none') }}</option>
                     <option value="benign">{{ t('pathology.resultBenign') }}</option>
                     <option value="malignant">{{ t('pathology.resultMalignant') }}</option>
@@ -282,40 +284,40 @@
                   </select>
                 </div>
                 <div class="field">
-                  <label>{{ t('pathology.detailTNM') }}</label>
-                  <input v-model.trim="resultForm.tnmStage" type="text" placeholder="Ej: III" :disabled="resultSaving" />
+                  <label for="path-r-tnm">{{ t('pathology.detailTNM') }}</label>
+                  <input id="path-r-tnm" name="path-r-tnm" v-model.trim="resultForm.tnmStage" type="text" placeholder="Ej: III" :disabled="resultSaving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('pathology.tLabel') }}</label>
-                  <input v-model.trim="resultForm.tnmT" type="text" placeholder="T0, T1…" :disabled="resultSaving" />
+                  <label for="path-r-tnmt">{{ t('pathology.tLabel') }}</label>
+                  <input id="path-r-tnmt" name="path-r-tnmt" v-model.trim="resultForm.tnmT" type="text" placeholder="T0, T1…" :disabled="resultSaving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('pathology.nLabel') }}</label>
-                  <input v-model.trim="resultForm.tnmN" type="text" placeholder="N0, N1…" :disabled="resultSaving" />
+                  <label for="path-r-tnmn">{{ t('pathology.nLabel') }}</label>
+                  <input id="path-r-tnmn" name="path-r-tnmn" v-model.trim="resultForm.tnmN" type="text" placeholder="N0, N1…" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.mLabel') }}</label>
-                  <input v-model.trim="resultForm.tnmM" type="text" placeholder="M0, M1…" :disabled="resultSaving" />
+                  <label for="path-r-tnmm">{{ t('pathology.mLabel') }}</label>
+                  <input id="path-r-tnmm" name="path-r-tnmm" v-model.trim="resultForm.tnmM" type="text" placeholder="M0, M1…" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.differentialDiagnosis') }}</label>
-                  <textarea v-model.trim="resultForm.differentialDiagnosis" rows="2" :disabled="resultSaving" />
+                  <label for="path-r-diff">{{ t('pathology.differentialDiagnosis') }}</label>
+                  <textarea id="path-r-diff" name="path-r-diff" v-model.trim="resultForm.differentialDiagnosis" rows="2" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.detailPrognostic') }}</label>
-                  <textarea v-model.trim="resultForm.prognosticNotes" rows="2" :disabled="resultSaving" />
+                  <label for="path-r-prog">{{ t('pathology.detailPrognostic') }}</label>
+                  <textarea id="path-r-prog" name="path-r-prog" v-model.trim="resultForm.prognosticNotes" rows="2" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.detailIHC') }}</label>
-                  <textarea v-model.trim="resultForm.ihcResults" rows="2" :placeholder="t('pathology.ihcPlaceholder')" :disabled="resultSaving" />
+                  <label for="path-r-ihc">{{ t('pathology.detailIHC') }}</label>
+                  <textarea id="path-r-ihc" name="path-r-ihc" v-model.trim="resultForm.ihcResults" rows="2" :placeholder="t('pathology.ihcPlaceholder')" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.detailSpecialStains') }}</label>
-                  <textarea v-model.trim="resultForm.specialStains" rows="2" :disabled="resultSaving" />
+                  <label for="path-r-stains">{{ t('pathology.detailSpecialStains') }}</label>
+                  <textarea id="path-r-stains" name="path-r-stains" v-model.trim="resultForm.specialStains" rows="2" :disabled="resultSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('pathology.detailRecommendations') }}</label>
-                  <textarea v-model.trim="resultForm.recommendations" rows="2" :disabled="resultSaving" />
+                  <label for="path-r-recs">{{ t('pathology.detailRecommendations') }}</label>
+                  <textarea id="path-r-recs" name="path-r-recs" v-model.trim="resultForm.recommendations" rows="2" :disabled="resultSaving" />
                 </div>
               </div>
             </div>
@@ -338,6 +340,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
 import { t } from '../i18n'
+import { logError } from '../utils/errors'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -436,7 +439,7 @@ async function loadTypes() {
   try {
     const { data } = await http.get('/pathology/types')
     pathologyTypes.value = asArray(data?.data || data).map(normalizePathologyType).filter(Boolean)
-  } catch { pathologyTypes.value = [] }
+  } catch (error) { logError('patologia.loadTypes', error); pathologyTypes.value = [] }
 }
 
 // Patient autocomplete
@@ -453,7 +456,7 @@ async function searchPatients() {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { patientResults.value = [] }
+    } catch (error) { logError('patologia.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
 }
 function selectPatient(pt) {
@@ -583,6 +586,7 @@ onMounted(() => { load(); loadTypes() })
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="admin" aria-live="polite">
     <section class="hero">
       <div>
@@ -16,6 +16,70 @@
     </section>
 
     <div v-if="globalError" class="alert alert--error" role="alert">{{ globalError }}</div>
+
+    <section class="panel panel--stacked">
+      <header class="section-head">
+        <div>
+          <h3>Estado del portal de dueños</h3>
+          <p>Solo muestra salud operativa, latencia y disponibilidad del servicio.</p>
+        </div>
+        <div class="hero__actions">
+          <BaseButton variant="ghost" @click="loadPortalHealth" :disabled="portalHealthLoading">
+            {{ portalHealthLoading ? 'Verificando…' : 'Actualizar' }}
+          </BaseButton>
+          <a class="portal-link" href="/portal" target="_blank" rel="noopener noreferrer">
+            Abrir portal
+          </a>
+        </div>
+      </header>
+
+      <div v-if="portalHealthError" class="alert alert--error" role="alert">{{ portalHealthError }}</div>
+
+      <div v-if="portalHealthLoading" class="table-loading" role="status">
+        <span class="spinner spinner--dark" />
+        <span>Consultando salud del portal…</span>
+      </div>
+
+      <div v-else class="portal-health-grid">
+        <article class="portal-health-card" :class="portalHealth.statusClass">
+          <div class="portal-health-card__top">
+            <span class="badge" :class="portalHealth.badgeClass">{{ portalHealth.statusLabel }}</span>
+            <span class="portal-health-card__service">portal</span>
+          </div>
+          <strong class="portal-health-card__headline">Servicio del dueño</strong>
+          <p class="portal-health-card__copy">No expone datos de clientes. Solo confirma si el portal está operativo.</p>
+          <dl class="portal-health-meta">
+            <div>
+              <dt>Latencia</dt>
+              <dd>{{ formatLatency(portalHealth.latency) }}</dd>
+            </div>
+            <div>
+              <dt>Origen</dt>
+              <dd>{{ portalHealth.source || '—' }}</dd>
+            </div>
+            <div>
+              <dt>Destino</dt>
+              <dd>{{ portalHealth.target || '—' }}</dd>
+            </div>
+            <div>
+              <dt>Última verificación</dt>
+              <dd>{{ formatDateTime(portalHealth.checkedAt) }}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="portal-health-card portal-health-card--wide">
+          <strong class="portal-health-card__headline">Checks del servicio</strong>
+          <div v-if="portalHealthChecks.length === 0" class="portal-health-empty">Sin detalles adicionales</div>
+          <div v-else class="portal-health-checks">
+            <div v-for="check in portalHealthChecks" :key="check.name" class="portal-health-check">
+              <span class="portal-health-check__name">{{ check.name }}</span>
+              <span class="portal-health-check__value">{{ check.value }}</span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
 
     <section class="panel">
       <BaseTable :label="t('admin.title')" :caption="t('admin.subtitle')">
@@ -50,12 +114,14 @@
                 <div class="role-cell">
                   <span class="badge badge--role">{{ formatRole(user.roles) }}</span>
                   <select
+                    :id="`admin-role-${user.id}`"
+                    :name="`admin-role-${user.id}`"
                     class="role-select"
                     :value="firstRole(user.roles)"
                     :disabled="changingRoleId === user.id"
                     @change="handleRoleChange(user, $event.target.value)"
                   >
-                    <option v-for="role in ROLES" :key="role.value" :value="role.value">
+                    <option v-for="role in ADMIN_ROLES" :key="role.value" :value="role.value">
                       {{ role.label }}
                     </option>
                   </select>
@@ -111,6 +177,8 @@
         </div>
         <label class="policy-switch">
           <input
+            id="admin-2fa-toggle"
+            name="admin-2fa-toggle"
             type="checkbox"
             :checked="authPolicy.twoFactorOptionalEnabled"
             :disabled="savingAuthPolicy"
@@ -144,6 +212,8 @@
           </div>
           <label class="policy-switch">
             <input
+              :id="`admin-feat-${feature.key}`"
+              :name="`admin-feat-${feature.key}`"
               type="checkbox"
               :checked="Boolean(featureFlags[feature.key])"
               :disabled="savingFeatureKey === feature.key"
@@ -165,14 +235,14 @@
       </header>
 
       <div class="rbac-controls">
-        <select v-model="overrideForm.role" class="role-select">
+        <select id="admin-rbac-role" name="admin-rbac-role" v-model="overrideForm.role" class="role-select">
           <option value="">{{ t('admin.selectRole') }}</option>
           <option v-for="role in roleCatalog" :key="role.name" :value="role.name">
             {{ formatRole(role.name) }}
           </option>
         </select>
-        <input v-model.trim="overrideForm.grant" type="text" :placeholder="t('admin.grantPlaceholder')" />
-        <input v-model.trim="overrideForm.revoke" type="text" :placeholder="t('admin.revokePlaceholder')" />
+        <input id="admin-rbac-grant" name="admin-rbac-grant" v-model.trim="overrideForm.grant" type="text" :placeholder="t('admin.grantPlaceholder')" />
+        <input id="admin-rbac-revoke" name="admin-rbac-revoke" v-model.trim="overrideForm.revoke" type="text" :placeholder="t('admin.revokePlaceholder')" />
         <BaseButton :disabled="savingOverride" @click="saveOverride">{{ t('admin.saveOverride') }}</BaseButton>
       </div>
       <div v-if="overrideError" class="alert alert--error" role="alert">{{ overrideError }}</div>
@@ -344,40 +414,40 @@
       <form v-else @submit.prevent="handleCreate" novalidate>
         <div class="form-row">
           <div class="field">
-            <label>{{ t('admin.firstName') }} <span class="req">*</span></label>
-            <input v-model.trim="form.firstName" type="text" placeholder="Juan" :disabled="creating" required />
+            <label for="admin-m-firstname">{{ t('admin.firstName') }} <span class="req">*</span></label>
+            <input id="admin-m-firstname" name="admin-m-firstname" v-model.trim="form.firstName" type="text" placeholder="Juan" :disabled="creating" required />
             <span v-if="errors.firstName" class="field-error">{{ errors.firstName }}</span>
           </div>
           <div class="field">
-            <label>{{ t('admin.lastName') }} <span class="req">*</span></label>
-            <input v-model.trim="form.lastName" type="text" placeholder="Perez" :disabled="creating" required />
+            <label for="admin-m-lastname">{{ t('admin.lastName') }} <span class="req">*</span></label>
+            <input id="admin-m-lastname" name="admin-m-lastname" v-model.trim="form.lastName" type="text" placeholder="Perez" :disabled="creating" required />
             <span v-if="errors.lastName" class="field-error">{{ errors.lastName }}</span>
           </div>
         </div>
 
         <div class="field">
-          <label>{{ t('admin.email') }} <span class="req">*</span></label>
-          <input v-model.trim="form.email" type="email" placeholder="usuario@veterinaria.com" :disabled="creating" required />
+          <label for="admin-m-email">{{ t('admin.email') }} <span class="req">*</span></label>
+          <input id="admin-m-email" name="admin-m-email" v-model.trim="form.email" type="email" placeholder="usuario@veterinaria.com" :disabled="creating" required />
           <span v-if="errors.email" class="field-error">{{ errors.email }}</span>
         </div>
 
         <div class="field">
-          <label>{{ t('admin.role') }} <span class="req">*</span></label>
-          <select v-model="form.role" :disabled="creating" required>
+          <label for="admin-m-role">{{ t('admin.role') }} <span class="req">*</span></label>
+          <select id="admin-m-role" name="admin-m-role" v-model="form.role" :disabled="creating" required>
             <option value="">{{ t('admin.selectRole') }}</option>
-            <option v-for="role in ROLES" :key="role.value" :value="role.value">{{ role.label }}</option>
+            <option v-for="role in ADMIN_ROLES" :key="role.value" :value="role.value">{{ role.label }}</option>
           </select>
           <span v-if="errors.role" class="field-error">{{ errors.role }}</span>
         </div>
 
         <div class="form-row">
           <div class="field">
-            <label>{{ t('admin.phone') }}</label>
-            <input v-model.trim="form.phone" type="tel" placeholder="+54 9 11 1234-5678" :disabled="creating" />
+            <label for="admin-m-phone">{{ t('admin.phone') }}</label>
+            <input id="admin-m-phone" name="admin-m-phone" v-model.trim="form.phone" type="tel" placeholder="+54 9 11 1234-5678" :disabled="creating" />
           </div>
           <div class="field">
-            <label>{{ t('admin.licenseNumber') }}</label>
-            <input v-model.trim="form.licenseNumber" type="text" placeholder="VET-0001" :disabled="creating" />
+            <label for="admin-m-license">{{ t('admin.licenseNumber') }}</label>
+            <input id="admin-m-license" name="admin-m-license" v-model.trim="form.licenseNumber" type="text" placeholder="VET-0001" :disabled="creating" />
           </div>
         </div>
 
@@ -432,13 +502,34 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { adminRbacApi } from '../api/adminRbac'
-import { adminUsersApi } from '../api/adminUsers'
 import BaseButton from '../components/base/BaseButton.vue'
 import BaseModal from '../components/base/BaseModal.vue'
 import BaseTable from '../components/base/BaseTable.vue'
 import { t } from '../i18n'
+import {
+  ADMIN_ROLES,
+  createAdminUser,
+  deactivateAdminUser,
+  deleteOverride as deleteOverrideRequest,
+  extractAdminError,
+  firstRole,
+  formatRoleLabel,
+  loadLogs as listLogsRequest,
+  listUsers as listUsersRequest,
+  loadAuthPolicy as loadAuthPolicyRequest,
+  loadFeatureFlags as loadFeatureFlagsRequest,
+  loadOverrides as loadOverridesRequest,
+  loadPortalHealth as loadPortalHealthRequest,
+  loadTableList as loadTableListRequest,
+  loadTablePreview as loadTablePreviewRequest,
+  parsePermissions,
+  saveOverride as saveOverrideRequest,
+  updateAdminUserRole,
+  updateAuthPolicy as updateAuthPolicyRequest,
+  updateFeatureFlags as updateFeatureFlagsRequest,
+} from '../composables/admin/useAdminDomain'
 import { useAuthStore } from '../stores/auth'
+import { logError } from '../utils/errors'
 
 const auth   = useAuthStore()
 const router = useRouter()
@@ -467,23 +558,6 @@ const featureDefinitions = ref([])
 const featureFlagsLoading = ref(false)
 const featureFlagsError = ref('')
 const savingFeatureKey = ref('')
-
-const ROLES = [
-  { value: 'org_admin', label: 'Administrador de organizacion' },
-  { value: 'branch_manager', label: 'Gerente de sucursal' },
-  { value: 'veterinarian', label: 'Veterinario' },
-  { value: 'vet_technician', label: 'Tecnico veterinario' },
-  { value: 'surgeon', label: 'Cirujano' },
-  { value: 'tele_vet', label: 'Veterinario (telemedicina)' },
-  { value: 'receptionist', label: 'Recepcionista' },
-  { value: 'groomer', label: 'Groomer' },
-  { value: 'grooming_manager', label: 'Jefe de grooming' },
-  { value: 'pharmacist', label: 'Farmaceutico' },
-  { value: 'accountant', label: 'Contador' },
-  { value: 'lab_technician', label: 'Tecnico de laboratorio' },
-  { value: 'imaging_tech', label: 'Tecnico de imagenes' },
-  { value: 'read_only', label: 'Solo lectura' },
-]
 
 const showModal = ref(false)
 const creating = ref(false)
@@ -514,6 +588,19 @@ const dbPreview       = ref(null)
 const dbLoading       = ref(false)
 const dbError         = ref('')
 const aiFeatures = ref([])
+const portalHealthLoading = ref(false)
+const portalHealthError = ref('')
+const portalHealth = reactive({
+  status: 'unknown',
+  statusLabel: 'Desconocido',
+  statusClass: 'portal-health-card--unknown',
+  badgeClass: 'badge--role',
+  latency: null,
+  source: '',
+  target: '',
+  checkedAt: '',
+})
+const portalHealthChecks = ref([])
 
 function openModal() {
   resetForm()
@@ -562,11 +649,11 @@ async function handleCreate() {
     if (form.phone) payload.phone = form.phone
     if (form.licenseNumber) payload.licenseNumber = form.licenseNumber
 
-    await adminUsersApi.create(payload)
+    await createAdminUser(payload)
     createSuccess.value = true
     await loadPage(1)
   } catch (error) {
-    const message = error.response?.data?.message || error.response?.data?.error
+    const message = extractAdminError(error, 'No se pudo crear el usuario.')
     if (error.response?.status === 409) createError.value = 'Ya existe un usuario con ese email'
     else if (error.response?.status === 400) createError.value = message || 'Datos invalidos. Revisa los campos.'
     else createError.value = message || 'No se pudo crear el usuario. Intenta nuevamente.'
@@ -585,12 +672,11 @@ async function handleDeactivate() {
   deactivateError.value = ''
   deactivating.value = true
   try {
-    await adminUsersApi.deactivate(deactivateTarget.value.id)
+    await deactivateAdminUser(deactivateTarget.value.id)
     deactivateTarget.value = null
     await loadPage(meta.value.page)
   } catch (error) {
-    const message = error.response?.data?.message || error.response?.data?.error
-    deactivateError.value = message || 'No se pudo desactivar el usuario.'
+    deactivateError.value = extractAdminError(error, 'No se pudo desactivar el usuario.')
   } finally {
     deactivating.value = false
   }
@@ -602,44 +688,33 @@ async function handleRoleChange(user, role) {
   changingRoleId.value = user.id
   globalError.value = ''
   try {
-    await adminUsersApi.updateRole(user.id, role)
+    await updateAdminUserRole(user.id, role)
     await loadPage(meta.value.page)
   } catch (error) {
-    globalError.value = error.response?.data?.error?.message || 'No se pudo actualizar el rol.'
+    globalError.value = extractAdminError(error, 'No se pudo actualizar el rol.')
   } finally {
     changingRoleId.value = null
   }
-}
-
-function parsePermissions(text) {
-  return text.split(',').map((value) => value.trim()).filter(Boolean)
 }
 
 async function loadOverrides() {
   if (!auth.orgId) return
   overrideError.value = ''
   try {
-    const [rolesRes, overridesRes] = await Promise.all([
-      adminRbacApi.listRoles(),
-      adminRbacApi.listOverrides(auth.orgId),
-    ])
-    roleCatalog.value = rolesRes.data?.data || []
-    overrides.value = overridesRes.data?.data || []
+    const payload = await loadOverridesRequest(auth.orgId)
+    roleCatalog.value = payload.roleCatalog
+    overrides.value = payload.overrides
   } catch (error) {
-    overrideError.value = error.response?.data?.error?.message || 'No se pudieron cargar los overrides.'
+    overrideError.value = extractAdminError(error, 'No se pudieron cargar los overrides.')
   }
 }
 
 async function loadAuthPolicy() {
   authPolicyError.value = ''
   try {
-    const { data } = await adminUsersApi.getAuthPolicy()
-    const payload = data?.data || data
-    authPolicy.twoFactorOptionalEnabled = Boolean(
-      payload?.two_factor_optional_enabled ?? payload?.twoFactorOptionalEnabled,
-    )
+    authPolicy.twoFactorOptionalEnabled = await loadAuthPolicyRequest()
   } catch (error) {
-    authPolicyError.value = error.response?.data?.error?.message || 'No se pudo cargar la politica de autenticacion.'
+    authPolicyError.value = extractAdminError(error, 'No se pudo cargar la politica de autenticacion.')
   }
 }
 
@@ -647,10 +722,10 @@ async function toggleTwoFactorPolicy(enabled) {
   savingAuthPolicy.value = true
   authPolicyError.value = ''
   try {
-    await adminUsersApi.updateAuthPolicy({ twoFactorOptionalEnabled: enabled })
+    await updateAuthPolicyRequest(enabled)
     authPolicy.twoFactorOptionalEnabled = enabled
   } catch (error) {
-    authPolicyError.value = error.response?.data?.error?.message || 'No se pudo actualizar la politica de 2FA.'
+    authPolicyError.value = extractAdminError(error, 'No se pudo actualizar la politica de 2FA.')
   } finally {
     savingAuthPolicy.value = false
   }
@@ -661,10 +736,7 @@ async function loadFeatureFlags() {
   featureFlagsLoading.value = true
   featureFlagsError.value = ''
   try {
-    const { data } = await adminUsersApi.getFeatureFlags(auth.orgId)
-    const payload = data?.data || {}
-    const flags = payload.flags || {}
-    const definitions = payload.definitions || []
+    const { flags, definitions } = await loadFeatureFlagsRequest(auth.orgId)
     for (const key of Object.keys(featureFlags)) delete featureFlags[key]
     for (const [key, value] of Object.entries(flags)) featureFlags[key] = Boolean(value)
     featureDefinitions.value = definitions
@@ -675,7 +747,7 @@ async function loadFeatureFlags() {
       aiFeatures.value = []
       return
     }
-    featureFlagsError.value = error.response?.data?.error?.message || 'No se pudieron cargar los feature flags.'
+    featureFlagsError.value = extractAdminError(error, 'No se pudieron cargar los feature flags.')
   } finally {
     featureFlagsLoading.value = false
   }
@@ -688,8 +760,7 @@ async function toggleFeatureFlag(key, enabled) {
   const previous = Boolean(featureFlags[key])
   featureFlags[key] = enabled
   try {
-    const { data } = await adminUsersApi.updateFeatureFlags(auth.orgId, { [key]: enabled })
-    const flags = data?.data?.flags || {}
+    const flags = await updateFeatureFlagsRequest(auth.orgId, { [key]: enabled })
     for (const [flagKey, value] of Object.entries(flags)) featureFlags[flagKey] = Boolean(value)
   } catch (error) {
     featureFlags[key] = previous
@@ -697,7 +768,7 @@ async function toggleFeatureFlag(key, enabled) {
       featureFlagsError.value = 'Este ambiente todavia no tiene feature flags desplegados.'
       return
     }
-    featureFlagsError.value = error.response?.data?.error?.message || 'No se pudo actualizar el feature flag.'
+    featureFlagsError.value = extractAdminError(error, 'No se pudo actualizar el feature flag.')
   } finally {
     savingFeatureKey.value = ''
   }
@@ -711,7 +782,7 @@ async function saveOverride() {
   savingOverride.value = true
   overrideError.value = ''
   try {
-    await adminRbacApi.updateOverride(auth.orgId, overrideForm.role, {
+    await saveOverrideRequest(auth.orgId, overrideForm.role, {
       grant: parsePermissions(overrideForm.grant),
       revoke: parsePermissions(overrideForm.revoke),
     })
@@ -720,7 +791,7 @@ async function saveOverride() {
     overrideForm.revoke = ''
     await loadOverrides()
   } catch (error) {
-    overrideError.value = error.response?.data?.error?.message || 'No se pudo guardar el override.'
+    overrideError.value = extractAdminError(error, 'No se pudo guardar el override.')
   } finally {
     savingOverride.value = false
   }
@@ -729,10 +800,10 @@ async function saveOverride() {
 async function removeOverride(role) {
   overrideError.value = ''
   try {
-    await adminRbacApi.deleteOverride(auth.orgId, role)
+    await deleteOverrideRequest(auth.orgId, role)
     await loadOverrides()
   } catch (error) {
-    overrideError.value = error.response?.data?.error?.message || 'No se pudo eliminar el override.'
+    overrideError.value = extractAdminError(error, 'No se pudo eliminar el override.')
   }
 }
 
@@ -740,12 +811,11 @@ async function loadPage(page = 1) {
   loading.value = true
   globalError.value = ''
   try {
-    const { data } = await adminUsersApi.list({ page, limit: 20 })
-    users.value = data.data || []
-    meta.value = data.meta || { page, totalPages: 1 }
+    const payload = await listUsersRequest({ page, limit: 20 })
+    users.value = payload.rows
+    meta.value = payload.meta
   } catch (error) {
-    const message = error.response?.data?.message || error.response?.data?.error
-    globalError.value = message || 'No se pudo cargar la lista de usuarios.'
+    globalError.value = extractAdminError(error, 'No se pudo cargar la lista de usuarios.')
   } finally {
     loading.value = false
   }
@@ -757,14 +827,7 @@ function initials(user) {
 
 function formatRole(roles) {
   if (!roles) return t('common.none')
-  const first = firstRole(roles)
-  const found = ROLES.find((role) => role.value === first)
-  return found ? found.label : first
-}
-
-function firstRole(roles) {
-  if (!roles) return ''
-  return String(roles).split(',')[0]?.trim()
+  return formatRoleLabel(roles) || t('common.none')
 }
 
 function formatDate(iso) {
@@ -777,6 +840,11 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString('es-AR')
 }
 
+function formatLatency(ms) {
+  if (ms === null || ms === undefined || Number.isNaN(Number(ms))) return '—'
+  return `${ms} ms`
+}
+
 function handleLogout() {
   auth.logout()
   router.push('/login')
@@ -786,10 +854,9 @@ async function loadLogs() {
   loadingLogs.value = true
   logsError.value = ''
   try {
-    const { data } = await adminUsersApi.getLogs({ limit: 50 })
-    logs.value = data?.data?.rows || data?.rows || []
+    logs.value = await listLogsRequest()
   } catch (e) {
-    logsError.value = e.response?.data?.error?.message || 'No se pudieron cargar los logs.'
+    logsError.value = extractAdminError(e, 'No se pudieron cargar los logs.')
   } finally {
     loadingLogs.value = false
   }
@@ -797,9 +864,31 @@ async function loadLogs() {
 
 async function loadDbTableList() {
   try {
-    const { data } = await adminUsersApi.getTableList()
-    dbTableList.value = data?.data?.tables || []
-  } catch { /* silencioso */ }
+    dbTableList.value = await loadTableListRequest()
+  } catch (error) {
+    logError('admin.loadTableList', error)
+  }
+}
+
+async function loadPortalHealth() {
+  portalHealthLoading.value = true
+  portalHealthError.value = ''
+  try {
+    const payload = await loadPortalHealthRequest()
+    portalHealth.status = payload.status
+    portalHealth.statusLabel = payload.statusLabel
+    portalHealth.statusClass = payload.statusClass
+    portalHealth.badgeClass = payload.badgeClass
+    portalHealth.latency = payload.latency
+    portalHealth.source = payload.source
+    portalHealth.target = payload.target
+    portalHealth.checkedAt = payload.checkedAt
+    portalHealthChecks.value = payload.checks
+  } catch (error) {
+    portalHealthError.value = extractAdminError(error, 'No se pudo cargar el estado del portal.')
+  } finally {
+    portalHealthLoading.value = false
+  }
 }
 
 async function loadTablePreview(tableName) {
@@ -809,10 +898,9 @@ async function loadTablePreview(tableName) {
   dbError.value = ''
   dbLoading.value = true
   try {
-    const { data } = await adminUsersApi.getTablePreview(tableName)
-    dbPreview.value = data?.data || null
+    dbPreview.value = await loadTablePreviewRequest(tableName)
   } catch (e) {
-    dbError.value = e.response?.data?.error?.message || 'No se pudo cargar la tabla.'
+    dbError.value = extractAdminError(e, 'No se pudo cargar la tabla.')
   } finally {
     dbLoading.value = false
   }
@@ -838,12 +926,15 @@ onMounted(async () => {
   await loadAuthPolicy()
   await loadFeatureFlags()
   await loadOverrides()
+  await loadPortalHealth()
   await loadLogs()
   await loadDbTableList()
 })
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
 .admin {
   display: grid;
   gap: 24px;
@@ -898,6 +989,151 @@ onMounted(async () => {
 .panel--stacked {
   display: grid;
   gap: 16px;
+}
+
+.portal-health-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 14px;
+}
+
+.portal-health-card {
+  border: 1px solid var(--border-light, #eef2f4);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: var(--surface);
+  display: grid;
+  gap: 12px;
+}
+
+.portal-health-card--ok {
+  border-color: #d6f2e3;
+  background: linear-gradient(180deg, #f7fdf9 0%, #ffffff 100%);
+}
+
+.portal-health-card--degraded {
+  border-color: #f4e0b2;
+  background: linear-gradient(180deg, #fffaf0 0%, #ffffff 100%);
+}
+
+.portal-health-card--error {
+  border-color: #f3c2c2;
+  background: linear-gradient(180deg, #fff7f7 0%, #ffffff 100%);
+}
+
+.portal-health-card--unknown {
+  border-color: var(--border-light, #eef2f4);
+  background: linear-gradient(180deg, #fafbfc 0%, #ffffff 100%);
+}
+
+.portal-health-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.portal-health-card__service {
+  font-family: monospace;
+  font-size: 0.76rem;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.portal-health-card__headline {
+  font-size: 1.02rem;
+  color: var(--text);
+}
+
+.portal-health-card__copy {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.portal-health-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.portal-health-meta div {
+  display: grid;
+  gap: 2px;
+}
+
+.portal-health-meta dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+
+.portal-health-meta dd {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.88rem;
+  word-break: break-word;
+}
+
+.portal-health-card--wide {
+  align-content: start;
+}
+
+.portal-health-checks {
+  display: grid;
+  gap: 10px;
+}
+
+.portal-health-check {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  border: 1px solid var(--border-light, #eef2f4);
+}
+
+.portal-health-check__name {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+
+.portal-health-check__value {
+  font-size: 0.88rem;
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+}
+
+.portal-health-empty {
+  color: var(--text-3);
+  font-size: 0.88rem;
+}
+
+.portal-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.portal-link:hover {
+  background: var(--surface);
 }
 
 .table-loading {
@@ -1334,6 +1570,10 @@ onMounted(async () => {
 @media (max-width: 900px) {
   .table {
     min-width: 760px;
+  }
+
+  .portal-health-grid {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -22,6 +22,15 @@
  */
 
 const { getRedisSingleton } = require('./redis');
+const { createLogger } = require('./logger');
+const {
+  getDependencyMode,
+  recordDependencyDegradation,
+  logDependencyIssue,
+  dependencyFailureResponse,
+} = require('./dependencyPolicy');
+
+const log = createLogger('usage-limits');
 
 // ── Plan definitions ──────────────────────────────────────────────────────────
 const PLAN_LIMITS = {
@@ -80,6 +89,20 @@ const ALERT_THRESHOLD = parseFloat(process.env.USAGE_ALERT_THRESHOLD || '0.8');
 
 const DEFAULT_PLAN = process.env.DEFAULT_PLAN_TIER || 'free';
 
+function getUsageLimitMode(feature = '') {
+  const expensiveFeatures = new Set([
+    'ai_diagnosis',
+    'ai_image_analysis',
+    'ai_chatbot',
+    'ai_risk_assessment',
+    'sms_notifications',
+    'whatsapp_notify',
+    'storage_mb',
+  ]);
+  const defaultMode = expensiveFeatures.has(feature) ? 'strict' : 'degraded';
+  return getDependencyMode(feature ? `usage_limit_${feature}` : 'usage_limit', defaultMode);
+}
+
 // ── Redis client ──────────────────────────────────────────────────────────────
 async function getRedis() {
   return getRedisSingleton('usage-limits', 'usage-limits');
@@ -105,12 +128,15 @@ function secsUntilMonthEnd() {
  * @param {string|number} orgId
  * @returns {Promise<string>}
  */
-async function getPlanTier(orgId) {
+async function getPlanTier(orgId, { mode = 'degraded' } = {}) {
   try {
     const redis = await getRedis();
     const tier  = await redis.get(`org:plan:${orgId}`);
     return tier || DEFAULT_PLAN;
-  } catch (_) {
+  } catch (err) {
+    recordDependencyDegradation('usage_limits', mode, mode === 'strict' ? 'blocked' : 'degraded', { service: 'shared' });
+    logDependencyIssue(log, 'usage_limits', mode, 'Plan tier read failed', err, { orgId });
+    if (mode === 'strict') throw err;
     return DEFAULT_PLAN;
   }
 }
@@ -132,8 +158,8 @@ async function setPlanTier(orgId, tier) {
  * @param {string}        feature
  * @returns {Promise<number>}  Infinity = unlimited
  */
-async function getLimit(orgId, feature) {
-  const tier   = await getPlanTier(orgId);
+async function getLimit(orgId, feature, { mode = getUsageLimitMode(feature) } = {}) {
+  const tier   = await getPlanTier(orgId, { mode });
   const limits = PLAN_LIMITS[tier] || PLAN_LIMITS[DEFAULT_PLAN];
   const limit  = limits[feature];
   if (limit === undefined) return Infinity; // feature not in limits → always allowed
@@ -146,13 +172,16 @@ async function getLimit(orgId, feature) {
  * @param {string}        feature
  * @returns {Promise<number>}
  */
-async function getUsage(orgId, feature) {
+async function getUsage(orgId, feature, { mode = getUsageLimitMode(feature) } = {}) {
   try {
     const redis = await getRedis();
     const key   = `usage:${orgId}:${feature}:${currentMonth()}`;
     const val   = await redis.get(key);
     return val ? parseInt(val) : 0;
-  } catch (_) {
+  } catch (err) {
+    recordDependencyDegradation('usage_limits', mode, mode === 'strict' ? 'blocked' : 'degraded', { service: 'shared' });
+    logDependencyIssue(log, 'usage_limits', mode, 'Usage counter read failed', err, { orgId, feature });
+    if (mode === 'strict') throw err;
     return 0;
   }
 }
@@ -164,7 +193,7 @@ async function getUsage(orgId, feature) {
  * @param {string}        feature
  * @param {number}        [amount=1]
  */
-async function recordUsage(orgId, feature, amount = 1) {
+async function recordUsage(orgId, feature, amount = 1, { mode = getUsageLimitMode(feature) } = {}) {
   try {
     const redis = await getRedis();
     const key   = `usage:${orgId}:${feature}:${currentMonth()}`;
@@ -172,7 +201,11 @@ async function recordUsage(orgId, feature, amount = 1) {
     pipe.incrBy(key, amount);
     pipe.expire(key, secsUntilMonthEnd());
     await pipe.exec();
-  } catch (_) {}
+  } catch (err) {
+    recordDependencyDegradation('usage_limits', mode, 'degraded', { service: 'shared' });
+    logDependencyIssue(log, 'usage_limits', mode, 'Usage counter write failed', err, { orgId, feature, amount });
+    if (mode === 'strict') throw err;
+  }
 }
 
 /**
@@ -181,10 +214,10 @@ async function recordUsage(orgId, feature, amount = 1) {
  * @param {string}        feature
  * @returns {Promise<{ allowed: boolean, current: number, limit: number, pct: number }>}
  */
-async function checkLimit(orgId, feature) {
+async function checkLimit(orgId, feature, { mode = getUsageLimitMode(feature) } = {}) {
   const [limit, current] = await Promise.all([
-    getLimit(orgId, feature),
-    getUsage(orgId, feature),
+    getLimit(orgId, feature, { mode }),
+    getUsage(orgId, feature, { mode }),
   ]);
   const pct = limit === Infinity ? 0 : current / limit;
   return { allowed: current < limit, current, limit, pct };
@@ -203,7 +236,14 @@ async function recordStorage(orgId, deltaMb) {
     const redis = await getRedis();
     const key   = `storage:${orgId}`;
     await redis.incrByFloat(key, deltaMb);
-  } catch (_) {}
+  } catch (err) {
+    log.warn('Storage counter write failed', {
+      orgId,
+      deltaMb,
+      message: err?.message,
+      code: err?.code,
+    });
+  }
 }
 
 /**
@@ -216,7 +256,11 @@ async function getStorageUsage(orgId) {
     const redis = await getRedis();
     const val   = await redis.get(`storage:${orgId}`);
     return val ? parseFloat(val) : 0;
-  } catch (_) {
+  } catch (err) {
+    log.warn('Storage usage read failed', {
+      orgId,
+      error: err.message,
+    });
     return 0;
   }
 }
@@ -284,11 +328,12 @@ function emitUsageAlert(orgId, feature, current, limit) {
  */
 function requireUsageLimit(feature, autoRecord = true) {
   return async (req, res, next) => {
+    const mode = getUsageLimitMode(feature);
     try {
       const orgId = req.user?.orgId;
       if (!orgId) return next(); // unauthenticated requests are not quota-tracked
 
-      const { allowed, current, limit } = await checkLimit(orgId, feature);
+      const { allowed, current, limit } = await checkLimit(orgId, feature, { mode });
 
       const resetEpoch = Math.floor(Date.now() / 1000) + secsUntilMonthEnd();
       const cap        = limit === Infinity ? 'unlimited' : limit;
@@ -319,14 +364,29 @@ function requireUsageLimit(feature, autoRecord = true) {
         // Record usage after response is sent so it doesn't delay the request
         res.on('finish', () => {
           if (res.statusCode < 400) {
-            recordUsage(orgId, feature).catch(() => {});
+            recordUsage(orgId, feature, 1, { mode }).catch((err) => {
+              logDependencyIssue(log, 'usage_limits', mode, 'Post-response usage record failed', err, { orgId, feature });
+            });
           }
         });
       }
 
       next();
-    } catch (_) {
-      next(); // fail-open on Redis errors
+    } catch (err) {
+      recordDependencyDegradation('usage_limits', mode, mode === 'strict' ? 'blocked' : 'degraded', { service: 'shared' });
+      logDependencyIssue(log, 'usage_limits', mode, 'Usage limit check failed', err, {
+        feature,
+        orgId: req.user?.orgId,
+      });
+      if (mode === 'strict') {
+        return dependencyFailureResponse(res, {
+          statusCode: 503,
+          message: `Usage limit backend unavailable for '${feature}'`,
+          code: 'USAGE_LIMIT_UNAVAILABLE',
+          details: { feature },
+        });
+      }
+      next();
     }
   };
 }
@@ -345,4 +405,5 @@ module.exports = {
   getStorageUsage,
   checkStorageLimit,
   emitUsageAlert,
+  getUsageLimitMode,
 };

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
+import { logError } from '../utils/errors'
 
 // Sin VITE_API_URL (Railway single-service) usa URL relativa — el browser la resuelve al mismo origen.
 // En dev local con Vite, el proxy de vite.config.js reescribe /api/v1 → gateway:4050.
@@ -13,7 +14,8 @@ function getGatewayOrigin() {
 
   try {
     return new URL(API_URL, runtimeOrigin).origin
-  } catch {
+  } catch (error) {
+    logError('api.gatewayOrigin', error, { apiUrl: API_URL, runtimeOrigin })
     return runtimeOrigin
   }
 }
@@ -88,7 +90,8 @@ http.interceptors.response.use(
         original.headers = original.headers || {}
         original.headers['X-CSRF-Token'] = csrfToken
         return http(original)
-      } catch {
+      } catch (csrfError) {
+        logError('api.retryCsrf', csrfError, { url: original?.url, method: original?.method })
         return Promise.reject(err)
       }
     }
@@ -112,7 +115,8 @@ http.interceptors.response.use(
         queue = []
         original.headers.Authorization = `Bearer ${auth.accessToken}`
         return http(original)
-      } catch {
+      } catch (refreshError) {
+        logError('api.refresh', refreshError, { url: original?.url, method: original?.method })
         queue.forEach(({ reject }) => reject(err))
         queue = []
         const auth = useAuthStore()

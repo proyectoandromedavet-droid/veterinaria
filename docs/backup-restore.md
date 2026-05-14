@@ -31,6 +31,14 @@ Uso:
 ./scripts/backup/restore.sh /backups/mysql/vetmanager_YYYYMMDD_HHMMSS.sql.gz
 ```
 
+## Restore drill semanal
+
+Script:
+
+```bash
+./scripts/backup/restore-drill.sh /backups/mysql/vetmanager_YYYYMMDD_HHMMSS.sql.gz
+```
+
 ## Verificación obligatoria post-restore
 
 1. Restaurar en una base aislada, no sobre producción.

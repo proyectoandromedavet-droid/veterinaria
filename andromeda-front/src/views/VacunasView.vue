@@ -62,8 +62,10 @@
 
       <!-- Filtros -->
       <div class="filters">
-        <input v-model.trim="search" type="search" :placeholder="t('vaccines.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
-        <select v-model="statusFilter" class="filter-select" @change="load()">
+        <label for="vac-search" class="sr-only">{{ t('vaccines.searchPlaceholder') }}</label>
+        <input id="vac-search" name="vac-search" v-model.trim="search" type="search" :placeholder="t('vaccines.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+        <label for="vac-status" class="sr-only">{{ t('vaccines.allStatuses') }}</label>
+        <select id="vac-status" name="vac-status" v-model="statusFilter" class="filter-select" @change="load()">
           <option value="">{{ t('vaccines.allStatuses') }}</option>
           <option value="up_to_date">{{ t('vaccines.statusUpToDate') }}</option>
           <option value="due_soon">{{ t('vaccines.statusDueSoon') }}</option>
@@ -142,7 +144,8 @@
     <template v-if="mainTab === 'deworming'">
       <!-- Filtros deworming -->
       <div class="filters">
-        <input v-model.trim="dewSearch" type="search" :placeholder="t('vaccines.searchDewormingPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoadDew()" />
+        <label for="dew-search" class="sr-only">{{ t('vaccines.searchDewormingPlaceholder') }}</label>
+        <input id="dew-search" name="dew-search" v-model.trim="dewSearch" type="search" :placeholder="t('vaccines.searchDewormingPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoadDew()" />
       </div>
 
       <div v-if="dewLoading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingDeworming') }}</div>
@@ -227,8 +230,8 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>{{ t('vaccines.patient') }} <span class="req">*</span></label>
-                  <input v-model.trim="patientSearch" type="search" :placeholder="t('vaccines.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <label for="vac-m-patient">{{ t('vaccines.patient') }} <span class="req">*</span></label>
+                  <input id="vac-m-patient" name="vac-m-patient" v-model.trim="patientSearch" type="search" :placeholder="t('vaccines.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                   <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
@@ -239,37 +242,37 @@
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('vaccines.vaccine') }} <span class="req">*</span></label>
-                  <select v-model="form.vaccineId" :disabled="saving" required>
+                  <label for="vac-m-vaccine">{{ t('vaccines.vaccine') }} <span class="req">*</span></label>
+                  <select id="vac-m-vaccine" name="vac-m-vaccine" v-model="form.vaccineId" :disabled="saving" required>
                     <option value="">{{ t('vaccines.selectVaccine') }}</option>
                     <option v-for="vac in vaccineList" :key="vac.id" :value="vac.id">{{ vac.name }}</option>
                   </select>
                   <span v-if="fe.vaccineId" class="field-error">{{ fe.vaccineId }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('vaccines.lotNumber') }}</label>
-                  <input v-model.trim="form.lotNumber" type="text" :placeholder="t('vaccines.lotPlaceholder')" :disabled="saving" />
+                  <label for="vac-m-lot">{{ t('vaccines.lotNumber') }}</label>
+                  <input id="vac-m-lot" name="vac-m-lot" v-model.trim="form.lotNumber" type="text" :placeholder="t('vaccines.lotPlaceholder')" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('vaccines.applicationDate') }} <span class="req">*</span></label>
-                  <input v-model="form.vaccinationDate" type="date" :disabled="saving" required />
+                  <label for="vac-m-date">{{ t('vaccines.applicationDate') }} <span class="req">*</span></label>
+                  <input id="vac-m-date" name="vac-m-date" v-model="form.vaccinationDate" type="date" :disabled="saving" required />
                   <span v-if="fe.vaccinationDate" class="field-error">{{ fe.vaccinationDate }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('vaccines.nextDose') }}</label>
-                  <input v-model="form.nextDoseDue" type="date" :disabled="saving" />
+                  <label for="vac-m-next">{{ t('vaccines.nextDose') }}</label>
+                  <input id="vac-m-next" name="vac-m-next" v-model="form.nextDoseDue" type="date" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Dosis</label>
-                  <input v-model.trim="form.dose" type="text" placeholder="ej: 1 mL" :disabled="saving" />
+                  <label for="vac-m-dose">Dosis</label>
+                  <input id="vac-m-dose" name="vac-m-dose" v-model.trim="form.dose" type="text" placeholder="ej: 1 mL" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Vencimiento</label>
-                  <input v-model="form.expiryDate" type="date" :disabled="saving" />
+                  <label for="vac-m-expiry">Vencimiento</label>
+                  <input id="vac-m-expiry" name="vac-m-expiry" v-model="form.expiryDate" type="date" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Vía</label>
-                  <select v-model="form.route" :disabled="saving">
+                  <label for="vac-m-route">Vía</label>
+                  <select id="vac-m-route" name="vac-m-route" v-model="form.route" :disabled="saving">
                     <option value="">{{ t('common.choose') }}</option>
                     <option value="oral">{{ t('vaccines.routeOral') }}</option>
                     <option value="topical">{{ t('vaccines.routeTopical') }}</option>
@@ -278,16 +281,16 @@
                   </select>
                 </div>
                 <div class="field">
-                  <label>Sitio</label>
-                  <input v-model.trim="form.administrationSite" type="text" placeholder="ej: subcutaneo" :disabled="saving" />
+                  <label for="vac-m-site">Sitio</label>
+                  <input id="vac-m-site" name="vac-m-site" v-model.trim="form.administrationSite" type="text" placeholder="ej: subcutaneo" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Ficha médica</label>
-                  <input v-model.trim="form.medicalRecordId" type="number" min="1" placeholder="ID de ficha" :disabled="saving" />
+                  <label for="vac-m-record">Ficha médica</label>
+                  <input id="vac-m-record" name="vac-m-record" v-model.trim="form.medicalRecordId" type="number" min="1" placeholder="ID de ficha" :disabled="saving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('vaccines.notes') }}</label>
-                  <textarea v-model.trim="form.notes" rows="2" :placeholder="t('vaccines.notesPlaceholder')" :disabled="saving" />
+                  <label for="vac-m-notes">{{ t('vaccines.notes') }}</label>
+                  <textarea id="vac-m-notes" name="vac-m-notes" v-model.trim="form.notes" rows="2" :placeholder="t('vaccines.notesPlaceholder')" :disabled="saving" />
                 </div>
               </div>
             </div>
@@ -318,8 +321,8 @@
               <div class="form-grid">
                 <!-- Paciente -->
                 <div class="field field--full">
-                  <label>{{ t('vaccines.patient') }} <span class="req">*</span></label>
-                  <input v-model.trim="dewPatientSearch" type="search" :placeholder="t('vaccines.patientSearch')" :disabled="saving" @input="searchDewPatients" autocomplete="off" />
+                  <label for="dew-m-patient">{{ t('vaccines.patient') }} <span class="req">*</span></label>
+                  <input id="dew-m-patient" name="dew-m-patient" v-model.trim="dewPatientSearch" type="search" :placeholder="t('vaccines.patientSearch')" :disabled="saving" @input="searchDewPatients" autocomplete="off" />
                   <div v-if="dewPatientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button v-for="pt in dewPatientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectDewPatient(pt)">
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
@@ -332,8 +335,8 @@
 
                 <!-- Producto antiparasitario -->
                 <div class="field field--full">
-                  <label>{{ t('vaccines.dewormingProduct') }} <span class="req">*</span></label>
-                  <select v-model="dewForm.productId" :disabled="saving" required>
+                  <label for="dew-m-product">{{ t('vaccines.dewormingProduct') }} <span class="req">*</span></label>
+                  <select id="dew-m-product" name="dew-m-product" v-model="dewForm.productId" :disabled="saving" required>
                     <option value="">{{ t('vaccines.selectProduct') }}</option>
                     <option v-for="p in dewProductList" :key="p.id" :value="p.id">
                       {{ p.name }}{{ p.parasite_type ? ' — ' + p.parasite_type : '' }}
@@ -344,33 +347,33 @@
 
                 <!-- Fecha -->
                 <div class="field">
-                  <label>{{ t('vaccines.applicationDate') }} <span class="req">*</span></label>
-                  <input v-model="dewForm.dewormingDate" type="date" :disabled="saving" required />
+                  <label for="dew-m-date">{{ t('vaccines.applicationDate') }} <span class="req">*</span></label>
+                  <input id="dew-m-date" name="dew-m-date" v-model="dewForm.dewormingDate" type="date" :disabled="saving" required />
                   <span v-if="dewFe.dewormingDate" class="field-error">{{ dewFe.dewormingDate }}</span>
                 </div>
 
                 <!-- Próxima dosis -->
                 <div class="field">
-                  <label>{{ t('vaccines.nextDose') }}</label>
-                  <input v-model="dewForm.nextDueDate" type="date" :disabled="saving" />
+                  <label for="dew-m-next">{{ t('vaccines.nextDose') }}</label>
+                  <input id="dew-m-next" name="dew-m-next" v-model="dewForm.nextDueDate" type="date" :disabled="saving" />
                 </div>
 
                 <!-- Peso al tratamiento -->
                 <div class="field">
-                  <label>{{ t('vaccines.treatmentWeight') }}</label>
-                  <input v-model.number="dewForm.weightAtTreatment" type="number" step="0.01" min="0" :placeholder="`4.50 ${t('common.kg')}`" :disabled="saving" />
+                  <label for="dew-m-weight">{{ t('vaccines.treatmentWeight') }}</label>
+                  <input id="dew-m-weight" name="dew-m-weight" v-model.number="dewForm.weightAtTreatment" type="number" step="0.01" min="0" :placeholder="`4.50 ${t('common.kg')}`" :disabled="saving" />
                 </div>
 
                 <!-- Dosis administrada -->
                 <div class="field">
-                  <label>{{ t('vaccines.administeredDose') }}</label>
-                  <input v-model.trim="dewForm.doseAdministered" type="text" :placeholder="t('vaccines.dosePlaceholder')" :disabled="saving" />
+                  <label for="dew-m-dose">{{ t('vaccines.administeredDose') }}</label>
+                  <input id="dew-m-dose" name="dew-m-dose" v-model.trim="dewForm.doseAdministered" type="text" :placeholder="t('vaccines.dosePlaceholder')" :disabled="saving" />
                 </div>
 
                 <!-- Vía de administración -->
                 <div class="field">
-                  <label>{{ t('vaccines.administrationRoute') }}</label>
-                  <select v-model="dewForm.route" :disabled="saving">
+                  <label for="dew-m-route">{{ t('vaccines.administrationRoute') }}</label>
+                  <select id="dew-m-route" name="dew-m-route" v-model="dewForm.route" :disabled="saving">
                     <option value="">{{ t('common.choose') }}</option>
                     <option value="oral">{{ t('vaccines.routeOral') }}</option>
                     <option value="topical">{{ t('vaccines.routeTopical') }}</option>
@@ -381,8 +384,8 @@
 
                 <!-- Notas -->
                 <div class="field field--full">
-                  <label>{{ t('vaccines.notes') }}</label>
-                  <textarea v-model.trim="dewForm.notes" rows="2" :placeholder="t('vaccines.notesAdditionalPlaceholder')" :disabled="saving" />
+                  <label for="dew-m-notes">{{ t('vaccines.notes') }}</label>
+                  <textarea id="dew-m-notes" name="dew-m-notes" v-model.trim="dewForm.notes" rows="2" :placeholder="t('vaccines.notesAdditionalPlaceholder')" :disabled="saving" />
                 </div>
               </div>
             </div>
@@ -404,6 +407,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import http from '../api/client'
 import { t } from '../i18n'
+import { logError } from '../utils/errors'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -541,7 +545,7 @@ async function loadVaccines() {
   try {
     const { data } = await http.get('/vaccinations/vaccines')
     vaccineList.value = asArray(data?.data || data?.vaccines || data).map(normalizeVaccine).filter(Boolean)
-  } catch { vaccineList.value = [] }
+  } catch (error) { logError('vacunas.loadVaccinesCatalog', error); vaccineList.value = [] }
 }
 
 function vacStatus(v) {
@@ -575,7 +579,7 @@ async function searchPatients() {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { patientResults.value = [] }
+    } catch (error) { logError('vacunas.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
 }
 function selectPatient(pt) {
@@ -684,7 +688,7 @@ async function loadDewProducts() {
   try {
     const { data } = await http.get('/vaccinations/deworming/products')
     dewProductList.value = asArray(data?.data || data?.products || data).map(normalizeDewProduct).filter(Boolean)
-  } catch { dewProductList.value = [] }
+  } catch (error) { logError('vacunas.loadDewormingProducts', error); dewProductList.value = [] }
 }
 
 async function loadDew(page = 1) {
@@ -726,7 +730,7 @@ async function searchDewPatients() {
     try {
       const { data } = await http.get('/patients', { params: { search: dewPatientSearch.value, limit: 8 } })
       dewPatientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { dewPatientResults.value = [] }
+    } catch (error) { logError('vacunas.searchDewormingPatients', error, { search: dewPatientSearch.value }); dewPatientResults.value = [] }
   }, 300)
 }
 function selectDewPatient(pt) {
@@ -787,6 +791,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

@@ -12,8 +12,10 @@
 
 const { enqueue, processPending } = require('./dispatcher');
 const eventBus = require('../eventBus');
+const { createLogger } = require('../logger');
 
 const INTERVAL_MS = parseInt(process.env.WEBHOOK_POLL_MS || '15000');
+const log = createLogger('webhook-worker');
 
 let timer = null;
 let running = false;
@@ -24,8 +26,8 @@ async function tick() {
   running = true;
   try {
     await processPending();
-  } catch (_) {
-    // log silently — don't crash the process
+  } catch (err) {
+    log.warn('Webhook worker tick failed', { error: err.message });
   } finally {
     running = false;
   }
@@ -45,7 +47,9 @@ function start() {
       await processPending();
     }).then((stopper) => {
       stopEventBus = stopper;
-    }).catch(() => {});
+    }).catch((err) => {
+      log.warn('Webhook worker subscription failed', { error: err.message });
+    });
   }
   // Fire immediately on startup too
   tick();
@@ -57,7 +61,9 @@ function stop() {
     timer = null;
   }
   if (stopEventBus) {
-    stopEventBus().catch?.(() => {});
+    stopEventBus().catch?.((err) => {
+      log.warn('Webhook worker stop failed', { error: err.message });
+    });
     stopEventBus = null;
   }
 }

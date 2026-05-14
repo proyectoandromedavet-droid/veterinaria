@@ -16,6 +16,9 @@
  */
 
 const admin = require('firebase-admin');
+const { createLogger } = require('./logger');
+
+const log = createLogger('fcm');
 
 // ── Inicialización (lazy, una sola vez) ───────────────────────────────────────
 let _app;
@@ -150,7 +153,8 @@ async function validateToken(token) {
     // Enviar mensaje de prueba (dry run)
     await messaging().send({ token, data: { test: '1' } }, true /* dryRun */);
     return true;
-  } catch (_) {
+  } catch (err) {
+    log.warn('FCM token validation failed', { error: err.message });
     return false;
   }
 }

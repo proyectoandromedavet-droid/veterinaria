@@ -8,6 +8,9 @@
 
 const { google } = require('googleapis');
 const db         = require('./db');
+const { createLogger } = require('./logger');
+
+const log = createLogger('calendar');
 
 // ─── OAuth2 client ────────────────────────────────────────────────────────────
 
@@ -31,7 +34,7 @@ function getAuthUrl (nonce) {
     access_type : 'offline',
     prompt       : 'consent',
     scope        : ['https://www.googleapis.com/auth/calendar'],
-    state        : nonce,   // nonce aleatorio — el callback lo valida contra Redis
+    state        : String(nonce),   // nonce aleatorio — el callback lo valida contra Redis
   });
 }
 
@@ -58,7 +61,9 @@ async function revokeAccess (userId) {
     const oauth2 = buildOAuth2Client();
     oauth2.setCredentials({ access_token: row.access_token });
     await oauth2.revokeToken(row.access_token);
-  } catch (_) { /* ignorar si ya expiró */ }
+  } catch (err) {
+    log.warn('Calendar revoke ignored', { error: err.message, userId });
+  }
   await db.query('DELETE FROM google_calendar_tokens WHERE user_id = :uid', { uid: userId });
 }
 
@@ -120,6 +125,7 @@ async function deleteEvent (userId, googleEventId) {
     await calendar.events.delete({ calendarId: 'primary', eventId: googleEventId });
   } catch (err) {
     if (err.code !== 410) throw err;   // 410 = ya borrado, ignorar
+    log.warn('Calendar delete ignored', { error: err.message, userId, googleEventId });
   }
   await db.query(
     'UPDATE appointments SET google_event_id = NULL WHERE google_event_id = :eid',

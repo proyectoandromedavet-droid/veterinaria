@@ -6,7 +6,10 @@
  */
 
 const { cacheHits, cacheMisses } = require('./metrics');
+const { createLogger } = require('./logger');
 const { getRedisSingleton } = require('./redis');
+
+const log = createLogger('shared-cache');
 
 async function getClient() {
   return getRedisSingleton('shared-cache', 'cache');
@@ -26,7 +29,13 @@ async function get(key) {
     }
     cacheHits?.inc({ key_prefix: prefix(key) });
     return JSON.parse(raw);
-  } catch (_) {
+  } catch (err) {
+    log.warn('Cache get failed', {
+      key,
+      prefix: prefix(key),
+      message: err?.message,
+      code: err?.code,
+    });
     return null;
   }
 }
@@ -41,7 +50,15 @@ async function set(key, value, ttl = 300) {
   try {
     const redis = await getClient();
     await redis.setEx(key, ttl, JSON.stringify(value));
-  } catch (_) {}
+  } catch (err) {
+    log.warn('Cache set failed', {
+      key,
+      prefix: prefix(key),
+      ttl,
+      message: err?.message,
+      code: err?.code,
+    });
+  }
 }
 
 /**
@@ -52,7 +69,14 @@ async function del(key) {
   try {
     const redis = await getClient();
     await redis.del(key);
-  } catch (_) {}
+  } catch (err) {
+    log.warn('Cache delete failed', {
+      key,
+      prefix: prefix(key),
+      message: err?.message,
+      code: err?.code,
+    });
+  }
 }
 
 /**
@@ -69,7 +93,13 @@ async function invalidatePrefix(keyPrefix) {
       cursor = reply.cursor;
       if (reply.keys.length) await redis.del(reply.keys);
     } while (cursor !== 0);
-  } catch (_) {}
+  } catch (err) {
+    log.warn('Cache prefix invalidation failed', {
+      keyPrefix,
+      message: err?.message,
+      code: err?.code,
+    });
+  }
 }
 
 /**

@@ -10,9 +10,9 @@ const accountsRouter = require('./routes/accounts.routes');
 const providersRouter = require('./routes/providers.routes');
 
 const app = buildApp('documents', (app, requirePerm) => {
-  app.use('/providers', requirePerm('org:update'), providersRouter);
-  app.use('/mail-accounts', requirePerm('org:update'), accountsRouter);
-  app.use('/inbox', requirePerm('medical_records:read'), inboxRouter);
+  app.use('/documents/providers', requirePerm('org:update'), providersRouter);
+  app.use('/documents/mail-accounts', requirePerm('org:update'), accountsRouter);
+  app.use('/documents/inbox', requirePerm('medical_records:read'), inboxRouter);
 }, { specPath: path.join(__dirname, 'openapi.yaml') });
 
 const PORT = parseInt(process.env.PORT || '4062', 10);

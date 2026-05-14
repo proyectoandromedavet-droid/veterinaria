@@ -22,9 +22,10 @@
  */
 
 const { get: cacheGet, set: cacheSet } = require('../../../shared/cache');
-const { signRequest, HEADER: INTERNAL_SIG_HEADER } = require('../../../shared/internalAuth');
-const { resolveRuntimeServiceTarget } = require('../../../shared/serviceTargets');
+const { callInternalService, buildSignedInternalHeaders } = require('../../../shared/internalService');
+const { createLogger } = require('../../../shared/logger');
 const SLUG_CACHE_TTL    = parseInt(process.env.SUBDOMAIN_CACHE_TTL || '3600');
+const log = createLogger('gateway-subdomain');
 
 /**
  * Extract slug from hostname.
@@ -52,22 +53,21 @@ async function resolveSlug(slug) {
 
   try {
     const path = `/internal/orgs/by-slug/${encodeURIComponent(slug)}`;
-    const authTarget = await resolveRuntimeServiceTarget('auth');
-    const res = await fetch(
-      `${authTarget}${path}`,
-      {
-        headers: { [INTERNAL_SIG_HEADER]: signRequest('GET', path, '') },
-        signal:  AbortSignal.timeout(2000),
-      }
-    );
+    const res = await callInternalService('auth', {
+      method: 'GET',
+      path,
+      headers: buildSignedInternalHeaders('GET', path, ''),
+      traceContext: { traceId: null, spanId: null, serviceName: 'gateway' },
+      timeoutMs: 2000,
+    });
     if (!res.ok) return null;
     const data = await res.json();
     if (data?.orgId) {
       await cacheSet(key, { orgId: data.orgId }, SLUG_CACHE_TTL);
       return data.orgId;
     }
-  } catch (_) {
-    // Non-blocking — auth service may be starting up
+  } catch (error) {
+    log.warn('Subdomain org lookup degraded - continuing', { slug, error: error?.message });
   }
   return null;
 }
@@ -85,7 +85,13 @@ async function subdomainMiddleware(req, _res, next) {
     if (slug) {
       req.tenantOrgId = await resolveSlug(slug);
     }
-  } catch (_) {
+  } catch (error) {
+    log.warn('Subdomain middleware degraded - continuing', {
+      hostname: req.hostname,
+      error: error?.message,
+      traceId: req.traceId,
+      requestId: req.requestId,
+    });
     req.tenantSlug  = null;
     req.tenantOrgId = null;
   }

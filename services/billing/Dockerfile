@@ -10,6 +10,6 @@ RUN npm install --omit=dev
 COPY services/billing/src ./services/billing/src
 COPY shared ./shared
 
-EXPOSE $PORT
+EXPOSE 3000
 USER node
 CMD ["node", "services/billing/src/index.js"]

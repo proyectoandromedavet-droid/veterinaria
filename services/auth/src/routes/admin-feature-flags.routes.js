@@ -1,36 +1,15 @@
 'use strict';
 
 const { Router } = require('express');
-const { body, param, validationResult } = require('express-validator');
+const { body, param } = require('express-validator');
 const db = require('../../../../shared/db');
 const { requireInternalSig } = require('../../../../shared/internalAuth');
 const { getFlags, setFlags, FLAG_DEFINITIONS, DEFAULT_FLAGS } = require('../../../../shared/featureFlags');
+const { fromHeaders, requireOrgContext } = require('../../../../shared/requestContext');
+const { requireAdminRole } = require('../../../../shared/adminAuth');
+const { validateRequest } = require('../../../../shared/validation');
 
 const router = Router();
-
-function fromHeaders(req, _res, next) {
-  req.user = {
-    userId: req.headers['x-user-id'],
-    orgId: req.headers['x-org-id'],
-    roles: (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
-  };
-  next();
-}
-
-function requireAdmin(req, res, next) {
-  if (!req.user?.roles?.some((role) => ['superadmin', 'org_admin'].includes(role))) {
-    return res.status(403).json({ success: false, error: { message: 'Se requiere rol org_admin o superadmin' } });
-  }
-  next();
-}
-
-function validate(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, error: { message: 'Validation failed', details: errors.array() } });
-  }
-  next();
-}
 
 async function auditFeatureChange(req, previousValue, newValue) {
   await db.query(
@@ -50,11 +29,11 @@ async function auditFeatureChange(req, previousValue, newValue) {
   ).catch(() => {});
 }
 
-router.use(requireInternalSig, fromHeaders, requireAdmin);
+router.use(requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole);
 
 router.get('/orgs/:orgId',
   param('orgId').isInt({ min: 1 }),
-  validate,
+  validateRequest,
   async (req, res, next) => {
     try {
       const flags = await getFlags(req.params.orgId);
@@ -73,7 +52,7 @@ router.get('/orgs/:orgId',
 router.patch('/orgs/:orgId',
   param('orgId').isInt({ min: 1 }),
   body('flags').isObject(),
-  validate,
+  validateRequest,
   async (req, res, next) => {
     try {
       const previous = await getFlags(req.params.orgId);

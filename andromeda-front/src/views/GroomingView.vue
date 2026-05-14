@@ -29,15 +29,18 @@
     </div>
 
     <div class="filters">
-      <input v-model="dateFilter" type="date" class="filter-input" :aria-label="t('grooming.dateFilter')" @change="load()" />
-      <select v-model="statusFilter" class="filter-select" @change="load()">
+      <label for="groom-date" class="sr-only">{{ t('grooming.dateFilter') }}</label>
+      <input id="groom-date" name="groom-date" v-model="dateFilter" type="date" class="filter-input" @change="load()" />
+      <label for="groom-status" class="sr-only">{{ t('grooming.allStatuses') }}</label>
+      <select id="groom-status" name="groom-status" v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">{{ t('grooming.allStatuses') }}</option>
         <option value="scheduled">{{ t('grooming.statusScheduled') }}</option>
         <option value="in_progress">{{ t('grooming.statusInProgress') }}</option>
         <option value="completed">{{ t('grooming.statusCompleted') }}</option>
         <option value="cancelled">{{ t('grooming.statusCancelled') }}</option>
       </select>
-      <input v-model.trim="search" type="search" :placeholder="t('grooming.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <label for="groom-search" class="sr-only">{{ t('grooming.searchPlaceholder') }}</label>
+      <input id="groom-search" name="groom-search" v-model.trim="search" type="search" :placeholder="t('grooming.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
     <div v-if="loading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('grooming.loading') }}</div>
@@ -112,21 +115,21 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field">
-                  <label>{{ t('grooming.scheduledAt') }} <span class="req">*</span></label>
-                  <input v-model="form.scheduledAt" type="datetime-local" :disabled="saving" required />
+                  <label for="groom-m-date">{{ t('grooming.scheduledAt') }} <span class="req">*</span></label>
+                  <input id="groom-m-date" name="groom-m-date" v-model="form.scheduledAt" type="datetime-local" :disabled="saving" required />
                   <span v-if="fe.scheduledAt" class="field-error">{{ fe.scheduledAt }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('grooming.groomer') }} <span class="req">*</span></label>
-                  <select v-model="form.groomerId" :disabled="saving" required>
+                  <label for="groom-m-groomer">{{ t('grooming.groomer') }} <span class="req">*</span></label>
+                  <select id="groom-m-groomer" name="groom-m-groomer" v-model="form.groomerId" :disabled="saving" required>
                     <option value="">{{ t('grooming.selectGroomer') }}</option>
                     <option v-for="g in groomerList" :key="g.id" :value="g.id">{{ g.name }}</option>
                   </select>
                   <span v-if="fe.groomerId" class="field-error">{{ fe.groomerId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('grooming.patient') }} <span class="req">*</span></label>
-                  <input v-model.trim="patientSearch" type="search" :placeholder="t('grooming.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <label for="groom-m-patient">{{ t('grooming.patient') }} <span class="req">*</span></label>
+                  <input id="groom-m-patient" name="groom-m-patient" v-model.trim="patientSearch" type="search" :placeholder="t('grooming.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                   <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                       {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
@@ -146,12 +149,12 @@
                   </div>
                 </div>
                 <div class="field">
-                  <label>{{ t('grooming.estimatedPrice') }}</label>
-                  <input v-model.number="form.price" type="number" min="0" step="0.01" :placeholder="t('grooming.pricePlaceholder')" :disabled="saving" />
+                  <label for="groom-m-price">{{ t('grooming.estimatedPrice') }}</label>
+                  <input id="groom-m-price" name="groom-m-price" v-model.number="form.price" type="number" min="0" step="0.01" :placeholder="t('grooming.pricePlaceholder')" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Duracion estimada</label>
-                  <input v-model.number="form.estimatedDurationMinutes" type="number" min="0" step="1" placeholder="ej: 90" :disabled="saving" />
+                  <label for="groom-m-duration">Duracion estimada</label>
+                  <input id="groom-m-duration" name="groom-m-duration" v-model.number="form.estimatedDurationMinutes" type="number" min="0" step="1" placeholder="ej: 90" :disabled="saving" />
                 </div>
                 <div class="field field--full">
                   <label class="check-item">
@@ -160,8 +163,8 @@
                   </label>
                 </div>
                 <div v-if="form.pickupRequired" class="field field--full">
-                  <label>Direccion de retiro</label>
-                  <input v-model.trim="form.pickupAddress" type="text" placeholder="Direccion de retiro" :disabled="saving" />
+                  <label for="groom-m-pickup-addr">Direccion de retiro</label>
+                  <input id="groom-m-pickup-addr" name="groom-m-pickup-addr" v-model.trim="form.pickupAddress" type="text" placeholder="Direccion de retiro" :disabled="saving" />
                 </div>
                 <div class="field field--full">
                   <label class="check-item">
@@ -170,12 +173,12 @@
                   </label>
                 </div>
                 <div v-if="form.deliveryRequired" class="field field--full">
-                  <label>Direccion de entrega</label>
-                  <input v-model.trim="form.deliveryAddress" type="text" placeholder="Direccion de entrega" :disabled="saving" />
+                  <label for="groom-m-delivery-addr">Direccion de entrega</label>
+                  <input id="groom-m-delivery-addr" name="groom-m-delivery-addr" v-model.trim="form.deliveryAddress" type="text" placeholder="Direccion de entrega" :disabled="saving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('grooming.notes') }}</label>
-                  <textarea v-model.trim="form.notes" rows="2" :placeholder="t('grooming.notesPlaceholder')" :disabled="saving" />
+                  <label for="groom-m-notes">{{ t('grooming.notes') }}</label>
+                  <textarea id="groom-m-notes" name="groom-m-notes" v-model.trim="form.notes" rows="2" :placeholder="t('grooming.notesPlaceholder')" :disabled="saving" />
                 </div>
               </div>
             </div>
@@ -197,6 +200,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import http from '../api/client'
 import { t } from '../i18n'
+import { extractErrorMessage, logError } from '../utils/errors'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -281,7 +285,7 @@ async function loadServiceTypes() {
   try {
     const { data } = await http.get('/grooming/service-types')
     serviceTypesList.value = asArray(data?.data || data?.serviceTypes || data).map(normalizeServiceType).filter(Boolean)
-  } catch { serviceTypesList.value = [] }
+  } catch (error) { logError('grooming.loadServiceTypes', error); serviceTypesList.value = [] }
 }
 
 const SERVICES_LIST = computed(() => serviceTypesList.value.map((svc) => svc.name).filter(Boolean))
@@ -338,7 +342,7 @@ async function load() {
     const total = all.filter(g => g.status === 'completed').reduce((s, g) => s + (parseFloat(g.price) || 0), 0)
     kpis.value.revenue = '$' + total.toLocaleString('es-AR')
   } catch (e) {
-    error.value = e.response?.data?.message || t('grooming.loadError')
+    error.value = extractErrorMessage(e, t('grooming.loadError'), { includeRequestId: true })
   } finally { loading.value = false }
 }
 
@@ -362,7 +366,7 @@ async function loadGroomers() {
   try {
     const { data } = await http.get('/grooming/groomers')
     groomerList.value = asArray(data?.data || data?.groomers || data).map(normalizeGroomer).filter(Boolean)
-  } catch { groomerList.value = [] }
+  } catch (error) { logError('grooming.loadGroomers', error); groomerList.value = [] }
 }
 
 // Patient autocomplete
@@ -379,7 +383,7 @@ async function searchPatients() {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { patientResults.value = [] }
+    } catch (error) { logError('grooming.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
 }
 function selectPatient(pt) {
@@ -445,7 +449,7 @@ async function handleCreate() {
     await http.post('/grooming/appointments', payload)
     closeModal(); await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || t('grooming.createError')
+    saveError.value = extractErrorMessage(e, t('grooming.createError'), { includeRequestId: true })
   } finally { saving.value = false }
 }
 
@@ -496,7 +500,7 @@ async function handleRecord() {
     showRecordModal.value = false
     await load()
   } catch (e) {
-    recordError.value = e.response?.data?.error?.message || t('grooming.saveRecordError')
+    recordError.value = extractErrorMessage(e, t('grooming.saveRecordError'), { includeRequestId: true })
   } finally { recordSaving.value = false }
 }
 
@@ -504,6 +508,7 @@ onMounted(() => { load(); loadGroomers(); loadServiceTypes() })
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

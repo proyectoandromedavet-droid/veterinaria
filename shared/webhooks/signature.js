@@ -8,9 +8,11 @@
  */
 
 const crypto = require('crypto');
+const { createLogger } = require('../logger');
 
 const HEADER = 'X-Vetmanager-Signature';
 const ALG    = 'sha256';
+const log = createLogger('shared-webhook-signature');
 
 /**
  * Sign a payload string with a secret.
@@ -36,7 +38,8 @@ function verify(payload, header, secret) {
     const received = Buffer.from(header);
     if (expected.length !== received.length) return false;
     return crypto.timingSafeEqual(expected, received);
-  } catch (_) {
+  } catch (err) {
+    log.warn('Webhook signature verification failed', { error: err.message });
     return false;
   }
 }

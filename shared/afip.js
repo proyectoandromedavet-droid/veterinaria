@@ -24,6 +24,7 @@
 const Afip = require('@afipsdk/afip.js');
 const fs   = require('fs');
 const db   = require('./db');
+const { getSecret } = require('./secrets');
 
 // ── Cache de instancias por CUIT ──────────────────────────────────────────────
 const _instances = new Map();
@@ -59,9 +60,9 @@ async function getInstance(orgId) {
     production  = process.env.AFIP_PRODUCTION === 'true';
     puntoVenta  = parseInt(process.env.AFIP_PUNTO_VENTA || '1');
 
-    cert = process.env.AFIP_CERT
+    cert = getSecret('AFIP_CERT', { trim: false })
       || (process.env.AFIP_CERT_PATH ? fs.readFileSync(process.env.AFIP_CERT_PATH, 'utf8') : null);
-    key  = process.env.AFIP_KEY
+    key  = getSecret('AFIP_KEY', { trim: false })
       || (process.env.AFIP_KEY_PATH  ? fs.readFileSync(process.env.AFIP_KEY_PATH,  'utf8') : null);
   }
 

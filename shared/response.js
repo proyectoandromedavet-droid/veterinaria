@@ -30,8 +30,16 @@ function noContent(res) {
   return res.status(204).end();
 }
 
-function error(res, statusCode, message, details = null) {
-  const body = { success: false, error: { message } };
+function error(res, statusCode, message, details = null, code = null) {
+  const body = {
+    success: false,
+    error: {
+      message,
+      ...(code ? { code } : {}),
+      ...(res?.locals?.requestId ? { requestId: res.locals.requestId } : {}),
+      ...(res?.locals?.traceId ? { traceId: res.locals.traceId } : {}),
+    },
+  };
   if (details) body.error.details = details;
   return res.status(statusCode).json(body);
 }
@@ -40,13 +48,13 @@ function accepted(res, data = null) {
   return ok(res, data, {}, 202);
 }
 
-const badRequest    = (res, msg = 'Bad request', details = null) => error(res, 400, msg, details);
-const unauthorized  = (res, msg = 'Unauthorized')                => error(res, 401, msg);
-const forbidden     = (res, msg = 'Forbidden')                   => error(res, 403, msg);
-const notFound      = (res, msg = 'Not found')                   => error(res, 404, msg);
-const conflict      = (res, msg = 'Conflict')                    => error(res, 409, msg);
-const serverError   = (res, msg = 'Internal server error')       => error(res, 500, msg);
-const tooMany       = (res, msg = 'Too many requests')           => error(res, 429, msg);
+const badRequest    = (res, msg = 'Bad request', details = null, code = null) => error(res, 400, msg, details, code);
+const unauthorized  = (res, msg = 'Unauthorized', code = null)                => error(res, 401, msg, null, code);
+const forbidden     = (res, msg = 'Forbidden', code = null)                   => error(res, 403, msg, null, code);
+const notFound      = (res, msg = 'Not found', code = null)                   => error(res, 404, msg, null, code);
+const conflict      = (res, msg = 'Conflict', code = null)                    => error(res, 409, msg, null, code);
+const serverError   = (res, msg = 'Internal server error', code = null)       => error(res, 500, msg, null, code);
+const tooMany       = (res, msg = 'Too many requests', code = null)           => error(res, 429, msg, null, code);
 
 module.exports = {
   ok, created, accepted, paginated, noContent,

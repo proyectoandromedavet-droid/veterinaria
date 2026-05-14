@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
     <div class="page-header">
       <div class="page-header__left">
@@ -30,9 +30,11 @@
         {{ p.label }}
       </BaseButton>
       <div class="period-custom">
-        <input v-model="dateFrom" type="date" class="filter-input" :aria-label="t('reports.dateFrom')" @change="load()" />
+        <label for="rep-date-from" class="sr-only">{{ t('reports.dateFrom') }}</label>
+        <input id="rep-date-from" name="rep-date-from" v-model="dateFrom" type="date" class="filter-input" @change="load()" />
         <span aria-hidden="true">{{ t('common.rangeSeparator') }}</span>
-        <input v-model="dateTo" type="date" class="filter-input" :aria-label="t('reports.dateTo')" @change="load()" />
+        <label for="rep-date-to" class="sr-only">{{ t('reports.dateTo') }}</label>
+        <input id="rep-date-to" name="rep-date-to" v-model="dateTo" type="date" class="filter-input" @change="load()" />
       </div>
     </div>
 
@@ -168,6 +170,7 @@ import { computed, onMounted, ref } from 'vue'
 import http from '../api/client'
 import BaseButton from '../components/base/BaseButton.vue'
 import { t } from '../i18n'
+import { logError } from '../utils/errors'
 
 const loading = ref(false)
 const error = ref('')
@@ -362,7 +365,8 @@ async function exportReport() {
     a.download = `reporte_${dateFrom.value || 'periodo'}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  } catch {
+  } catch (error) {
+    logError('reportes.exportCsv', error, { dateFrom: dateFrom.value, dateTo: dateTo.value })
     alert(t('reports.exportError'))
   }
 }
@@ -371,6 +375,8 @@ onMounted(() => setPeriod('month'))
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
 .page {
   display: flex;
   flex-direction: column;

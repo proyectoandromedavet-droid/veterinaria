@@ -14,16 +14,21 @@ const { hasPermissionDynamic } = require('./rbac');
 const { createLogger }        = require('./logger');
 const { appErrorHandler }     = require('./errors');
 const { requireInternalSig }  = require('./internalAuth');
+const { fromHeaders }         = require('./requestContext');
+const { httpMetrics, metricsHandler } = require('./metrics');
+const { tracingMiddleware } = require('./tracing');
 
-function fromHeaders(req, _res, next) {
-  req.user = {
-    userId:   req.headers['x-user-id'],
-    orgId:    req.headers['x-org-id'],
-    branchId: req.headers['x-branch-id'] || null,
-    roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
-    email:    req.headers['x-user-email'],
-  };
-  next();
+function matchesPathRule(rule, req) {
+  if (!rule) return false;
+  const path = req.path || req.originalUrl || '';
+  if (rule instanceof RegExp) return rule.test(path);
+  if (typeof rule === 'function') return rule(req) === true;
+  if (typeof rule === 'string') return path === rule;
+  return false;
+}
+
+function shouldSkipInternalAuth(req, publicPaths = []) {
+  return publicPaths.some((rule) => matchesPathRule(rule, req));
 }
 
 function requirePerm(perm) {
@@ -32,7 +37,12 @@ function requirePerm(perm) {
     if (!allowed) {
       return res.status(403).json({
         success: false,
-        error:   { message: `Forbidden: requires '${perm}'` },
+        error:   {
+          message: `Forbidden: requires '${perm}'`,
+          code: 'RBAC_003',
+          ...(req.requestId ? { requestId: req.requestId } : {}),
+          ...(req.traceId ? { traceId: req.traceId } : {}),
+        },
       });
     }
     next();
@@ -66,7 +76,12 @@ function guardWrite(resource) {
     if (!allowed) {
       return res.status(403).json({
         success: false,
-        error:   { message: `Forbidden: requires '${needed}'` },
+        error:   {
+          message: `Forbidden: requires '${needed}'`,
+          code: 'RBAC_003',
+          ...(req.requestId ? { requestId: req.requestId } : {}),
+          ...(req.traceId ? { traceId: req.traceId } : {}),
+        },
       });
     }
     next();
@@ -81,7 +96,7 @@ function guardWrite(resource) {
  * @param {string}   specPath  — absolute path to openapi.yaml / openapi.json
  * @param {object}   [opts]    — express-openapi-validator options overrides
  */
-function withOpenApiValidation(app, specPath, opts = {}) {
+function withOpenApiValidation(app, specPath, opts = {}, log = console) {
   if (process.env.OPENAPI_VALIDATE === 'false') return;
   try {
     const fs = require('fs');
@@ -100,28 +115,67 @@ function withOpenApiValidation(app, specPath, opts = {}) {
       if (err.status === 400 && err.errors) {
         return res.status(400).json({
           success: false,
-          error: { message: 'Request validation failed', code: 'VALIDATION_ERROR', details: err.errors },
+          error: {
+            message: 'Request validation failed',
+            code: 'VALIDATION_ERROR',
+            details: err.errors,
+            ...(res.locals.requestId ? { requestId: res.locals.requestId } : {}),
+            ...(res.locals.traceId ? { traceId: res.locals.traceId } : {}),
+          },
         });
       }
       next(err);
     });
-  } catch (_) { /* validator not available or spec missing */ }
+  } catch (error) {
+    log.warn('OpenAPI validation disabled for service', {
+      specPath,
+      error: error.message,
+    });
+  }
 }
 
 function buildApp(serviceName, routesFn, opts = {}) {
   const log = createLogger(serviceName);
   const app = express();
   const publicHealthPath = /^\/health(?:\/(?:live|ready|deep))?$/;
-  app.use(express.json({ limit: '10mb' }));
+  const publicMetricsPath = /^\/metrics$/;
+  if (opts.trustProxy !== undefined) {
+    app.set('trust proxy', opts.trustProxy);
+  }
+
+  const preJsonMiddlewares = Array.isArray(opts.preJsonMiddlewares)
+    ? opts.preJsonMiddlewares
+    : (opts.preJsonMiddlewares ? [opts.preJsonMiddlewares] : []);
+  for (const middleware of preJsonMiddlewares) {
+    app.use(middleware);
+  }
+
+  app.use(tracingMiddleware(serviceName));
+  app.use(express.json({ limit: opts.jsonLimit || '10mb' }));
+  if (opts.urlencoded) {
+    app.use(express.urlencoded({
+      extended: opts.urlencodedExtended !== undefined ? opts.urlencodedExtended : true,
+    }));
+  }
+
+  const postJsonMiddlewares = Array.isArray(opts.postJsonMiddlewares)
+    ? opts.postJsonMiddlewares
+    : (opts.postJsonMiddlewares ? [opts.postJsonMiddlewares] : []);
+  for (const middleware of postJsonMiddlewares) {
+    app.use(middleware);
+  }
+
   // Zero-trust: all routes except /health require a valid gateway HMAC signature
+  const publicPaths = [publicHealthPath, publicMetricsPath].concat(opts.publicPaths || []);
   app.use((req, res, next) => {
-    if (publicHealthPath.test(req.path)) return next();
+    if (shouldSkipInternalAuth(req, publicPaths)) return next();
     return requireInternalSig(req, res, next);
   });
   app.use(fromHeaders);
+  app.use(httpMetrics(serviceName));
 
   // OpenAPI request validation (if specPath provided)
-  if (opts.specPath) withOpenApiValidation(app, opts.specPath, opts.openApiOpts || {});
+  if (opts.specPath) withOpenApiValidation(app, opts.specPath, opts.openApiOpts || {}, log);
 
   // ── Healthcheck real — verifica DB, Redis, circuit breakers y memoria ────
   async function runHealthChecks() {
@@ -136,9 +190,10 @@ function buildApp(serviceName, routesFn, opts = {}) {
       await db.getPool().execute('SELECT 1');
       checks.db  = 'ok';
       latency.db = Date.now() - t0;
-    } catch {
+    } catch (error) {
       checks.db  = 'error';
       healthy    = false;
+      log.warn('Healthcheck DB probe failed', { error: error.message });
     }
 
     // Ping Redis
@@ -149,8 +204,9 @@ function buildApp(serviceName, routesFn, opts = {}) {
       await redis.ping();
       checks.redis  = 'ok';
       latency.redis = Date.now() - t0;
-    } catch {
+    } catch (error) {
       checks.redis = 'degraded'; // Redis degradado no mata el servicio
+      log.warn('Healthcheck Redis probe degraded', { error: error.message });
     }
 
     // Circuit breakers
@@ -162,8 +218,9 @@ function buildApp(serviceName, routesFn, opts = {}) {
         : breakers.map(b => ({ name: b.name, state: b.state, failures: b.failures }));
       // Any OPEN circuit makes service degraded (but not unhealthy)
       if (breakers.some(b => b.state === 'OPEN')) checks._circuitOpen = true;
-    } catch {
+    } catch (error) {
       checks.circuitBreakers = 'unavailable';
+      log.warn('Healthcheck circuit breaker probe unavailable', { error: error.message });
     }
 
     // Memory
@@ -185,7 +242,7 @@ function buildApp(serviceName, routesFn, opts = {}) {
       version: process.env.APP_VERSION || '1.0.0',
       uptime:  Math.floor(process.uptime()),
       ts:      new Date().toISOString(),
-      traceId: req.headers['x-trace-id'] || null,
+      traceId: req.traceId || req.headers['x-trace-id'] || null,
       checks,
       latency,
     });
@@ -202,7 +259,7 @@ function buildApp(serviceName, routesFn, opts = {}) {
       version: process.env.APP_VERSION || '1.0.0',
       uptime:  Math.floor(process.uptime()),
       ts:      new Date().toISOString(),
-      traceId: req.headers['x-trace-id'] || null,
+      traceId: req.traceId || req.headers['x-trace-id'] || null,
       checks,
       latency,
     });
@@ -224,9 +281,11 @@ function buildApp(serviceName, routesFn, opts = {}) {
       ts:      new Date().toISOString(),
       checks,
       latency,
-      traceId: req.headers['x-trace-id'] || null,
+      traceId: req.traceId || req.headers['x-trace-id'] || null,
     });
   });
+
+  app.get('/metrics', metricsHandler);
 
   function logNotFound(req, err) {
     log.warn('Route not found', {
@@ -235,7 +294,7 @@ function buildApp(serviceName, routesFn, opts = {}) {
       originalUrl: req.originalUrl,
       baseUrl: req.baseUrl,
       path: req.path,
-      requestId: req.headers['x-request-id'] || req.requestId || null,
+      requestId: req.requestId || req.headers['x-request-id'] || null,
       userId: req.user?.userId || req.user?.id || null,
       error: err?.message || 'not found',
     });
@@ -251,6 +310,13 @@ function buildApp(serviceName, routesFn, opts = {}) {
 
   routesFn(app, requirePerm);
 
+  const customErrorHandlers = Array.isArray(opts.errorHandlers)
+    ? opts.errorHandlers
+    : (opts.errorHandlers ? [opts.errorHandlers] : []);
+  for (const errorHandler of customErrorHandlers) {
+    app.use(errorHandler);
+  }
+
   // 404
   app.use((req, res) =>
     res.status(404).json({
@@ -260,6 +326,8 @@ function buildApp(serviceName, routesFn, opts = {}) {
         message: 'Route not found',
         path: req.originalUrl,
         method: req.method,
+        ...(req.requestId ? { requestId: req.requestId } : {}),
+        ...(req.traceId ? { traceId: req.traceId } : {}),
       },
     })
   );
@@ -270,7 +338,20 @@ function buildApp(serviceName, routesFn, opts = {}) {
   // Error handler — nunca filtrar stack traces ni queries SQL en producción
   app.use((err, req, res, _next) => {
     const isProd = process.env.NODE_ENV === 'production';
-    log.error(err.message, { stack: err.stack, traceId: req.headers['x-trace-id'] });
+    const explicitStatus = Number(err.httpStatus || err.http || err.status || err.statusCode || 0) || null;
+    log.error(err.message, { stack: err.stack, traceId: req.traceId || req.headers['x-trace-id'] });
+
+    if (err.type === 'entity.parse.failed') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid JSON body',
+          code: 'VAL_008',
+          ...(req.requestId ? { requestId: req.requestId } : {}),
+          ...(req.traceId ? { traceId: req.traceId } : {}),
+        },
+      });
+    }
 
     if (isNotFoundLike(err)) {
       logNotFound(req, err);
@@ -281,19 +362,57 @@ function buildApp(serviceName, routesFn, opts = {}) {
           message: 'Route not found',
           path: req.originalUrl,
           method: req.method,
+          ...(req.requestId ? { requestId: req.requestId } : {}),
+          ...(req.traceId ? { traceId: req.traceId } : {}),
         },
       });
     }
 
     if (err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ success: false, error: { message: 'Duplicate entry', code: 'DUPLICATE_ENTRY' } });
+      return res.status(409).json({
+        success: false,
+        error: {
+          message: 'Duplicate entry',
+          code: 'DUPLICATE_ENTRY',
+          ...(req.requestId ? { requestId: req.requestId } : {}),
+          ...(req.traceId ? { traceId: req.traceId } : {}),
+        },
+      });
     }
     if (err.code === 'ER_NO_REFERENCED_ROW_2') {
-      return res.status(422).json({ success: false, error: { message: 'Referenced resource not found', code: 'FK_VIOLATION' } });
+      return res.status(422).json({
+        success: false,
+        error: {
+          message: 'Referenced resource not found',
+          code: 'FK_VIOLATION',
+          ...(req.requestId ? { requestId: req.requestId } : {}),
+          ...(req.traceId ? { traceId: req.traceId } : {}),
+        },
+      });
+    }
+
+    if (explicitStatus && explicitStatus >= 400 && explicitStatus < 500) {
+      return res.status(explicitStatus).json({
+        success: false,
+        error: {
+          message: err.message || 'Request failed',
+          code: err.code || (explicitStatus === 401 ? 'UNAUTHORIZED' : explicitStatus === 403 ? 'FORBIDDEN' : explicitStatus === 404 ? 'NOT_FOUND' : 'REQUEST_ERROR'),
+          ...(req.requestId ? { requestId: req.requestId } : {}),
+          ...(req.traceId ? { traceId: req.traceId } : {}),
+        },
+      });
     }
 
     const message = isProd ? 'Internal server error' : (err.message || 'Internal server error');
-    res.status(500).json({ success: false, error: { message, code: 'INTERNAL_ERROR' } });
+    res.status(explicitStatus && explicitStatus >= 500 ? explicitStatus : 500).json({
+      success: false,
+      error: {
+        message,
+        code: err.code || 'INTERNAL_ERROR',
+        ...(req.requestId ? { requestId: req.requestId } : {}),
+        ...(req.traceId ? { traceId: req.traceId } : {}),
+      },
+    });
   });
 
   return app;
@@ -311,16 +430,24 @@ function buildApp(serviceName, routesFn, opts = {}) {
  * @param {number}  [opts.drainMs=10000]  Max ms to wait for in-flight requests
  * @returns {http.Server}
  */
-function startService(app, serviceName, port, { drainMs = 10_000 } = {}) {
+function startService(app, serviceName, port, { drainMs = 10_000, onStarted = null, onShutdown = null } = {}) {
   const http   = require('http');
   const log    = createLogger(serviceName);
   const server = http.createServer(app);
   const registryIntervalMs = Math.max(15000, parseInt(process.env.SERVICE_REGISTRY_HEARTBEAT_MS || '20000', 10));
   let registryTimer = null;
+  let startupState = null;
 
-  server.listen(port, () =>
-    log.info(`${serviceName} running on port ${port}`, { env: process.env.NODE_ENV })
-  );
+  server.listen(port, async () => {
+    log.info(`${serviceName} running on port ${port}`, { env: process.env.NODE_ENV });
+    if (typeof onStarted === 'function') {
+      try {
+        startupState = await onStarted({ server, port, serviceName, log });
+      } catch (error) {
+        log.error('Service startup hook failed', { error: error.message });
+      }
+    }
+  });
 
   async function heartbeat() {
     try {
@@ -328,10 +455,16 @@ function startService(app, serviceName, port, { drainMs = 10_000 } = {}) {
       const serviceUrl = process.env.SERVICE_PUBLIC_URL || `http://localhost:${port}`;
       await registerService(serviceName, {
         url: serviceUrl,
+        healthUrl: `${serviceUrl}/health/ready`,
+        instanceId: process.env.SERVICE_INSTANCE_ID || process.env.HOSTNAME || `${serviceName}-${process.pid}`,
+        weight: parseInt(process.env.SERVICE_INSTANCE_WEIGHT || '1', 10),
+        zone: process.env.SERVICE_INSTANCE_ZONE || process.env.RAILWAY_REGION || process.env.AWS_REGION || null,
         pid: process.pid,
         env: process.env.NODE_ENV || 'development',
       });
-    } catch (_) {}
+    } catch (error) {
+      log.warn('Service registry heartbeat failed', { error: error.message });
+    }
   }
 
   heartbeat().catch(() => {});
@@ -347,12 +480,22 @@ function startService(app, serviceName, port, { drainMs = 10_000 } = {}) {
     server.close(async () => {
       log.info('HTTP server closed — draining resources');
 
+      if (typeof onShutdown === 'function') {
+        try {
+          await onShutdown({ server, port, serviceName, log, startupState });
+        } catch (error) {
+          log.warn('Custom shutdown hook failed', { error: error.message });
+        }
+      }
+
       // Close DB pool
       try {
         const db = require('./db');
         await db.getPool().end();
         log.info('DB pool closed');
-      } catch { /* pool may not have been created */ }
+      } catch (error) {
+        log.warn('DB pool close skipped or failed', { error: error.message });
+      }
 
       // Disconnect Redis client
       try {
@@ -360,7 +503,9 @@ function startService(app, serviceName, port, { drainMs = 10_000 } = {}) {
         const redis = await cache.getClient();
         await redis.quit();
         log.info('Redis connection closed');
-      } catch { /* redis may not have been used */ }
+      } catch (error) {
+        log.warn('Redis close skipped or failed', { error: error.message });
+      }
 
       log.info('Graceful shutdown complete');
       process.exit(0);

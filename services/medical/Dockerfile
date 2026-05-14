@@ -10,6 +10,6 @@ RUN npm install --omit=dev
 COPY services/medical/src ./services/medical/src
 COPY shared ./shared
 
-EXPOSE $PORT
+EXPOSE 3000
 USER node
 CMD ["node", "services/medical/src/index.js"]

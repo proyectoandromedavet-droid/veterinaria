@@ -70,6 +70,24 @@ paths:
         '201':
           description: Triage recorded
 
+  /triage/{id}:
+    post:
+      summary: Record appointment triage via legacy alias
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Triage recorded
+
   /appointments/{id}/ical:
     get:
       summary: Download appointment iCal

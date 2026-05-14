@@ -9,6 +9,7 @@
  */
 
 const nodemailer = require('nodemailer');
+const { getSecret } = require('./secrets');
 
 // ── Transport ─────────────────────────────────────────────────────────────────
 function createTransport() {
@@ -20,7 +21,7 @@ function createTransport() {
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        pass: getSecret('SMTP_PASS'),
       },
     });
   }

@@ -11,6 +11,8 @@ RUN npm install --omit=dev
 #   /app/gateway/src/index.js  →  ../../shared  →  /app/shared  ✓
 #   /app/shared/*.js           →  require('redis')  →  /app/node_modules  ✓
 COPY gateway/src ./gateway/src
+COPY gateway/middleware ./gateway/middleware
+COPY gateway/docs ./gateway/docs
 COPY shared ./shared
 
 RUN mkdir -p /app/gateway/logs && chown -R node:node /app

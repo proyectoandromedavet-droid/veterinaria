@@ -173,7 +173,9 @@ function passwordPolicyMiddleware(field = 'password', opts = {}) {
 
     let ctx = {};
     if (opts.getCtx) {
-      try { ctx = await opts.getCtx(req); } catch (_) {}
+      try { ctx = await opts.getCtx(req); } catch (err) {
+        log.warn('Password policy context lookup failed', { error: err.message });
+      }
     }
 
     const result = validatePassword(password, ctx);
@@ -192,3 +194,6 @@ function passwordPolicyMiddleware(field = 'password', opts = {}) {
 }
 
 module.exports = { validatePassword, enforcePassword, passwordPolicyMiddleware };
+const { createLogger } = require('./logger');
+
+const log = createLogger('password-policy');

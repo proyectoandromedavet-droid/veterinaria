@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
 
     <div class="page-header">
@@ -39,14 +39,18 @@
 
     <!-- Filtros -->
     <div class="filters">
+      <label for="lab-search" class="sr-only">{{ t('laboratory.searchPlaceholder') }}</label>
       <input
+        id="lab-search"
+        name="lab-search"
         v-model.trim="search"
         type="search"
         :placeholder="t('laboratory.searchPlaceholder')"
         class="filter-input filter-input--grow"
         @input="debouncedLoad()"
       />
-      <select v-model="statusFilter" class="filter-select" @change="load()">
+      <label for="lab-status" class="sr-only">{{ t('common.allStatuses') }}</label>
+      <select id="lab-status" name="lab-status" v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">{{ t('common.allStatuses') }}</option>
         <option value="pending">{{ t('laboratory.pending') }}</option>
         <option value="in_progress">{{ t('laboratory.inProgress') }}</option>
@@ -143,8 +147,10 @@
 
               <!-- Paciente autocomplete -->
               <div class="field field--full" style="position:relative">
-                <label>{{ t('laboratory.patientLabel') }} <span class="req">*</span></label>
+                <label for="lab-m-patient">{{ t('laboratory.patientLabel') }} <span class="req">*</span></label>
                 <input
+                  id="lab-m-patient"
+                  name="lab-m-patient"
                   v-model.trim="patientSearch"
                   type="search"
                   :placeholder="t('laboratory.patientPlaceholder')"
@@ -173,16 +179,18 @@
 
               <div class="form-grid">
                 <div class="field">
-                  <label>{{ t('laboratory.priorityLabel') }}</label>
-                  <select v-model="orderForm.priority" :disabled="saving">
+                  <label for="lab-m-priority">{{ t('laboratory.priorityLabel') }}</label>
+                  <select id="lab-m-priority" name="lab-m-priority" v-model="orderForm.priority" :disabled="saving">
                     <option value="routine">{{ t('laboratory.priorityRoutine') }}</option>
                     <option value="urgent">{{ t('laboratory.priorityUrgent') }}</option>
                     <option value="emergency">{{ t('laboratory.priorityEmergency') }}</option>
                   </select>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('laboratory.notesLabel') }}</label>
+                  <label for="lab-m-notes">{{ t('laboratory.notesLabel') }}</label>
                   <textarea
+                    id="lab-m-notes"
+                    name="lab-m-notes"
                     v-model.trim="orderForm.clinicalNotes"
                     rows="3"
                     :placeholder="t('laboratory.notesPlaceholder')"
@@ -281,8 +289,10 @@
                   </div>
                   <div class="form-grid">
                     <div class="field">
-                      <label>{{ t('laboratory.valueLabel') }}</label>
+                      <label :for="`lab-r-val-${item.id}`">{{ t('laboratory.valueLabel') }}</label>
                       <input
+                        :id="`lab-r-val-${item.id}`"
+                        :name="`lab-r-val-${item.id}`"
                         v-model.trim="resultInputs[item.id].value"
                         type="text"
                         :placeholder="item.units || 'Resultado'"
@@ -290,8 +300,8 @@
                       />
                     </div>
                     <div class="field">
-                      <label>{{ t('laboratory.interpretationLabel') }}</label>
-                      <select v-model="resultInputs[item.id].interpretation" :disabled="savingResults">
+                      <label :for="`lab-r-int-${item.id}`">{{ t('laboratory.interpretationLabel') }}</label>
+                      <select :id="`lab-r-int-${item.id}`" :name="`lab-r-int-${item.id}`" v-model="resultInputs[item.id].interpretation" :disabled="savingResults">
                         <option value="">{{ t('laboratory.interpretationNone') }}</option>
                         <option value="normal">{{ t('laboratory.normal') }}</option>
                         <option value="low">{{ t('laboratory.low') }}</option>
@@ -301,8 +311,10 @@
                       </select>
                     </div>
                     <div class="field field--full">
-                      <label>{{ t('laboratory.notesResultLabel') }}</label>
+                      <label :for="`lab-r-notes-${item.id}`">{{ t('laboratory.notesResultLabel') }}</label>
                       <input
+                        :id="`lab-r-notes-${item.id}`"
+                        :name="`lab-r-notes-${item.id}`"
                         v-model.trim="resultInputs[item.id].notes"
                         type="text"
                         :placeholder="t('laboratory.notesResultLabel')"
@@ -339,6 +351,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import http from '../api/client'
 import { t } from '../i18n'
+import { extractErrorMessage, logError } from '../utils/errors'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -421,7 +434,7 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     await loadStats()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las órdenes'
+    error.value = extractErrorMessage(e, 'No se pudieron cargar las órdenes.', { includeRequestId: true })
   } finally { loading.value = false }
 }
 
@@ -430,7 +443,7 @@ async function loadStats() {
     const { data } = await http.get('/lab/orders/pending')
     const pending = asArray(data?.data || data?.orders || data).map(normalizeOrder).filter(Boolean)
     stats.pending = pending.length
-  } catch { /* silencioso */ }
+  } catch (error) { logError('laboratorio.loadPendingStats', error) }
 
   // Calcular stats desde la lista completa si no hay endpoint dedicado
   const today = new Date().toISOString().split('T')[0]
@@ -507,7 +520,7 @@ async function searchPatients() {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { patientResults.value = [] }
+    } catch (error) { logError('laboratorio.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
 }
 
@@ -537,7 +550,7 @@ async function loadTests() {
   try {
     const { data } = await http.get('/lab/tests')
     allTests.value = asArray(data?.data || data?.tests || data).map(normalizeTest).filter(Boolean)
-  } catch { allTests.value = [] }
+  } catch (error) { logError('laboratorio.loadTests', error); allTests.value = [] }
   finally { testsLoading.value = false }
 }
 
@@ -574,7 +587,7 @@ async function handleCreateOrder() {
     showNewOrder.value = false
     await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo crear la orden'
+    saveError.value = extractErrorMessage(e, 'No se pudo crear la orden.', { includeRequestId: true })
   } finally { saving.value = false }
 }
 
@@ -603,7 +616,7 @@ async function openResults(order) {
       resultInputs[item.id] = { value: '', interpretation: '', notes: '' }
     })
   } catch (e) {
-    resultsError.value = e.response?.data?.message || 'No se pudo cargar el detalle'
+    resultsError.value = extractErrorMessage(e, 'No se pudo cargar el detalle.', { includeRequestId: true })
   } finally { detailLoading.value = false }
 }
 
@@ -626,7 +639,7 @@ async function handleSubmitResults() {
     showResults.value = false
     await load()
   } catch (e) {
-    resultsError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudieron guardar los resultados'
+    resultsError.value = extractErrorMessage(e, 'No se pudieron guardar los resultados.', { includeRequestId: true })
   } finally { savingResults.value = false }
 }
 
@@ -634,6 +647,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

@@ -124,6 +124,27 @@ const webhookDeliveries = new client.Counter({
   registers: [register],
 });
 
+const dependencyDegradations = new client.Counter({
+  name:    'dependency_degradations_total',
+  help:    'Total degraded/open/strict dependency outcomes',
+  labelNames: ['dependency', 'mode', 'outcome', 'service'],
+  registers: [register],
+});
+
+const eventBusMessages = new client.Counter({
+  name:    'event_bus_messages_total',
+  help:    'Total event bus publish/consume outcomes',
+  labelNames: ['topic', 'direction', 'result'],
+  registers: [register],
+});
+
+const serviceRegistryOperations = new client.Counter({
+  name:    'service_registry_operations_total',
+  help:    'Total service registry operations by result',
+  labelNames: ['operation', 'result'],
+  registers: [register],
+});
+
 // ── HTTP instrumentation middleware ───────────────────────────────────────────
 /**
  * Express middleware that records HTTP request metrics.
@@ -184,6 +205,9 @@ module.exports = {
   invoicesIssued,
   invoiceAmount,
   webhookDeliveries,
+  dependencyDegradations,
+  eventBusMessages,
+  serviceRegistryOperations,
   // Middleware
   httpMetrics,
   metricsHandler,

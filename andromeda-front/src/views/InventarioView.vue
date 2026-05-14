@@ -41,8 +41,10 @@
 
       <!-- Filtros -->
       <div class="filters">
-        <input v-model.trim="search" type="search" :placeholder="t('inventory.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
-        <select v-model="categoryFilter" class="filter-select" @change="load()">
+        <label for="inv-search" class="sr-only">{{ t('inventory.searchPlaceholder') }}</label>
+        <input id="inv-search" name="inv-search" v-model.trim="search" type="search" :placeholder="t('inventory.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+        <label for="inv-category" class="sr-only">{{ t('inventory.allCategories') }}</label>
+        <select id="inv-category" name="inv-category" v-model="categoryFilter" class="filter-select" @change="load()">
           <option value="">{{ t('inventory.allCategories') }}</option>
           <option value="medication">💊 {{ t('inventory.categoryMedication') }}</option>
           <option value="vaccine">💉 {{ t('inventory.categoryVaccine') }}</option>
@@ -51,7 +53,8 @@
           <option value="equipment">🔧 {{ t('inventory.categoryEquipment') }}</option>
           <option value="other">📦 {{ t('inventory.categoryOther') }}</option>
         </select>
-        <select v-model="stockFilter" class="filter-select" @change="load()">
+        <label for="inv-stock" class="sr-only">{{ t('inventory.allStock') }}</label>
+        <select id="inv-stock" name="inv-stock" v-model="stockFilter" class="filter-select" @change="load()">
           <option value="">{{ t('inventory.allStock') }}</option>
           <option value="low">⚠️ {{ t('inventory.lowStock') }}</option>
           <option value="zero">🔴 {{ t('inventory.noStock') }}</option>
@@ -280,13 +283,13 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>{{ t('inventory.productName') }} <span class="req">*</span></label>
-                  <input v-model.trim="form.name" type="text" placeholder="Amoxicilina 500mg" :disabled="saving" required />
+                  <label for="inv-m-name">{{ t('inventory.productName') }} <span class="req">*</span></label>
+                  <input id="inv-m-name" name="inv-m-name" v-model.trim="form.name" type="text" placeholder="Amoxicilina 500mg" :disabled="saving" required />
                   <span v-if="fe.name" class="field-error">{{ fe.name }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.type') }} <span class="req">*</span></label>
-                  <select v-model="form.category" :disabled="saving" required>
+                  <label for="inv-m-cat">{{ t('inventory.type') }} <span class="req">*</span></label>
+                  <select id="inv-m-cat" name="inv-m-cat" v-model="form.category" :disabled="saving" required>
                     <option value="">{{ t('common.choose') }}</option>
                     <option value="medication">💊 {{ t('inventory.categoryMedication') }}</option>
                     <option value="vaccine">💉 {{ t('inventory.categoryVaccine') }}</option>
@@ -298,38 +301,38 @@
                   <span v-if="fe.category" class="field-error">{{ fe.category }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.code') }}</label>
-                  <input v-model.trim="form.sku" type="text" placeholder="MED-001" :disabled="saving" />
+                  <label for="inv-m-sku">{{ t('inventory.code') }}</label>
+                  <input id="inv-m-sku" name="inv-m-sku" v-model.trim="form.sku" type="text" placeholder="MED-001" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.salePrice') }} <span class="req">*</span></label>
-                  <input v-model.number="form.salePrice" type="number" min="0" step="0.01" placeholder="0.00" :disabled="saving" required />
+                  <label for="inv-m-price">{{ t('inventory.salePrice') }} <span class="req">*</span></label>
+                  <input id="inv-m-price" name="inv-m-price" v-model.number="form.salePrice" type="number" min="0" step="0.01" placeholder="0.00" :disabled="saving" required />
                   <span v-if="fe.salePrice" class="field-error">{{ fe.salePrice }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.unitCost') }}</label>
-                  <input v-model.number="form.unitCost" type="number" min="0" step="0.01" placeholder="0.00" :disabled="saving" />
+                  <label for="inv-m-cost">{{ t('inventory.unitCost') }}</label>
+                  <input id="inv-m-cost" name="inv-m-cost" v-model.number="form.unitCost" type="number" min="0" step="0.01" placeholder="0.00" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.initialStock') }} <span class="req">*</span></label>
-                  <input v-model.number="form.stock" type="number" min="0" placeholder="0" :disabled="saving" required />
+                  <label for="inv-m-stock">{{ t('inventory.initialStock') }} <span class="req">*</span></label>
+                  <input id="inv-m-stock" name="inv-m-stock" v-model.number="form.stock" type="number" min="0" placeholder="0" :disabled="saving" required />
                   <span v-if="fe.stock" class="field-error">{{ fe.stock }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.minimumStock') }}</label>
-                  <input v-model.number="form.minStock" type="number" min="0" placeholder="5" :disabled="saving" />
+                  <label for="inv-m-minstock">{{ t('inventory.minimumStock') }}</label>
+                  <input id="inv-m-minstock" name="inv-m-minstock" v-model.number="form.minStock" type="number" min="0" placeholder="5" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Punto de reorden</label>
-                  <input v-model.number="form.reorderPoint" type="number" min="0" placeholder="10" :disabled="saving" />
+                  <label for="inv-m-reorder">Punto de reorden</label>
+                  <input id="inv-m-reorder" name="inv-m-reorder" v-model.number="form.reorderPoint" type="number" min="0" placeholder="10" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.batchExpiration') }}</label>
-                  <input v-model="form.expirationDate" type="date" :disabled="saving" />
+                  <label for="inv-m-expiry">{{ t('inventory.batchExpiration') }}</label>
+                  <input id="inv-m-expiry" name="inv-m-expiry" v-model="form.expirationDate" type="date" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Proveedor</label>
-                  <select v-model="form.supplierId" :disabled="saving">
+                  <label for="inv-m-supplier">Proveedor</label>
+                  <select id="inv-m-supplier" name="inv-m-supplier" v-model="form.supplierId" :disabled="saving">
                     <option value="">{{ t('common.choose') }}</option>
                     <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
                   </select>
@@ -343,8 +346,8 @@
                   Activo
                 </label>
                 <div class="field field--full">
-                  <label>{{ t('inventory.description') }}</label>
-                  <textarea v-model.trim="form.description" rows="2" :placeholder="t('inventory.description')" :disabled="saving" />
+                  <label for="inv-m-desc">{{ t('inventory.description') }}</label>
+                  <textarea id="inv-m-desc" name="inv-m-desc" v-model.trim="form.description" rows="2" :placeholder="t('inventory.description')" :disabled="saving" />
                 </div>
               </div>
             </div>
@@ -374,37 +377,37 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field field--full">
-                  <label>{{ t('common.name') }} <span class="req">*</span></label>
-                  <input v-model.trim="supplierForm.name" type="text" placeholder="Droguería XYZ" :disabled="supplierSaving" required />
+                  <label for="sup-m-name">{{ t('common.name') }} <span class="req">*</span></label>
+                  <input id="sup-m-name" name="sup-m-name" v-model.trim="supplierForm.name" type="text" placeholder="Droguería XYZ" :disabled="supplierSaving" required />
                   <span v-if="sfe.name" class="field-error">{{ sfe.name }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.taxId') }}</label>
-                  <input v-model.trim="supplierForm.taxId" type="text" placeholder="20-12345678-9" :disabled="supplierSaving" />
+                  <label for="sup-m-taxid">{{ t('inventory.taxId') }}</label>
+                  <input id="sup-m-taxid" name="sup-m-taxid" v-model.trim="supplierForm.taxId" type="text" placeholder="20-12345678-9" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.contact') }}</label>
-                  <input v-model.trim="supplierForm.contactName" type="text" placeholder="Juan Pérez" :disabled="supplierSaving" />
+                  <label for="sup-m-contact">{{ t('inventory.contact') }}</label>
+                  <input id="sup-m-contact" name="sup-m-contact" v-model.trim="supplierForm.contactName" type="text" placeholder="Juan Pérez" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.email') }}</label>
-                  <input v-model.trim="supplierForm.email" type="email" placeholder="ventas@drogueria.com" :disabled="supplierSaving" />
+                  <label for="sup-m-email">{{ t('inventory.email') }}</label>
+                  <input id="sup-m-email" name="sup-m-email" v-model.trim="supplierForm.email" type="email" placeholder="ventas@drogueria.com" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('patients.phone') }}</label>
-                  <input v-model.trim="supplierForm.phone" type="text" placeholder="+54 11 1234-5678" :disabled="supplierSaving" />
+                  <label for="sup-m-phone">{{ t('patients.phone') }}</label>
+                  <input id="sup-m-phone" name="sup-m-phone" v-model.trim="supplierForm.phone" type="text" placeholder="+54 11 1234-5678" :disabled="supplierSaving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.paymentTerms') }}</label>
-                  <input v-model.number="supplierForm.paymentTerms" type="number" min="0" placeholder="30" :disabled="supplierSaving" />
+                  <label for="sup-m-terms">{{ t('inventory.paymentTerms') }}</label>
+                  <input id="sup-m-terms" name="sup-m-terms" v-model.number="supplierForm.paymentTerms" type="number" min="0" placeholder="30" :disabled="supplierSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('inventory.address') }}</label>
-                  <textarea v-model.trim="supplierForm.address" rows="2" placeholder="Av. Corrientes 1234, CABA" :disabled="supplierSaving" />
+                  <label for="sup-m-addr">{{ t('inventory.address') }}</label>
+                  <textarea id="sup-m-addr" name="sup-m-addr" v-model.trim="supplierForm.address" rows="2" placeholder="Av. Corrientes 1234, CABA" :disabled="supplierSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('common.notes') }}</label>
-                  <textarea v-model.trim="supplierForm.notes" rows="2" :placeholder="t('inventory.description')" :disabled="supplierSaving" />
+                  <label for="sup-m-notes">{{ t('common.notes') }}</label>
+                  <textarea id="sup-m-notes" name="sup-m-notes" v-model.trim="supplierForm.notes" rows="2" :placeholder="t('inventory.description')" :disabled="supplierSaving" />
                 </div>
               </div>
             </div>
@@ -435,24 +438,24 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field">
-                  <label>{{ t('inventory.supplier') }} <span class="req">*</span></label>
-                  <select v-model="orderForm.supplierId" :disabled="orderSaving" required>
+                  <label for="ord-m-supplier">{{ t('inventory.supplier') }} <span class="req">*</span></label>
+                  <select id="ord-m-supplier" name="ord-m-supplier" v-model="orderForm.supplierId" :disabled="orderSaving" required>
                     <option value="">{{ t('common.choose') }}</option>
                     <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
                   </select>
                   <span v-if="ofe.supplierId" class="field-error">{{ ofe.supplierId }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.orderDate') }}</label>
-                  <input v-model="orderForm.orderedDate" type="date" :disabled="orderSaving" />
+                  <label for="ord-m-date">{{ t('inventory.orderDate') }}</label>
+                  <input id="ord-m-date" name="ord-m-date" v-model="orderForm.orderedDate" type="date" :disabled="orderSaving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('inventory.expectedDate') }}</label>
-                  <input v-model="orderForm.expectedDate" type="date" :disabled="orderSaving" />
+                  <label for="ord-m-expected">{{ t('inventory.expectedDate') }}</label>
+                  <input id="ord-m-expected" name="ord-m-expected" v-model="orderForm.expectedDate" type="date" :disabled="orderSaving" />
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('common.notes') }}</label>
-                  <textarea v-model.trim="orderForm.notes" rows="2" :placeholder="t('inventory.description')" :disabled="orderSaving" />
+                  <label for="ord-m-notes">{{ t('common.notes') }}</label>
+                  <textarea id="ord-m-notes" name="ord-m-notes" v-model.trim="orderForm.notes" rows="2" :placeholder="t('inventory.description')" :disabled="orderSaving" />
                 </div>
               </div>
 
@@ -508,79 +511,20 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import http from '../api/client'
 import { t } from '../i18n'
-
-function asArray(value) {
-  if (Array.isArray(value)) return value
-  if (value == null) return []
-  return [value]
-}
-
-function normalizeInventoryItem(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.item_id ?? row.itemId ?? null,
-    name: row.name ?? row.item_name ?? row.itemName ?? '',
-    sku: row.sku ?? row.code ?? '',
-    item_type: row.item_type ?? row.itemType ?? row.type ?? '',
-    quantity_available: row.quantity_available ?? row.quantityAvailable ?? row.quantity ?? row.stock ?? 0,
-    minimum_stock: row.minimum_stock ?? row.minimumStock ?? row.min_stock ?? 0,
-    reorder_point: row.reorder_point ?? row.reorderPoint ?? null,
-    unit_cost: row.unit_cost ?? row.unitCost ?? null,
-    sale_price: row.sale_price ?? row.salePrice ?? null,
-    expiry_date: row.expiry_date ?? row.expiryDate ?? null,
-    supplier_name: row.supplier_name ?? row.supplierName ?? '',
-    supplier_id: row.supplier_id ?? row.supplierId ?? null,
-    requires_prescription: row.requires_prescription ?? row.requiresPrescription ?? false,
-    is_active: row.is_active ?? row.isActive ?? true,
-  }
-}
-
-function normalizeAlert(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.alert_id ?? row.alertId ?? null,
-    item_name: row.item_name ?? row.itemName ?? row.name ?? '',
-    sku: row.sku ?? row.code ?? '',
-    alert_type: row.alert_type ?? row.alertType ?? '',
-    current_stock: row.current_stock ?? row.currentStock ?? row.stock ?? null,
-    threshold: row.threshold ?? row.limit ?? null,
-    expiry_date: row.expiry_date ?? row.expiryDate ?? null,
-    created_at: row.created_at ?? row.createdAt ?? null,
-  }
-}
-
-function normalizeSupplier(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.supplier_id ?? row.supplierId ?? null,
-    name: row.name ?? row.company_name ?? row.companyName ?? '',
-    tax_id: row.tax_id ?? row.taxId ?? '',
-    contact_name: row.contact_name ?? row.contactName ?? '',
-    email: row.email ?? '',
-    phone: row.phone ?? '',
-    payment_terms: row.payment_terms ?? row.paymentTerms ?? 30,
-    address: row.address ?? '',
-    notes: row.notes ?? '',
-  }
-}
-
-function normalizeOrder(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.order_id ?? row.orderId ?? null,
-    supplier_id: row.supplier_id ?? row.supplierId ?? null,
-    status: row.status ?? '',
-    ordered_date: row.ordered_date ?? row.orderedDate ?? null,
-    expected_date: row.expected_date ?? row.expectedDate ?? null,
-    total: row.total ?? row.amount ?? null,
-  }
-}
+import {
+  cancelPurchaseOrder as cancelPurchaseOrderRequest,
+  createInventoryItem as createInventoryItemRequest,
+  createPurchaseOrder as createPurchaseOrderRequest,
+  deleteSupplierById as deleteSupplierRequest,
+  loadInventory as loadInventoryRequest,
+  loadInventoryAlerts as loadInventoryAlertsRequest,
+  loadPurchaseOrders as loadPurchaseOrdersRequest,
+  loadSuppliers as loadSuppliersRequest,
+  resolveInventoryAlert as resolveInventoryAlertRequest,
+  saveSupplier as saveSupplierRequest,
+  sendPurchaseOrder as sendPurchaseOrderRequest,
+} from '../composables/inventory/useInventoryDomain'
 
 // ---------------------------------------------------------------
 // TABS
@@ -667,14 +611,15 @@ async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
     if (suppliers.value.length === 0) loadSuppliers()
-    const params = { page, limit: 25 }
-    if (search.value)         params.search      = search.value
-    if (categoryFilter.value) params.itemType    = categoryFilter.value
-    if (stockFilter.value)    params.stockStatus = stockFilter.value
-    const { data } = await http.get('/inventory', { params })
-    items.value = asArray(data?.data || data?.items || data).map(normalizeInventoryItem).filter(Boolean)
-    const m = data.meta || {}
-    pagination.value = { page: m.page || page, totalPages: m.totalPages || 1 }
+    const payload = await loadInventoryRequest({
+      page,
+      limit: 25,
+      search: search.value,
+      itemType: categoryFilter.value,
+      stockStatus: stockFilter.value,
+    })
+    items.value = payload.rows
+    pagination.value = payload.meta
   } catch (e) {
     error.value = e.response?.data?.message || 'No se pudo cargar el inventario'
   } finally { loading.value = false }
@@ -716,28 +661,7 @@ async function handleCreate() {
   if (!validate()) return
   saving.value = true; saveError.value = ''
   try {
-    const payload = {
-      name:      form.name,
-      itemType:  form.category,
-      salePrice: parseFloat(form.salePrice),
-    }
-    if (form.sku)             payload.sku           = form.sku
-    if (form.unitCost !== '')  payload.unitCost      = parseFloat(form.unitCost)
-    if (form.minStock !== '')  payload.minimumStock  = parseInt(form.minStock)
-    if (form.reorderPoint !== '') payload.reorderPoint = parseInt(form.reorderPoint)
-    if (form.description)     payload.description   = form.description
-    if (form.supplierId)      payload.supplierId    = parseInt(form.supplierId)
-    payload.requiresPrescription = !!form.requiresPrescription
-    payload.isActive = !!form.isActive
-    const { data: created } = await http.post('/inventory/items', payload)
-    if (parseInt(form.stock) > 0 && created?.id) {
-      await http.post('/inventory/batches', {
-        itemId:           created.id,
-        lotNumber:        'INICIAL',
-        quantityReceived: parseInt(form.stock),
-        expiryDate:       form.expirationDate || undefined,
-      })
-    }
+    await createInventoryItemRequest(form)
     closeModal(); await load()
   } catch (e) {
     saveError.value = e.response?.data?.message || 'No se pudo agregar el producto'
@@ -770,8 +694,7 @@ function alertBadgeClass(type) {
 async function loadAlerts() {
   alertsLoading.value = true; alertsError.value = ''
   try {
-    const { data } = await http.get('/inventory/alerts')
-    alerts.value = asArray(data?.data || data?.alerts || data).map(normalizeAlert).filter(Boolean)
+    alerts.value = await loadInventoryAlertsRequest()
   } catch (e) {
     alertsError.value = e.response?.data?.message || 'No se pudieron cargar las alertas'
   } finally { alertsLoading.value = false }
@@ -780,7 +703,7 @@ async function loadAlerts() {
 async function resolveAlert(id) {
   resolvingAlert.value = id
   try {
-    await http.patch(`/inventory/alerts/${id}/resolve`)
+    await resolveInventoryAlertRequest(id)
     alerts.value = alerts.value.filter(a => String(a.id) !== String(id))
   } catch (e) {
     alertsError.value = e.response?.data?.message || 'No se pudo resolver la alerta'
@@ -805,8 +728,7 @@ const supplierForm = reactive({ name:'', taxId:'', contactName:'', email:'', pho
 async function loadSuppliers() {
   suppliersLoading.value = true; suppliersError.value = ''
   try {
-    const { data } = await http.get('/suppliers')
-    suppliers.value = asArray(data?.data || data?.suppliers || data).map(normalizeSupplier).filter(Boolean)
+    suppliers.value = await loadSuppliersRequest()
   } catch (e) {
     suppliersError.value = e.response?.data?.message || 'No se pudieron cargar los proveedores'
   } finally { suppliersLoading.value = false }
@@ -854,21 +776,7 @@ async function handleSupplierSave() {
   if (!validateSupplier()) return
   supplierSaving.value = true; supplierSaveError.value = ''
   try {
-    const payload = {
-      name:         supplierForm.name,
-      taxId:        supplierForm.taxId        || undefined,
-      contactName:  supplierForm.contactName  || undefined,
-      email:        supplierForm.email        || undefined,
-      phone:        supplierForm.phone        || undefined,
-      address:      supplierForm.address      || undefined,
-      paymentTerms: supplierForm.paymentTerms ?? 30,
-      notes:        supplierForm.notes        || undefined,
-    }
-    if (editingSupplier.value) {
-      await http.put(`/suppliers/${editingSupplier.value.id}`, payload)
-    } else {
-      await http.post('/suppliers', payload)
-    }
+    await saveSupplierRequest(supplierForm, editingSupplier.value?.id)
     closeSupplierModal()
     await loadSuppliers()
   } catch (e) {
@@ -880,7 +788,7 @@ async function deleteSupplier(id) {
   if (!confirm(t('inventory.deleteSupplierConfirm') || '¿Eliminar este proveedor?')) return
   deletingSupplier.value = id
   try {
-    await http.delete(`/suppliers/${id}`)
+    await deleteSupplierRequest(id)
     suppliers.value = suppliers.value.filter(s => String(s.id) !== String(id))
   } catch (e) {
     suppliersError.value = e.response?.data?.message || 'No se pudo eliminar el proveedor'
@@ -924,8 +832,7 @@ function orderStatusClass(s) {
 async function loadOrders() {
   ordersLoading.value = true; ordersError.value = ''
   try {
-    const { data } = await http.get('/purchase-orders')
-    orders.value = asArray(data?.data || data?.orders || data).map(normalizeOrder).filter(Boolean)
+    orders.value = await loadPurchaseOrdersRequest()
   } catch (e) {
     ordersError.value = e.response?.data?.message || 'No se pudieron cargar las órdenes de compra'
   } finally { ordersLoading.value = false }
@@ -962,18 +869,7 @@ async function handleOrderCreate() {
   if (!validateOrder()) return
   orderSaving.value = true; orderSaveError.value = ''
   try {
-    const payload = {
-      supplierId:   orderForm.supplierId,
-      orderedDate:  orderForm.orderedDate  || undefined,
-      expectedDate: orderForm.expectedDate || undefined,
-      notes:        orderForm.notes        || undefined,
-      items: orderForm.items.map(i => ({
-        itemId:   i.itemId,
-        quantity: i.quantity,
-        unitCost: i.unitCost !== '' ? parseFloat(i.unitCost) : undefined,
-      })),
-    }
-    await http.post('/purchase-orders', payload)
+    await createPurchaseOrderRequest(orderForm)
     closeOrderModal()
     await loadOrders()
   } catch (e) {
@@ -984,7 +880,7 @@ async function handleOrderCreate() {
 async function sendOrder(id) {
   actioningOrder.value = id
   try {
-    await http.patch(`/purchase-orders/${id}/send`)
+    await sendPurchaseOrderRequest(id)
     await loadOrders()
   } catch (e) {
     ordersError.value = e.response?.data?.message || 'No se pudo enviar la orden'
@@ -995,7 +891,7 @@ async function cancelOrder(id) {
   if (!confirm(t('inventory.cancelOrderPrompt'))) return
   actioningOrder.value = id
   try {
-    await http.patch(`/purchase-orders/${id}/cancel`)
+    await cancelPurchaseOrderRequest(id)
     await loadOrders()
   } catch (e) {
     ordersError.value = e.response?.data?.message || 'No se pudo cancelar la orden'
@@ -1009,6 +905,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

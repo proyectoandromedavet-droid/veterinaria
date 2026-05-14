@@ -25,6 +25,10 @@ const path   = require('path');
 const fs     = require('fs');
 const crypto = require('crypto');
 const { AppError } = require('./errors');
+const R = require('./response');
+const { createLogger } = require('./logger');
+
+const log = createLogger('file-upload');
 
 // ── Configuración ────────────────────────────────────────────────────────────
 
@@ -197,10 +201,10 @@ function uploadErrorHandler(err, _req, res, next) {
     const msg = err.code === 'LIMIT_FILE_SIZE'
       ? `El archivo supera el tamaño máximo permitido (${MAX_SIZE_BYTES / 1024 / 1024}MB)`
       : `Error de carga: ${err.message}`;
-    return res.status(400).json({ success: false, error: { message: msg, code: err.code } });
+    return R.error(res, 400, msg, null, err.code);
   }
   if (err?.code?.startsWith('UPLOAD_')) {
-    return res.status(400).json({ success: false, error: { message: err.message, code: err.code } });
+    return R.error(res, 400, err.message, null, err.code);
   }
   next(err);
 }

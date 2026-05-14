@@ -15,6 +15,7 @@ const {
   generateTypeScript,
   generateZodSchema,
 } = require('../../../../shared/schemaEngine');
+const R = require('../../../../shared/response');
 
 const router = Router();
 
@@ -22,10 +23,7 @@ const router = Router();
 function adminOnly(req, res, next) {
   const roles = (req.headers['x-user-roles'] || '').split(',').map(r => r.trim());
   if (roles.includes('superadmin') || roles.includes('org_admin')) return next();
-  return res.status(403).json({
-    success: false,
-    error: { message: 'Admin access required', code: 'RBAC_001' },
-  });
+  return R.error(res, 403, 'Admin access required', null, 'RBAC_001');
 }
 
 router.use(adminOnly);
@@ -44,7 +42,7 @@ router.get('/:table', async (req, res, next) => {
     const schema = await getTableSchema(req.params.table);
     res.json({ success: true, data: schema });
   } catch (err) {
-    if (err.http === 404) return res.status(404).json({ success: false, error: { message: err.message, code: 'DB_001' } });
+    if (err.http === 404) return R.error(res, 404, err.message, null, 'DB_001');
     next(err);
   }
 });
@@ -55,7 +53,7 @@ router.get('/:table/typescript', async (req, res, next) => {
     const ts = await generateTypeScript(req.params.table);
     res.type('text/plain').send(ts);
   } catch (err) {
-    if (err.http === 404) return res.status(404).json({ success: false, error: { message: err.message, code: 'DB_001' } });
+    if (err.http === 404) return R.error(res, 404, err.message, null, 'DB_001');
     next(err);
   }
 });
@@ -66,7 +64,7 @@ router.get('/:table/zod', async (req, res, next) => {
     const zod = await generateZodSchema(req.params.table);
     res.type('text/plain').send(zod);
   } catch (err) {
-    if (err.http === 404) return res.status(404).json({ success: false, error: { message: err.message, code: 'DB_001' } });
+    if (err.http === 404) return R.error(res, 404, err.message, null, 'DB_001');
     next(err);
   }
 });

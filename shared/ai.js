@@ -9,6 +9,7 @@
 const PROVIDER = process.env.AI_PROVIDER || 'openai';
 const DEFAULT_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '1024');
 const { getBreaker } = require('./circuitBreaker');
+const { getSecret } = require('./secrets');
 const aiBreaker = getBreaker('openai', {
   threshold: parseInt(process.env.AI_CIRCUIT_THRESHOLD || process.env.CIRCUIT_THRESHOLD || '5'),
   timeout: parseInt(process.env.AI_CIRCUIT_TIMEOUT_MS || process.env.CIRCUIT_TIMEOUT_MS || '30000'),
@@ -57,7 +58,7 @@ const adapters = {
 
       const res = await _post(
         'api.openai.com', '/v1/chat/completions',
-        { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        { Authorization: `Bearer ${getSecret('OPENAI_API_KEY', { defaultValue: '' })}` },
         body
       );
       if (res.error) throw Object.assign(new Error(res.error.message), { code: 'AI_API_ERROR', provider: 'openai' });
@@ -71,7 +72,7 @@ const adapters = {
 
       const res = await _post(
         'api.openai.com', '/v1/chat/completions',
-        { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        { Authorization: `Bearer ${getSecret('OPENAI_API_KEY', { defaultValue: '' })}` },
         {
           model     : opts.model || process.env.OPENAI_VISION_MODEL || 'gpt-4o',
           messages  : [{ role: 'user', content: [imgContent, { type: 'text', text: prompt }] }],
@@ -85,7 +86,7 @@ const adapters = {
     async embedText(text) {
       const res = await _post(
         'api.openai.com', '/v1/embeddings',
-        { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        { Authorization: `Bearer ${getSecret('OPENAI_API_KEY', { defaultValue: '' })}` },
         { model: 'text-embedding-3-small', input: text.slice(0, 8192) }
       );
       if (res.error) throw Object.assign(new Error(res.error.message), { code: 'AI_API_ERROR', provider: 'openai' });
@@ -107,7 +108,7 @@ const adapters = {
 
       const res = await _post(
         'api.anthropic.com', '/v1/messages',
-        { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        { 'x-api-key': getSecret('ANTHROPIC_API_KEY', { defaultValue: '' }), 'anthropic-version': '2023-06-01' },
         body
       );
       if (res.type === 'error') throw Object.assign(new Error(res.error?.message || 'Anthropic error'), { code: 'AI_API_ERROR', provider: 'anthropic' });
@@ -121,7 +122,7 @@ const adapters = {
 
       const res = await _post(
         'api.anthropic.com', '/v1/messages',
-        { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        { 'x-api-key': getSecret('ANTHROPIC_API_KEY', { defaultValue: '' }), 'anthropic-version': '2023-06-01' },
         {
           model     : opts.model || process.env.ANTHROPIC_VISION_MODEL || 'claude-opus-4-5',
           max_tokens: opts.maxTokens || 1024,

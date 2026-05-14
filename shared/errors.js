@@ -117,6 +117,8 @@ function appErrorHandler(err, _req, res, next) {
     error: {
       message: err.message,
       code:    err.code,
+      ...(_req?.requestId ? { requestId: _req.requestId } : {}),
+      ...(_req?.traceId ? { traceId: _req.traceId } : {}),
       ...(err.meta ? { details: err.meta } : {}),
     },
   });

@@ -39,14 +39,18 @@
 
     <!-- Filtros -->
     <div class="filters">
+      <label for="surg-search" class="sr-only">{{ t('surgery.searchPlaceholder') }}</label>
       <input
+        id="surg-search"
+        name="surg-search"
         v-model.trim="search"
         type="search"
         :placeholder="t('surgery.searchPlaceholder')"
         class="filter-input filter-input--grow"
         @input="debouncedLoad()"
       />
-      <select v-model="statusFilter" class="filter-select" @change="load()">
+      <label for="surg-status" class="sr-only">{{ t('common.allStatuses') }}</label>
+      <select id="surg-status" name="surg-status" v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">{{ t('common.allStatuses') }}</option>
         <option value="scheduled">{{ t('surgery.statusScheduled') }}</option>
         <option value="in_progress">{{ t('surgery.inProgress') }}</option>
@@ -154,8 +158,10 @@
 
               <!-- Paciente autocomplete -->
               <div class="field field--full" style="position:relative">
-                <label>{{ t('surgery.patientLabel') }} <span class="req">*</span></label>
+                <label for="surg-m-patient">{{ t('surgery.patientLabel') }} <span class="req">*</span></label>
                 <input
+                  id="surg-m-patient"
+                  name="surg-m-patient"
                   v-model.trim="patientSearch"
                   type="search"
                   :placeholder="t('surgery.patientPlaceholder')"
@@ -184,8 +190,8 @@
 
               <!-- Tipo de cirugía -->
               <div class="field field--full">
-                <label>{{ t('surgery.typeLabel') }} <span class="req">*</span></label>
-                <select v-model="newForm.surgeryTypeId" :disabled="saving || typesLoading">
+                <label for="surg-m-type">{{ t('surgery.typeLabel') }} <span class="req">*</span></label>
+                <select id="surg-m-type" name="surg-m-type" v-model="newForm.surgeryTypeId" :disabled="saving || typesLoading">
                   <option value="">{{ typesLoading ? t('surgery.typeLoading') : t('surgery.typePlaceholder') }}</option>
                   <optgroup v-for="(types, cat) in groupedTypes" :key="cat" :label="cat">
                     <option v-for="t in types" :key="t.id" :value="t.id">
@@ -209,18 +215,18 @@
 
               <div class="form-grid">
                 <div class="field">
-                  <label>{{ t('surgery.scheduledLabel') }} <span class="req">*</span></label>
-                  <input v-model="newForm.scheduledDate" type="datetime-local" :disabled="saving" />
+                  <label for="surg-m-date">{{ t('surgery.scheduledLabel') }} <span class="req">*</span></label>
+                  <input id="surg-m-date" name="surg-m-date" v-model="newForm.scheduledDate" type="datetime-local" :disabled="saving" />
                   <span v-if="fe.scheduledDate" class="field-error">{{ fe.scheduledDate }}</span>
                 </div>
 
                 <div class="field">
-                  <label>{{ t('surgery.durationLabel') }}</label>
-                  <input v-model.number="newForm.estimatedDurationMinutes" type="number" min="1" max="600" placeholder="ej: 90" :disabled="saving" />
+                  <label for="surg-m-duration">{{ t('surgery.durationLabel') }}</label>
+                  <input id="surg-m-duration" name="surg-m-duration" v-model.number="newForm.estimatedDurationMinutes" type="number" min="1" max="600" placeholder="ej: 90" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Urgencia</label>
-                  <select v-model="newForm.urgency" :disabled="saving">
+                  <label for="surg-m-urgency">Urgencia</label>
+                  <select id="surg-m-urgency" name="surg-m-urgency" v-model="newForm.urgency" :disabled="saving">
                     <option value="routine">Rutina</option>
                     <option value="urgent">Urgente</option>
                     <option value="emergency">Emergencia</option>
@@ -228,8 +234,10 @@
                 </div>
 
                 <div class="field field--full">
-                  <label>{{ t('surgery.notesLabel') }}</label>
+                  <label for="surg-m-notes">{{ t('surgery.notesLabel') }}</label>
                   <textarea
+                    id="surg-m-notes"
+                    name="surg-m-notes"
                     v-model.trim="newForm.preOpNotes"
                     rows="3"
                     :placeholder="t('surgery.notesPlaceholder')"
@@ -268,8 +276,8 @@
               <div class="form-grid">
 
                 <div class="field">
-                  <label>{{ t('surgery.anesthesiaTypeLabel') }} <span class="req">*</span></label>
-                  <select v-model="aneForm.anesthesiaType" :disabled="aneSaving">
+                  <label for="surg-a-type">{{ t('surgery.anesthesiaTypeLabel') }} <span class="req">*</span></label>
+                  <select id="surg-a-type" name="surg-a-type" v-model="aneForm.anesthesiaType" :disabled="aneSaving">
                     <option value="">{{ t('surgery.anesthesiaTypePlaceholder') }}</option>
                     <option value="general">{{ t('surgery.anesthesiaGeneral') }}</option>
                     <option value="local">{{ t('surgery.anesthesiaLocal') }}</option>
@@ -280,13 +288,15 @@
                 </div>
 
                 <div class="field">
-                  <label>{{ t('surgery.totalDurationLabel') }}</label>
-                  <input v-model.number="aneForm.totalDurationMinutes" type="number" min="1" max="600" placeholder="ej: 75" :disabled="aneSaving" />
+                  <label for="surg-a-duration">{{ t('surgery.totalDurationLabel') }}</label>
+                  <input id="surg-a-duration" name="surg-a-duration" v-model.number="aneForm.totalDurationMinutes" type="number" min="1" max="600" placeholder="ej: 75" :disabled="aneSaving" />
                 </div>
 
                 <div class="field field--full">
-                  <label>{{ t('surgery.agentsLabel') }} <span class="req">*</span></label>
+                  <label for="surg-a-agents">{{ t('surgery.agentsLabel') }} <span class="req">*</span></label>
                   <textarea
+                    id="surg-a-agents"
+                    name="surg-a-agents"
                     v-model.trim="aneForm.anestheticAgents"
                     rows="2"
                     :placeholder="t('surgery.agentsPlaceholder') || 'Propofol, isoflurano, ketamina...'"
@@ -296,18 +306,20 @@
                 </div>
 
                 <div class="field">
-                  <label>{{ t('surgery.inductionLabel') }}</label>
-                  <input v-model="aneForm.inductionTime" type="time" :disabled="aneSaving" />
+                  <label for="surg-a-induction">{{ t('surgery.inductionLabel') }}</label>
+                  <input id="surg-a-induction" name="surg-a-induction" v-model="aneForm.inductionTime" type="time" :disabled="aneSaving" />
                 </div>
 
                 <div class="field">
-                  <label>{{ t('surgery.recoveryLabel') }}</label>
-                  <input v-model="aneForm.recoveryTime" type="time" :disabled="aneSaving" />
+                  <label for="surg-a-recovery">{{ t('surgery.recoveryLabel') }}</label>
+                  <input id="surg-a-recovery" name="surg-a-recovery" v-model="aneForm.recoveryTime" type="time" :disabled="aneSaving" />
                 </div>
 
                 <div class="field field--full">
-                  <label>{{ t('surgery.monitoringLabel') }}</label>
+                  <label for="surg-a-monitoring">{{ t('surgery.monitoringLabel') }}</label>
                   <textarea
+                    id="surg-a-monitoring"
+                    name="surg-a-monitoring"
                     v-model.trim="aneForm.monitoringNotes"
                     rows="2"
                     placeholder="Saturación, frecuencia cardíaca, PA durante el procedimiento..."
@@ -317,14 +329,16 @@
 
                 <div class="field field--full">
                   <label class="checkbox-label">
-                    <input type="checkbox" v-model="aneForm.complications" :disabled="aneSaving" />
+                    <input id="surg-a-complications" name="surg-a-complications" type="checkbox" v-model="aneForm.complications" :disabled="aneSaving" />
                     {{ t('surgery.complicationsLabel') }}
                   </label>
                 </div>
 
                 <div v-if="aneForm.complications" class="field field--full">
-                  <label>{{ t('surgery.complicationNotesLabel') }} <span class="req">*</span></label>
+                  <label for="surg-a-comp-notes">{{ t('surgery.complicationNotesLabel') }} <span class="req">*</span></label>
                   <textarea
+                    id="surg-a-comp-notes"
+                    name="surg-a-comp-notes"
                     v-model.trim="aneForm.complicationNotes"
                     rows="3"
                     :placeholder="t('surgery.complicationNotesPlaceholder')"
@@ -527,53 +541,17 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
-import http from '../api/client'
 import { t } from '../i18n'
-
-function asArray(value) {
-  if (Array.isArray(value)) return value
-  if (value == null) return []
-  return [value]
-}
-
-function normalizeSurgery(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.surgery_id ?? row.surgeryId ?? null,
-    patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
-    species: row.species ?? row.species_name ?? row.speciesName ?? '',
-    surgery_type_name: row.surgery_type_name ?? row.surgeryTypeName ?? '',
-    surgery_category: row.surgery_category ?? row.category_name ?? row.categoryName ?? '',
-    lead_surgeon: row.lead_surgeon ?? row.surgeon_name ?? row.surgeonName ?? '',
-    scheduled_date: row.scheduled_date ?? row.scheduledDate ?? null,
-    status: row.status ?? '',
-  }
-}
-
-function normalizeSurgeryType(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.type_id ?? row.typeId ?? null,
-    name: row.name ?? row.type_name ?? row.typeName ?? '',
-    category_name: row.category_name ?? row.categoryName ?? 'General',
-    risk_level: row.risk_level ?? row.riskLevel ?? '',
-    estimated_duration_minutes: row.estimated_duration_minutes ?? row.estimatedDurationMinutes ?? null,
-  }
-}
-
-function normalizePatient(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.patient_id ?? row.patientId ?? null,
-    name: row.name ?? row.full_name ?? row.fullName ?? '',
-    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
-    species: row.species ?? row.species_name ?? row.speciesName ?? '',
-    hc_number: row.hc_number ?? row.hcNumber ?? '',
-  }
-}
+import { logError } from '../utils/errors'
+import {
+  addAnesthesiaRecord as addAnesthesiaRecordRequest,
+  createSurgery as createSurgeryRequest,
+  getSurgeryDetail as getSurgeryDetailRequest,
+  loadSurgeryTypes as loadSurgeryTypesRequest,
+  loadSurgeries as loadSurgeriesRequest,
+  searchPatients as searchPatientsRequest,
+  updateSurgeryStatus as updateSurgeryStatusRequest,
+} from '../composables/surgery/useSurgeryDomain'
 
 // Lista
 const items        = ref([])
@@ -589,13 +567,10 @@ async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
     const pageSize = 15
-    const params = {}
-    if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await http.get('/surgeries', { params })
-    const rows = asArray(data?.data || data?.surgeries || data).map(normalizeSurgery).filter(Boolean)
+    const rows = await loadSurgeriesRequest({ status: statusFilter.value })
     const needle = search.value.trim().toLowerCase()
     const filtered = needle
-      ? rows.filter((row) => [row.patient_name, row.surgery_type, row.surgery_category, row.lead_surgeon]
+      ? rows.filter((row) => [row.patient_name, row.surgery_type_name, row.category_name, row.surgeon_name]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(needle)))
       : rows
@@ -679,9 +654,11 @@ const selectedTypeInfo = computed(() => {
 async function loadTypes() {
   typesLoading.value = true
   try {
-    const { data } = await http.get('/surgeries/types/all')
-    allTypes.value = asArray(data?.data || data?.types || data).map(normalizeSurgeryType).filter(Boolean)
-  } catch { allTypes.value = [] }
+    allTypes.value = await loadSurgeryTypesRequest()
+  } catch (error) {
+    logError('cirugias.loadTypes', error)
+    allTypes.value = []
+  }
   finally { typesLoading.value = false }
 }
 
@@ -698,9 +675,11 @@ async function searchPatients() {
   if (patientSearch.value.length < 2) { patientResults.value = []; return }
   patientTimer = setTimeout(async () => {
     try {
-      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { patientResults.value = [] }
+      patientResults.value = await searchPatientsRequest(patientSearch.value)
+    } catch (error) {
+      logError('cirugias.searchPatients', error, { search: patientSearch.value })
+      patientResults.value = []
+    }
   }, 300)
 }
 
@@ -749,19 +728,11 @@ async function handleCreate() {
   if (!validateNew()) return
   saving.value = true; saveError.value = ''
   try {
-    const payload = {
-      patientId:     newForm.patientId,
-      surgeryTypeId: newForm.surgeryTypeId,
-      scheduledDate: newForm.scheduledDate,
-    }
-    if (newForm.estimatedDurationMinutes) payload.estimatedDurationMinutes = newForm.estimatedDurationMinutes
-    if (newForm.urgency)                  payload.urgency                  = newForm.urgency
-    if (newForm.preOpNotes)               payload.preOpNotes               = newForm.preOpNotes
-    await http.post('/surgeries', payload)
+    await createSurgeryRequest(newForm)
     showNew.value = false
     await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo programar la cirugía'
+    saveError.value = e.response?.data?.message || 'No se pudo programar la cirugía.'
   } finally { saving.value = false }
 }
 
@@ -806,21 +777,11 @@ async function handleAnesthesia() {
   if (!validateAne()) return
   aneSaving.value = true; aneError.value = ''
   try {
-    const payload = {
-      anesthesiaType:    aneForm.anesthesiaType,
-      anestheticAgents:  aneForm.anestheticAgents,
-      complications:     aneForm.complications,
-    }
-    if (aneForm.inductionTime)          payload.inductionTime          = aneForm.inductionTime
-    if (aneForm.recoveryTime)           payload.recoveryTime           = aneForm.recoveryTime
-    if (aneForm.complicationNotes)      payload.complicationNotes      = aneForm.complicationNotes
-    if (aneForm.monitoringNotes)        payload.monitoringNotes        = aneForm.monitoringNotes
-    if (aneForm.totalDurationMinutes)   payload.totalDurationMinutes   = aneForm.totalDurationMinutes
-    await http.post(`/surgeries/${selectedSurgery.value.id}/anesthesia`, payload)
+    await addAnesthesiaRecordRequest(selectedSurgery.value.id, aneForm)
     showAnesthesia.value = false
     await load()
   } catch (e) {
-    aneError.value = e.response?.data?.message || e.response?.data?.error?.message || 'No se pudo registrar la anestesia'
+    aneError.value = e.response?.data?.message || 'No se pudo registrar la anestesia.'
   } finally { aneSaving.value = false }
 }
 
@@ -838,11 +799,11 @@ function openChangeStatus(surgery) {
 async function changeStatus(newStatus) {
   statusSaving.value = true; statusError.value = ''
   try {
-    await http.patch(`/surgeries/${selectedSurgery.value.id}/status`, { status: newStatus })
+    await updateSurgeryStatusRequest(selectedSurgery.value.id, newStatus)
     showStatus.value = false
     await load()
   } catch (e) {
-    statusError.value = e.response?.data?.message || 'No se pudo cambiar el estado'
+    statusError.value = e.response?.data?.message || 'No se pudo cambiar el estado.'
   } finally { statusSaving.value = false }
 }
 
@@ -856,9 +817,11 @@ async function viewDetail(surgery) {
   detailLoading.value = true
   detailData.value = null
   try {
-    const { data } = await http.get(`/surgeries/${surgery.id}`)
-    detailData.value = data.data || data
-  } catch { detailData.value = surgery }
+    detailData.value = await getSurgeryDetailRequest(surgery.id)
+  } catch (error) {
+    logError('cirugias.openDetail', error, { surgeryId: surgery?.id })
+    detailData.value = surgery
+  }
   finally { detailLoading.value = false }
 }
 
@@ -866,6 +829,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

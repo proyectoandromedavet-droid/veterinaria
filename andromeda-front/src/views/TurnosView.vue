@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
 
     <!-- Encabezado -->
@@ -15,12 +15,15 @@
 
     <!-- Filtros -->
     <div class="filters">
-      <input v-model="filters.date" type="date" class="filter-input" @change="load()" />
-      <select v-model="filters.status" class="filter-select" @change="load()">
+      <label for="filter-date" class="sr-only">{{ t('appointments.dateTimeLabel') }}</label>
+      <input id="filter-date" name="filter-date" v-model="filters.date" type="date" class="filter-input" @change="load()" />
+      <label for="filter-status" class="sr-only">{{ t('common.allStatuses') }}</label>
+      <select id="filter-status" name="filter-status" v-model="filters.status" class="filter-select" @change="load()">
         <option value="">{{ t('common.allStatuses') }}</option>
         <option v-for="(label, val) in STATUS_LABELS" :key="val" :value="val">{{ label }}</option>
       </select>
-      <input v-model.trim="filters.search" type="search" :placeholder="t('appointments.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <label for="filter-search" class="sr-only">{{ t('appointments.searchPlaceholder') }}</label>
+      <input id="filter-search" name="filter-search" v-model.trim="filters.search" type="search" :placeholder="t('appointments.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
     <!-- Tarjetas de turnos -->
@@ -96,21 +99,21 @@
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-grid">
               <div class="field">
-                <label>{{ t('appointments.dateTimeLabel') }} <span class="req">*</span></label>
-                <input v-model="form.scheduledDate" type="datetime-local" :disabled="saving" required />
+                <label for="appt-date">{{ t('appointments.dateTimeLabel') }} <span class="req">*</span></label>
+                <input id="appt-date" name="appt-date" v-model="form.scheduledDate" type="datetime-local" :disabled="saving" required />
                 <span v-if="fe.scheduledDate" class="field-error">{{ fe.scheduledDate }}</span>
               </div>
               <div class="field">
-                <label>{{ t('appointments.typeLabel') }} <span class="req">*</span></label>
-                <select v-model="form.appointmentTypeId" :disabled="saving" required>
+                <label for="appt-type">{{ t('appointments.typeLabel') }} <span class="req">*</span></label>
+                <select id="appt-type" name="appt-type" v-model="form.appointmentTypeId" :disabled="saving" required>
                   <option value="">{{ t('common.choose') }}</option>
                   <option v-for="t in typeList" :key="t.id" :value="t.id">{{ t.name }}</option>
                 </select>
                 <span v-if="fe.appointmentTypeId" class="field-error">{{ fe.appointmentTypeId }}</span>
               </div>
               <div class="field field--full">
-                <label>{{ t('appointments.vetLabel') }} <span class="req">*</span></label>
-                <select v-model="form.vetId" :disabled="saving" required>
+                <label for="appt-vet">{{ t('appointments.vetLabel') }} <span class="req">*</span></label>
+                <select id="appt-vet" name="appt-vet" v-model="form.vetId" :disabled="saving" required>
                   <option value="">{{ t('appointments.selectVet') }}</option>
                   <option v-for="v in vetList" :key="v.id" :value="v.id">
                     {{ v.first_name }} {{ v.last_name }}
@@ -119,8 +122,10 @@
                 <span v-if="fe.vetId" class="field-error">{{ fe.vetId }}</span>
               </div>
               <div class="field field--full">
-                <label>{{ t('appointments.patientLabel') }} <span class="req">*</span></label>
+                <label for="appt-patient">{{ t('appointments.patientLabel') }} <span class="req">*</span></label>
                 <input
+                  id="appt-patient"
+                  name="appt-patient"
                   v-model.trim="patientSearch"
                   type="search"
                   :placeholder="t('appointments.patientSearchPlaceholder')"
@@ -148,20 +153,20 @@
                 <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
               </div>
               <div class="field field--full">
-                <label>{{ t('appointments.reasonLabel') }}</label>
-                <textarea v-model.trim="form.reason" rows="2" :placeholder="t('appointments.reasonPlaceholder')" :disabled="saving" />
+                <label for="appt-reason">{{ t('appointments.reasonLabel') }}</label>
+                <textarea id="appt-reason" name="appt-reason" v-model.trim="form.reason" rows="2" :placeholder="t('appointments.reasonPlaceholder')" :disabled="saving" />
               </div>
               <div class="field">
-                <label>Duración (min)</label>
-                <input v-model.number="form.duration" type="number" min="5" step="5" :disabled="saving" />
+                <label for="appt-duration">Duración (min)</label>
+                <input id="appt-duration" name="appt-duration" v-model.number="form.duration" type="number" min="5" step="5" :disabled="saving" />
               </div>
               <label class="checkbox-label field--full">
-                <input v-model="form.isEmergency" type="checkbox" :disabled="saving" />
+                <input id="appt-emergency" name="appt-emergency" v-model="form.isEmergency" type="checkbox" :disabled="saving" />
                 Marcar como emergencia
               </label>
               <div class="field field--full">
-                <label>Notas internas</label>
-                <textarea v-model.trim="form.notes" rows="2" placeholder="Indicaciones, contexto clínico, observaciones" :disabled="saving" />
+                <label for="appt-notes">Notas internas</label>
+                <textarea id="appt-notes" name="appt-notes" v-model.trim="form.notes" rows="2" placeholder="Indicaciones, contexto clínico, observaciones" :disabled="saving" />
               </div>
             </div>
             <div v-if="saveError" class="alert alert--error" role="alert">{{ saveError }}</div>
@@ -185,6 +190,7 @@ import { useAuthStore } from '../stores/auth'
 import http from '../api/client'
 import { adminUsersApi } from '../api/adminUsers'
 import { t } from '../i18n'
+import { logError } from '../utils/errors'
 
 const auth = useAuthStore()
 const items   = ref([])
@@ -262,7 +268,7 @@ async function loadVets() {
     }
 
     vetList.value = []
-  } catch { vetList.value = [] }
+  } catch (error) { logError('turnos.loadVets', error); vetList.value = [] }
 }
 
 // ── Appointment types ─────────────────────────────────────────────────────
@@ -271,7 +277,7 @@ async function loadTypes() {
   try {
     const { data } = await http.get('/appointments/types')
     typeList.value = asArray(data?.data || data)
-  } catch { typeList.value = [] }
+  } catch (error) { logError('turnos.loadTypes', error); typeList.value = [] }
 }
 
 const filters = reactive({
@@ -374,7 +380,7 @@ async function searchPatients() {
         primary_owner: row.primary_owner || row.owner_name || row.ownerName || '',
         owner_name: row.owner_name || row.primary_owner || row.ownerName || '',
       })).filter(Boolean)
-    } catch { patientResults.value = [] }
+    } catch (error) { logError('turnos.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
 }
 
@@ -445,6 +451,7 @@ onMounted(() => { load(); loadVets(); loadTypes() })
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 
 .page-header {

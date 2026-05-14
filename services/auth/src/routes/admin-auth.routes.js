@@ -1,39 +1,21 @@
 'use strict';
 
 const { Router } = require('express');
-const { body, validationResult } = require('express-validator');
+const { body } = require('express-validator');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
 const { requireInternalSig } = require('../../../../shared/internalAuth');
+const { fromHeaders, requireOrgContext } = require('../../../../shared/requestContext');
+const { requireAdminRole } = require('../../../../shared/adminAuth');
+const { validateRequest } = require('../../../../shared/validation');
 
 const router = Router();
-
-function validate(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return R.badRequest(res, 'Validation failed', errors.array());
-  next();
-}
-
-function fromHeaders(req, _res, next) {
-  req.user = {
-    userId: req.headers['x-user-id'],
-    orgId: req.headers['x-org-id'],
-    roles: (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
-  };
-  next();
-}
-
-function requireAdmin(req, res, next) {
-  if (!req.user.roles.some((role) => ['superadmin', 'org_admin'].includes(role))) {
-    return R.forbidden(res, 'Se requiere rol org_admin o superadmin');
-  }
-  next();
-}
 
 router.get('/policy',
   requireInternalSig,
   fromHeaders,
-  requireAdmin,
+  requireOrgContext,
+  requireAdminRole,
   async (req, res, next) => {
     try {
       let row = await db.queryOne(
@@ -63,9 +45,10 @@ router.get('/policy',
 router.patch('/policy',
   requireInternalSig,
   fromHeaders,
-  requireAdmin,
+  requireOrgContext,
+  requireAdminRole,
   body('twoFactorOptionalEnabled').isBoolean(),
-  validate,
+  validateRequest,
   async (req, res, next) => {
     try {
       const enabled = req.body.twoFactorOptionalEnabled ? 1 : 0;

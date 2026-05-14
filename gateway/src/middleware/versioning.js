@@ -34,14 +34,67 @@ function getSupportedVersions() {
   return [...new Set([CURRENT_VERSION, ...extra])];
 }
 
+function getDefaultVersion() {
+  return process.env.API_DEFAULT_VERSION || CURRENT_VERSION;
+}
+
+function readRequestedVersion(req) {
+  const pathMatch = req.path.match(/^\/api\/(v\d+)(?:\/|$)/);
+  if (pathMatch) return { source: 'path', version: pathMatch[1] };
+
+  const headerVersion = req.headers['x-api-version'] || req.headers['accept-version'];
+  if (headerVersion) return { source: 'header', version: String(headerVersion).trim() };
+
+  const accept = String(req.headers.accept || '');
+  const vendorMatch = accept.match(/application\/vnd\.[^.;]+\.(v\d+)\+json/i);
+  if (vendorMatch) return { source: 'accept', version: vendorMatch[1].toLowerCase() };
+
+  return { source: 'default', version: getDefaultVersion() };
+}
+
+function versionNegotiationMiddleware(req, res, next) {
+  if (!req.path.startsWith('/api/')) return next();
+
+  const supported = getSupportedVersions();
+  const requested = readRequestedVersion(req);
+  const normalizedVersion = String(requested.version || '').toLowerCase();
+
+  if (!supported.includes(normalizedVersion)) {
+    return res.status(406).json({
+      success: false,
+      error: {
+        message: `Unsupported API version '${requested.version}'`,
+        code: 'API_VERSION_UNSUPPORTED',
+        supportedVersions: supported,
+      },
+    });
+  }
+
+  req.apiVersion = normalizedVersion;
+  req.requestedApiVersion = requested.version;
+  req.apiVersionSource = requested.source;
+  req.headers['x-api-version'] = normalizedVersion;
+  res.locals.apiVersion = normalizedVersion;
+
+  if (requested.source !== 'path') {
+    const suffix = req.path.replace(/^\/api/, '') || '/';
+    req.url = `/api/${normalizedVersion}${suffix}${req.url.slice(req.path.length)}`;
+  }
+
+  next();
+}
+
 /**
  * Middleware — attaches versioning headers to every API response.
  * Mount before proxy routes.
  */
 function versioningMiddleware(req, res, next) {
   const supported = getSupportedVersions();
-  res.setHeader('API-Version',   CURRENT_VERSION);
+  const effectiveVersion = req.apiVersion || CURRENT_VERSION;
+  res.setHeader('API-Version',   effectiveVersion);
+  res.setHeader('API-Default-Version', getDefaultVersion());
   res.setHeader('API-Supported', supported.join(', '));
+  res.setHeader('Vary', 'Accept, Accept-Version, X-API-Version');
 
   // Detect which version is being requested (from path prefix)
   const match = req.path.match(/^\/api\/(v\d+)\//);
@@ -103,4 +156,12 @@ function injectVersionHeader(version) {
   };
 }
 
-module.exports = { versioningMiddleware, deprecated, injectVersionHeader };
+module.exports = {
+  versionNegotiationMiddleware,
+  versioningMiddleware,
+  deprecated,
+  injectVersionHeader,
+  getSupportedVersions,
+  getDefaultVersion,
+  readRequestedVersion,
+};

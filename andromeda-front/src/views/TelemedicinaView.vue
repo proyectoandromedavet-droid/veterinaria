@@ -55,8 +55,10 @@
 
     <!-- Filtros -->
     <div class="filters">
-      <input v-model="dateFilter" type="date" class="filter-input" @change="load()" />
-      <select v-model="statusFilter" class="filter-select" @change="load()">
+      <label for="tele-date" class="sr-only">{{ t('telemedicine.scheduledAt') }}</label>
+      <input id="tele-date" name="tele-date" v-model="dateFilter" type="date" class="filter-input" @change="load()" />
+      <label for="tele-status" class="sr-only">{{ t('telemedicine.allStatuses') }}</label>
+      <select id="tele-status" name="tele-status" v-model="statusFilter" class="filter-select" @change="load()">
         <option value="">{{ t('telemedicine.allStatuses') }}</option>
         <option value="scheduled">{{ t('telemedicine.statusScheduled') }}</option>
         <option value="in_progress">{{ t('telemedicine.statusInProgress') }}</option>
@@ -64,7 +66,8 @@
         <option value="cancelled">{{ t('telemedicine.statusCancelled') }}</option>
         <option value="no_show">{{ t('telemedicine.statusNoShow') }}</option>
       </select>
-      <input v-model.trim="search" type="search" placeholder="🔍 Buscar paciente…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <label for="tele-search" class="sr-only">Buscar paciente</label>
+      <input id="tele-search" name="tele-search" v-model.trim="search" type="search" placeholder="🔍 Buscar paciente…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
     <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> {{ t('telemedicine.loading') }}</div>
@@ -129,13 +132,13 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field">
-                  <label>{{ t('telemedicine.scheduledAt') }} <span class="req">*</span></label>
-                  <input v-model="form.scheduledDate" type="datetime-local" :disabled="saving" required />
+                  <label for="tele-m-date">{{ t('telemedicine.scheduledAt') }} <span class="req">*</span></label>
+                  <input id="tele-m-date" name="tele-m-date" v-model="form.scheduledDate" type="datetime-local" :disabled="saving" required />
                   <span v-if="fe.scheduledDate" class="field-error">{{ fe.scheduledDate }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('telemedicine.duration') }}</label>
-                  <select v-model="form.duration" :disabled="saving">
+                  <label for="tele-m-duration">{{ t('telemedicine.duration') }}</label>
+                  <select id="tele-m-duration" name="tele-m-duration" v-model="form.duration" :disabled="saving">
                     <option value="15">{{ t('telemedicine.duration15') }}</option>
                     <option value="30">{{ t('telemedicine.duration30') }}</option>
                     <option value="45">{{ t('telemedicine.duration45') }}</option>
@@ -143,8 +146,8 @@
                   </select>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('telemedicine.patient') }} <span class="req">*</span></label>
-                  <input v-model.trim="patientSearch" type="search" :placeholder="t('telemedicine.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
+                  <label for="tele-m-patient">{{ t('telemedicine.patient') }} <span class="req">*</span></label>
+                  <input id="tele-m-patient" name="tele-m-patient" v-model.trim="patientSearch" type="search" :placeholder="t('telemedicine.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                   <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
                       🐾 <b>{{ pt.name }}</b>
@@ -155,21 +158,21 @@
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('telemedicine.vet') }} <span class="req">*</span></label>
-                  <select v-model="form.vetId" :disabled="saving" required>
+                  <label for="tele-m-vet">{{ t('telemedicine.vet') }} <span class="req">*</span></label>
+                  <select id="tele-m-vet" name="tele-m-vet" v-model="form.vetId" :disabled="saving" required>
                     <option value="">{{ t('telemedicine.selectVet') }}</option>
                     <option v-for="v in vetList" :key="v.id" :value="v.id">{{ v.first_name }} {{ v.last_name }}</option>
                   </select>
                   <span v-if="fe.vetId" class="field-error">{{ fe.vetId }}</span>
                 </div>
                 <div class="field field--full">
-                  <label>{{ t('telemedicine.reason') }} <span class="req">*</span></label>
-                  <textarea v-model.trim="form.reason" rows="2" :placeholder="t('telemedicine.reasonPlaceholder')" :disabled="saving" required />
+                  <label for="tele-m-reason">{{ t('telemedicine.reason') }} <span class="req">*</span></label>
+                  <textarea id="tele-m-reason" name="tele-m-reason" v-model.trim="form.reason" rows="2" :placeholder="t('telemedicine.reasonPlaceholder')" :disabled="saving" required />
                   <span v-if="fe.reason" class="field-error">{{ fe.reason }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('telemedicine.sessionType') }} <span class="req">*</span></label>
-                  <select v-model="form.sessionType" :disabled="saving" required>
+                  <label for="tele-m-type">{{ t('telemedicine.sessionType') }} <span class="req">*</span></label>
+                  <select id="tele-m-type" name="tele-m-type" v-model="form.sessionType" :disabled="saving" required>
                     <option value="consultation">{{ t('telemedicine.typeConsultation') }}</option>
                     <option value="follow_up">{{ t('telemedicine.typeFollowUp') }}</option>
                     <option value="second_opinion">{{ t('telemedicine.typeSecondOpinion') }}</option>
@@ -178,8 +181,8 @@
                   </select>
                 </div>
                 <div class="field">
-                  <label>{{ t('telemedicine.platform') }}</label>
-                  <select v-model="form.platformId" :disabled="saving">
+                  <label for="tele-m-platform">{{ t('telemedicine.platform') }}</label>
+                  <select id="tele-m-platform" name="tele-m-platform" v-model="form.platformId" :disabled="saving">
                     <option value="">{{ t('telemedicine.noPlatform') }}</option>
                     <option v-for="p in platformList" :key="p.id" :value="p.id">{{ p.name }}</option>
                   </select>
@@ -206,6 +209,7 @@ import { useAuthStore } from '../stores/auth'
 import http from '../api/client'
 import { adminUsersApi } from '../api/adminUsers'
 import { t } from '../i18n'
+import { logError } from '../utils/errors'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -354,8 +358,8 @@ async function loadStats() {
     statsData.completed = completedSessions
     statsData.avgDuration = durationCount > 0 ? Math.round(durationSum / durationCount) : 0
     statsData.today = todaySessions
-  } catch {
-    // stats are non-critical; leave at zero
+  } catch (error) {
+    logError('telemedicina.loadStats', error)
   }
 }
 
@@ -387,7 +391,7 @@ async function loadVets() {
     }
 
     vetList.value = []
-  } catch { vetList.value = [] }
+  } catch (error) { logError('telemedicina.loadVets', error); vetList.value = [] }
 }
 
 // Platform list
@@ -396,7 +400,7 @@ async function loadPlatforms() {
   try {
     const { data } = await http.get('/tele/platforms')
     platformList.value = asArray(data?.data || data).map(normalizePlatform).filter(Boolean)
-  } catch { platformList.value = [] }
+  } catch (error) { logError('telemedicina.loadPlatforms', error); platformList.value = [] }
 }
 
 // Patient autocomplete
@@ -413,7 +417,7 @@ async function searchPatients() {
     try {
       const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch { patientResults.value = [] }
+    } catch (error) { logError('telemedicina.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
 }
 function selectPatient(pt) {
@@ -476,6 +480,8 @@ onMounted(() => { load(); loadStats(); loadVets(); loadPlatforms() })
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

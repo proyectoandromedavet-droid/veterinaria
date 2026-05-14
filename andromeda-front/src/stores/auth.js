@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '../api/auth'
 import { clearCsrfToken, ensureCsrfToken } from '../api/client'
+import { extractErrorMessage, logError } from '../utils/errors'
 
 function decodeBase64Url(value) {
   const normalized = String(value || '')
@@ -14,7 +15,8 @@ function decodeBase64Url(value) {
 function parseJwt(token) {
   try {
     return JSON.parse(decodeBase64Url(token.split('.')[1]))
-  } catch {
+  } catch (error) {
+    logError('auth.parseJwt', error)
     return null
   }
 }
@@ -85,11 +87,13 @@ export const useAuthStore = defineStore('auth', () => {
     if (hydratePromise) return hydratePromise
     hydrating.value = true
     hydratePromise = (async () => {
-      if (!accessToken.value) {
+      const hadSession = localStorage.getItem('vet_session') === '1'
+      if (!accessToken.value && hadSession) {
         try {
           await refresh()
-        } catch {
-          // no session cookie or refresh denied
+        } catch (error) {
+          localStorage.removeItem('vet_session')
+          logError('auth.bootstrap.refresh', error)
         }
       }
 
@@ -108,9 +112,14 @@ export const useAuthStore = defineStore('auth', () => {
       return { requiresTwoFactor: true, pendingToken: payload.pendingToken }
     }
     setTokens(payload.accessToken)
-    await ensureCsrfToken().catch(() => {})
+    localStorage.setItem('vet_session', '1')
+    await ensureCsrfToken().catch((error) => {
+      logError('auth.login.csrf', error)
+    })
     user.value = payload.user ? normalizeUser({ ...user.value, ...payload.user }) : user.value
-    await fetchMe().catch(() => {})
+    await fetchMe().catch((error) => {
+      logError('auth.login.fetchMe', error)
+    })
     return { requiresTwoFactor: false }
   }
 
@@ -118,15 +127,21 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await authApi.twoFaChallenge({ pendingToken, code })
     const payload = res.data?.data || res.data
     setTokens(payload.accessToken)
-    await fetchMe().catch(() => {})
+    await fetchMe().catch((error) => {
+      logError('auth.twoFa.fetchMe', error)
+    })
   }
 
   async function refresh() {
     const res = await authApi.refresh()
     const payload = res.data?.data || res.data
     setTokens(payload.accessToken)
-    await ensureCsrfToken().catch(() => {})
-    await fetchMe().catch(() => {})
+    await ensureCsrfToken().catch((error) => {
+      logError('auth.refresh.csrf', error)
+    })
+    await fetchMe().catch((error) => {
+      logError('auth.refresh.fetchMe', error)
+    })
   }
 
   async function fetchMe() {
@@ -136,13 +151,20 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
-    authApi.logout().catch(() => {})
+    authApi.logout().catch((error) => {
+      logError('auth.logout', error)
+    })
+    localStorage.removeItem('vet_session')
     accessToken.value = null
     user.value = null
     hydrated.value = false
     hydrating.value = false
     hydratePromise = null
     clearCsrfToken()
+  }
+
+  function getUserFacingError(error, fallback) {
+    return extractErrorMessage(error, fallback, { includeRequestId: true })
   }
 
   const allowedMenu = computed(() => {
@@ -223,10 +245,6 @@ export const useAuthStore = defineStore('auth', () => {
       items.push({ key: 'documents', label: 'Documentos', icon: '📨', to: '/documentos' })
     }
 
-    if (all || r.some((x) => ['branch_manager', 'org_admin', 'receptionist', 'read_only'].includes(x))) {
-      items.push({ key: 'portal', label: 'Portal', icon: '👥', to: '/portal' })
-    }
-
     if (can('ai:use')) {
       items.push({ key: 'ai', label: 'IA', icon: '🧠', to: '/ai' })
     }
@@ -250,6 +268,7 @@ export const useAuthStore = defineStore('auth', () => {
     fetchMe,
     bootstrap,
     logout,
+    getUserFacingError,
     allowedMenu,
   }
 })
