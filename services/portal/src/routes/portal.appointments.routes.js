@@ -1,7 +1,8 @@
 'use strict';
 
 const { Router } = require('express');
-const { db, R, portalAuth, sendTemplate, publishPortalEvent, vBody, validate } = require('../portal.common');
+const { db, R, portalAuth, sendTemplate, publishPortalEvent, vBody, validate, log } = require('../portal.common');
+const { formatDate, formatTime } = require('../../../../shared/locale');
 
 const router = Router();
 
@@ -13,22 +14,24 @@ router.get('/', portalAuth, async (req, res, next) => {
     const conds = ['i.client_id=:cid'];
     const p = { cid: req.owner.clientId, limit, offset };
     if (status) { conds.push('a.status=:status'); p.status = status; }
-    if (upcoming === 'true') conds.push('a.appointment_date >= NOW()');
+    if (upcoming === 'true') conds.push('a.scheduled_date >= NOW()');
 
     const rows = await db.query(
-      `SELECT a.id, a.appointment_date, a.duration_minutes, a.status, a.reason,
-              a.appointment_type, a.notes,
+      `SELECT a.id, a.scheduled_date, a.scheduled_date AS appointment_date,
+              a.duration_minutes, a.status, a.reason,
+              at2.name AS appointment_type, a.notes,
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name,
               b.name AS clinic_name
        FROM appointments a
        JOIN patients p     ON a.patient_id = p.id
        JOIN species sp     ON p.species_id = sp.id
-       JOIN users u        ON a.veterinarian_id = u.id
+       LEFT JOIN users u        ON a.vet_id = u.id
+       LEFT JOIN appointment_types at2 ON a.appointment_type_id = at2.id
        JOIN branches b     ON a.branch_id = b.id
        JOIN patient_owners i ON i.patient_id = p.id AND i.client_id=:cid
        WHERE ${conds.join(' AND ')}
-       ORDER BY a.appointment_date DESC
+       ORDER BY a.scheduled_date DESC
        LIMIT :limit OFFSET :offset`,
       p
     );
@@ -45,35 +48,52 @@ router.post('/',
   async (req, res, next) => {
     try {
       const { patientId, appointmentDate, reason, notes, branchId } = req.body;
-      const owned = await db.queryOne(`SELECT 1 FROM patient_owners WHERE patient_id=:pid AND client_id=:cid`, { pid: patientId, cid: req.owner.clientId });
+      const owned = await db.queryOne(
+        `SELECT p.branch_id, p.organization_id
+         FROM patient_owners po
+         JOIN patients p ON p.id = po.patient_id
+         WHERE po.patient_id=:pid AND po.client_id=:cid`,
+        { pid: patientId, cid: req.owner.clientId }
+      );
       if (!owned) return R.forbidden(res, 'Sin acceso a esta mascota');
+      if (!req.owner.orgId || String(owned.organization_id) !== String(req.owner.orgId)) {
+        return R.forbidden(res, 'Mascota fuera de la organizacion');
+      }
+      const effectiveBranchId = branchId || owned.branch_id || null;
+      if (branchId) {
+        const branchScope = await db.queryOne(
+          `SELECT id FROM branches WHERE id=:branchId AND organization_id=:orgId`,
+          { branchId, orgId: owned.organization_id }
+        );
+        if (!branchScope) return R.forbidden(res, 'Sucursal fuera de la organizacion');
+      }
 
       const r = await db.query(
         `INSERT INTO appointments
-           (patient_id, client_id, branch_id, appointment_date, reason, notes, status, appointment_type, created_by_portal)
-         VALUES (:pid, :cid, :bid, :date, :reason, :notes, 'requested', 'general', 1)`,
-        { pid: patientId, cid: req.owner.clientId, bid: branchId || null, date: appointmentDate, reason, notes: notes || null }
+           (patient_id, client_id, branch_id, scheduled_date, reason, notes, status, appointment_type_id, created_by_portal)
+         VALUES (:pid, :cid, :bid, :date, :reason, :notes, 'requested', NULL, 1)`,
+        { pid: patientId, cid: req.owner.clientId, bid: effectiveBranchId, date: appointmentDate, reason, notes: notes || null }
       );
 
       const client = await db.queryOne(`SELECT phone, first_name FROM clients WHERE id=:id`, { id: req.owner.clientId });
       const pet = await db.queryOne(`SELECT name FROM patients WHERE id=:id`, { id: patientId });
-      const branch = branchId ? await db.queryOne(`SELECT name FROM branches WHERE id=:id`, { id: branchId }) : null;
+      const branch = effectiveBranchId ? await db.queryOne(`SELECT name FROM branches WHERE id=:id`, { id: effectiveBranchId }) : null;
 
       if (client?.phone) {
         sendTemplate('whatsapp', client.phone, 'appointmentConfirm', {
           ownerName: client.first_name,
           petName: pet?.name || 'su mascota',
-          date: new Date(appointmentDate).toLocaleDateString('es-AR'),
-          time: new Date(appointmentDate).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+          date: formatDate(appointmentDate),
+          time: formatTime(appointmentDate),
           clinicName: branch?.name || 'la clinica',
-        }).catch((err) => console.warn('[portal] appointment confirm send failed', err.message));
+        }).catch((err) => log.warn('appointment confirm send failed', { message: err.message }));
       }
 
       publishPortalEvent('portal.appointment.requested', {
         appointmentId: r.insertId,
         patientId,
         clientId: req.owner.clientId,
-        branchId: branchId || null,
+        branchId: effectiveBranchId,
         orgId: req.owner.orgId || null,
         appointmentDate,
         reason,

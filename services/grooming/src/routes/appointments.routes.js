@@ -11,7 +11,10 @@ router.get('/', async (req, res, next) => {
     const offset = (page - 1) * limit;
     const conds = ['ga.branch_id = :bid'];
     const p = { bid: req.user.branchId, limit: parseInt(limit, 10), offset: parseInt(offset, 10) };
-    if (date) { conds.push('DATE(ga.scheduled_at) = :date'); p.date = date; }
+    if (date) {
+      conds.push('ga.scheduled_at >= :date AND ga.scheduled_at < DATE_ADD(:date, INTERVAL 1 DAY)');
+      p.date = date;
+    }
     if (groomerId) { conds.push('ga.groomer_id = :gid'); p.gid = groomerId; }
     if (status) { conds.push('ga.status = :status'); p.status = status; }
 
@@ -72,10 +75,13 @@ router.get('/:id', async (req, res, next) => {
     if (!appt) return R.notFound(res);
 
     const [services, profile, record] = await Promise.all([
-      db.query(`SELECT gst.id, gst.name, gst.base_price_small, gas.price_charged, gas.notes
-                FROM grooming_appointment_services gas
-                JOIN grooming_service_types gst ON gas.service_type_id = gst.id
-                WHERE gas.grooming_appointment_id = :id`, { id: req.params.id }),
+      db.query(
+        `SELECT gst.id, gst.name, gst.base_price_small, gas.price_charged, gas.notes
+           FROM grooming_appointment_services gas
+           JOIN grooming_service_types gst ON gas.service_type_id = gst.id
+          WHERE gas.grooming_appointment_id = :id`,
+        { id: req.params.id }
+      ),
       db.queryOne(`SELECT * FROM patient_grooming_profile WHERE patient_id = :pid`, { pid: appt.patient_id }),
       db.queryOne(`SELECT * FROM grooming_records WHERE grooming_appointment_id = :id`, { id: req.params.id }),
     ]);
@@ -94,27 +100,55 @@ router.post('/',
   async (req, res, next) => {
     try {
       const { patientId, clientId, groomerId, scheduledAt, services, estimatedDurationMinutes = 90, pickupRequired, pickupAddress, deliveryRequired, deliveryAddress, notes } = req.body;
-      const [r] = await db.query(
-        `INSERT INTO grooming_appointments
-           (branch_id, patient_id, client_id, groomer_id, scheduled_at,
-            estimated_duration_minutes, pickup_required, pickup_address,
-            delivery_required, delivery_address, notes, status)
-         VALUES (:bid,:pid,:cid,:gid,:sched,:dur,:pickup,:paddr,:del,:daddr,:notes,'scheduled')`,
-        {
-          bid: req.user.branchId, pid: patientId, cid: clientId, gid: groomerId, sched: scheduledAt, dur: estimatedDurationMinutes,
-          pickup: pickupRequired ? 1 : 0, paddr: pickupAddress || null, del: deliveryRequired ? 1 : 0, daddr: deliveryAddress || null,
-          notes: notes || null,
+      const [ownerCheck] = await Promise.all([
+        db.queryOne('SELECT id FROM patients WHERE id = :pid AND branch_id = :bid', { pid: patientId, bid: req.user.branchId }),
+        db.queryOne('SELECT id FROM clients WHERE id = :cid AND branch_id = :bid', { cid: clientId, bid: req.user.branchId }),
+        db.queryOne('SELECT id FROM users WHERE id = :gid AND branch_id = :bid', { gid: groomerId, bid: req.user.branchId }),
+      ]).then(([p, c, g]) => p && c && g);
+      if (!ownerCheck) return R.forbidden(res, 'Paciente, cliente o groomer no pertenecen a la sucursal');
+
+      const serviceTypeIds = services.map((s) => s.serviceTypeId).filter(Boolean);
+      const serviceTypes = serviceTypeIds.length
+        ? await db.query(
+            `SELECT id, base_price_medium FROM grooming_service_types WHERE id IN (${serviceTypeIds.map(() => '?').join(',')})`,
+            serviceTypeIds
+          )
+        : [];
+      const serviceTypeMap = new Map(serviceTypes.map((st) => [st.id, st]));
+
+      let apptId, totalEstimate;
+      await db.transaction(async (conn) => {
+        const [r] = await conn.query(
+          `INSERT INTO grooming_appointments
+             (branch_id, patient_id, client_id, groomer_id, scheduled_at,
+              estimated_duration_minutes, pickup_required, pickup_address,
+              delivery_required, delivery_address, notes, status)
+           VALUES (:bid,:pid,:cid,:gid,:sched,:dur,:pickup,:paddr,:del,:daddr,:notes,'scheduled')`,
+          {
+            bid: req.user.branchId, pid: patientId, cid: clientId, gid: groomerId, sched: scheduledAt, dur: estimatedDurationMinutes,
+            pickup: pickupRequired ? 1 : 0, paddr: pickupAddress || null, del: deliveryRequired ? 1 : 0, daddr: deliveryAddress || null,
+            notes: notes || null,
+          }
+        );
+        apptId = r.insertId;
+        totalEstimate = 0;
+        const svcRows = [];
+        for (const svc of services) {
+          const serviceType = serviceTypeMap.get(svc.serviceTypeId);
+          const price = svc.priceCharged ?? serviceType?.base_price_medium ?? 0;
+          totalEstimate += parseFloat(price);
+          svcRows.push([apptId, svc.serviceTypeId, price, svc.notes || null]);
         }
-      );
-      const apptId = r.insertId;
-      let totalEstimate = 0;
-      for (const svc of services) {
-        const serviceType = await db.queryOne(`SELECT * FROM grooming_service_types WHERE id = :id`, { id: svc.serviceTypeId });
-        const price = svc.priceCharged ?? serviceType?.base_price_medium ?? 0;
-        totalEstimate += parseFloat(price);
-        await db.query(`INSERT INTO grooming_appointment_services (grooming_appointment_id, service_type_id, price_charged, notes) VALUES (?,?,?,?)`, [apptId, svc.serviceTypeId, price, svc.notes || null]);
-      }
-      await db.query(`UPDATE grooming_appointments SET estimated_price = ? WHERE id = ?`, [totalEstimate, apptId]);
+        if (svcRows.length) {
+          const placeholders = svcRows.map(() => '(?,?,?,?)').join(', ');
+          await conn.query(
+            `INSERT INTO grooming_appointment_services (grooming_appointment_id, service_type_id, price_charged, notes) VALUES ${placeholders}`,
+            svcRows.flat()
+          );
+        }
+        totalEstimate = Math.round(totalEstimate * 100) / 100;
+        await conn.query(`UPDATE grooming_appointments SET estimated_price = ? WHERE id = ?`, [totalEstimate, apptId]);
+      });
       return R.created(res, { id: apptId, estimatedPrice: totalEstimate });
     } catch (e) { logGroomingError('POST /grooming/appointments', e, { branchId: req.user?.branchId }); next(e); }
   }

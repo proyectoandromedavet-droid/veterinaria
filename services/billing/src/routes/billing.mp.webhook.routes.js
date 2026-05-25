@@ -28,18 +28,68 @@ router.post('/', async (req, res, next) => {
     const status = mp.mapMpStatus(paymentData.status);
 
     const extRef = paymentData.external_reference || '';
-    const invMatch = extRef.match(/inv:(\d+)/);
+    const invMatch = extRef.match(/^inv:(\d+)(?::org:(\d+))?(?::branch:(\d+))?$/);
     if (!invMatch) return res.status(200).json({ received: true });
 
     const invoiceId = parseInt(invMatch[1]);
+    const extOrgId = invMatch[2] ? parseInt(invMatch[2], 10) : null;
+    const extBranchId = invMatch[3] ? parseInt(invMatch[3], 10) : null;
 
     if (status === 'completed') {
+      let appliedPayment = null;
       await db.transaction(async (conn) => {
+        // OT-040: idempotencia — evitar double-charge si el webhook llega dos veces
+        const existing = await conn.queryOne(
+          `SELECT id FROM payments WHERE mp_payment_id = :mpid LIMIT 1`,
+          { mpid: String(mpPaymentId) }
+        );
+        if (existing) return;
+
         const invoice = await conn.queryOne(
-          `SELECT id, total_amount, paid_amount FROM invoices WHERE id = :id FOR UPDATE`,
+          `SELECT i.id, i.branch_id, b.organization_id AS org_id,
+                  i.total_amount, i.paid_amount, i.status
+           FROM invoices i
+           JOIN branches b ON b.id = i.branch_id
+           WHERE i.id = :id
+           FOR UPDATE`,
           { id: invoiceId }
         );
         if (!invoice) return;
+        if ((extOrgId && Number(invoice.org_id) !== extOrgId) || (extBranchId && Number(invoice.branch_id) !== extBranchId)) {
+          log.warn('MP webhook: external_reference tenant mismatch', {
+            invoiceId,
+            mpPaymentId,
+            extOrgId,
+            extBranchId,
+            invoiceOrgId: invoice.org_id,
+            invoiceBranchId: invoice.branch_id,
+          });
+          return;
+        }
+        if (['paid', 'cancelled', 'refunded'].includes(invoice.status)) {
+          log.warn('MP webhook: ignoring payment for closed invoice', { invoiceId, mpPaymentId, status: invoice.status });
+          return;
+        }
+
+        // OT-041: verificar que el monto acreditado sea razonable
+        const receivedAmount = Number(paymentData.transaction_amount);
+        if (!receivedAmount || receivedAmount <= 0) {
+          log.error('MP webhook: invalid transaction_amount', { invoiceId, mpPaymentId, receivedAmount });
+          return;
+        }
+        const invoiceCurrency = (invoice.currency || 'ARS').toUpperCase();
+        const paymentCurrency = (paymentData.currency_id || '').toUpperCase();
+        if (paymentCurrency && paymentCurrency !== invoiceCurrency) {
+          log.error('MP webhook: currency mismatch', { invoiceId, mpPaymentId, invoiceCurrency, paymentCurrency });
+          return;
+        }
+        const balance = Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0);
+        if (receivedAmount > balance) {
+          log.warn('MP webhook: ignoring overpayment', {
+            invoiceId, mpPaymentId, received: receivedAmount, balance,
+          });
+          return;
+        }
 
         await conn.query(
           `INSERT INTO payments
@@ -47,7 +97,7 @@ router.post('/', async (req, res, next) => {
            VALUES (:iid, :amount, 'mercadopago', :reference, :mpid, 'completed', :notes, NOW(), NULL)`,
           {
             iid: invoiceId,
-            amount: paymentData.transaction_amount,
+            amount: receivedAmount,
             reference: String(mpPaymentId),
             mpid: String(mpPaymentId),
             notes: `MercadoPago - ${paymentData.payment_type_id}`,
@@ -60,29 +110,51 @@ router.post('/', async (req, res, next) => {
                status = CASE WHEN paid_amount + :amount >= total_amount THEN 'paid' ELSE 'partial' END,
                updated_at = NOW()
            WHERE id = :id`,
-          { amount: paymentData.transaction_amount, id: invoiceId }
+          { amount: receivedAmount, id: invoiceId }
         );
+        appliedPayment = { invoiceId, mpPaymentId, amount: receivedAmount };
       });
 
-      enqueue({ event: 'payment.approved', payload: { invoiceId, mpPaymentId, amount: paymentData.transaction_amount } }).catch((err) => {
-        log.warn('MP webhook enqueue failed', { error: err.message, invoiceId, mpPaymentId });
-      });
-      eventBus.publish('billing.payment.approved', { invoiceId, mpPaymentId, amount: paymentData.transaction_amount }).catch((err) => {
-        log.warn('MP webhook event publish failed', { error: err.message, invoiceId, mpPaymentId });
-      });
+      if (appliedPayment) {
+        enqueue({ event: 'payment.approved', payload: appliedPayment }).catch((err) => {
+          log.warn('MP webhook enqueue failed', { error: err.message, invoiceId, mpPaymentId });
+        });
+        eventBus.publish('billing.payment.approved', appliedPayment).catch((err) => {
+          log.warn('MP webhook event publish failed', { error: err.message, invoiceId, mpPaymentId });
+        });
+      }
     }
 
     if (status === 'refunded') {
-      await db.query(
-        `UPDATE invoices SET status = 'refunded', updated_at = NOW() WHERE id = :id`,
-        { id: invoiceId }
-      );
-      enqueue({ event: 'payment.refunded', payload: { invoiceId, mpPaymentId } }).catch((err) => {
-        log.warn('MP webhook enqueue failed', { error: err.message, invoiceId, mpPaymentId });
+      let appliedRefund = false;
+      await db.transaction(async (conn) => {
+        const invoice = await conn.queryOne(
+          `SELECT i.id, i.branch_id, b.organization_id AS org_id
+           FROM invoices i
+           JOIN branches b ON b.id = i.branch_id
+           WHERE i.id = :id
+           FOR UPDATE`,
+          { id: invoiceId }
+        );
+        if (!invoice) return;
+        if ((extOrgId && Number(invoice.org_id) !== extOrgId) || (extBranchId && Number(invoice.branch_id) !== extBranchId)) {
+          log.warn('MP refund webhook: external_reference tenant mismatch', { invoiceId, mpPaymentId, extOrgId, extBranchId });
+          return;
+        }
+        await conn.query(
+          `UPDATE invoices SET status = 'refunded', updated_at = NOW() WHERE id = :id`,
+          { id: invoiceId }
+        );
+        appliedRefund = true;
       });
-      eventBus.publish('billing.payment.refunded', { invoiceId, mpPaymentId }).catch((err) => {
-        log.warn('MP webhook event publish failed', { error: err.message, invoiceId, mpPaymentId });
-      });
+      if (appliedRefund) {
+        enqueue({ event: 'payment.refunded', payload: { invoiceId, mpPaymentId } }).catch((err) => {
+          log.warn('MP webhook enqueue failed', { error: err.message, invoiceId, mpPaymentId });
+        });
+        eventBus.publish('billing.payment.refunded', { invoiceId, mpPaymentId }).catch((err) => {
+          log.warn('MP webhook event publish failed', { error: err.message, invoiceId, mpPaymentId });
+        });
+      }
     }
 
     return res.status(200).json({ received: true });

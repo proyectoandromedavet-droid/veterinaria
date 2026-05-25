@@ -49,6 +49,38 @@ router.post('/',
   }
 );
 
+// OT-065: PUT /:id — full appointment update (alias compliant with OpenAPI spec)
+router.put('/:id',
+  body('scheduledDate').optional().isISO8601(),
+  body('durationMinutes').optional().isInt({ min: 5, max: 480 }),
+  body('status').optional().isIn(['scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show']),
+  validate,
+  async (req, res, next) => {
+    try {
+      const fields = [];
+      const p = { id: req.params.id, bid: req.user.branchId };
+      if (req.body.scheduledDate)     { fields.push('scheduled_date = :scheduledDate');         p.scheduledDate     = req.body.scheduledDate; }
+      if (req.body.durationMinutes)   { fields.push('duration_minutes = :durationMinutes');     p.durationMinutes   = req.body.durationMinutes; }
+      if (req.body.status)            { fields.push('status = :status');                        p.status            = req.body.status; }
+      if (req.body.reason !== undefined) { fields.push('reason = :reason');                    p.reason            = req.body.reason; }
+      if (req.body.notes  !== undefined) { fields.push('notes = :notes');                       p.notes             = req.body.notes; }
+      if (req.body.vetId)             { fields.push('vet_id = :vetId');                         p.vetId             = req.body.vetId; }
+      if (req.body.appointmentTypeId) { fields.push('appointment_type_id = :appointmentTypeId'); p.appointmentTypeId = req.body.appointmentTypeId; }
+      if (fields.length === 0) return R.badRequest(res, 'No fields to update');
+
+      await db.query(
+        `UPDATE appointments SET ${fields.join(', ')}, updated_at = NOW()
+         WHERE id = :id AND branch_id = :bid`,
+        p
+      );
+      return R.noContent(res);
+    } catch (e) {
+      logAppointmentsError('PUT /appointments/:id', e, { appointmentId: req.params.id, branchId: req.user?.branchId, body: req.body });
+      next(e);
+    }
+  }
+);
+
 router.patch('/:id/status',
   body('status').isIn(['scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show']),
   validate,
@@ -79,6 +111,12 @@ const postTriage = [
         systolicBp, mucousMembranes,
         consciousnessLevel, painScore, notes,
       } = req.body;
+
+      const appt = await db.queryOne(
+        `SELECT id FROM appointments WHERE id = :id AND branch_id = :bid`,
+        { id: req.params.id, bid: req.user.branchId }
+      );
+      if (!appt) return R.notFound(res, 'Turno no encontrado');
 
       const [r] = await db.query(
         `INSERT INTO emergency_triage

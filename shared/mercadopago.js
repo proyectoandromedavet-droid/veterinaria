@@ -14,8 +14,11 @@
 const { MercadoPagoConfig, Preference, Payment, Refund } = require('mercadopago');
 const crypto = require('crypto');
 const { createLogger } = require('./logger');
+const { CircuitBreaker } = require('./circuitBreaker');
 
 const log = createLogger('mercadopago');
+
+const mpBreaker = new CircuitBreaker('mercadopago', { threshold: 3, timeout: 60000 });
 
 // ── Cliente ───────────────────────────────────────────────────────────────────
 function getClient() {
@@ -41,9 +44,11 @@ function getClient() {
  * @returns {{ preferenceId, initPoint, sandboxInitPoint }}
  */
 async function createPreference(opts) {
+  if (!mpBreaker.canRequest()) throw Object.assign(new Error('MercadoPago circuit open'), { code: 'MP_CIRCUIT_OPEN' });
   const {
     invoiceId, invoiceNumber, amount, currency = 'ARS',
     payerEmail, payerName, description, orgId, branchId,
+    idempotencyKey,
   } = opts;
 
   const appUrl = process.env.APP_URL || 'http://localhost:4050';
@@ -51,7 +56,11 @@ async function createPreference(opts) {
 
   const preference = new Preference(getClient());
 
-  const result = await preference.create({
+  const idemKey = idempotencyKey || `inv-${invoiceId}-org-${orgId}`;
+
+  let result;
+  try {
+    result = await preference.create({
     body: {
       items: [{
         id:           String(invoiceId),
@@ -74,14 +83,20 @@ async function createPreference(opts) {
       auto_return: 'approved',
       statement_descriptor: 'VetManager Pro',
       expires: true,
-      expiration_date_to: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
+      expiration_date_to: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     },
+    requestOptions: { idempotencyKey: idemKey },
   });
+  } catch (err) {
+    mpBreaker.onFailure();
+    throw err;
+  }
+  mpBreaker.onSuccess();
 
   return {
     preferenceId:      result.id,
-    initPoint:         result.init_point,         // link producción
-    sandboxInitPoint:  result.sandbox_init_point, // link sandbox
+    initPoint:         result.init_point,
+    sandboxInitPoint:  result.sandbox_init_point,
   };
 }
 
@@ -90,8 +105,16 @@ async function createPreference(opts) {
  * @param {string|number} mpPaymentId  — ID de pago de MercadoPago
  */
 async function getPayment(mpPaymentId) {
+  if (!mpBreaker.canRequest()) throw Object.assign(new Error('MercadoPago circuit open'), { code: 'MP_CIRCUIT_OPEN' });
   const payment = new Payment(getClient());
-  return payment.get({ id: mpPaymentId });
+  try {
+    const result = await payment.get({ id: mpPaymentId });
+    mpBreaker.onSuccess();
+    return result;
+  } catch (err) {
+    mpBreaker.onFailure();
+    throw err;
+  }
 }
 
 // ── Reembolso ─────────────────────────────────────────────────────────────────
@@ -100,11 +123,19 @@ async function getPayment(mpPaymentId) {
  * @param {number}        [amount]     Si no se pasa, reembolso total
  */
 async function refundPayment(mpPaymentId, amount) {
+  if (!mpBreaker.canRequest()) throw Object.assign(new Error('MercadoPago circuit open'), { code: 'MP_CIRCUIT_OPEN' });
   const refund = new Refund(getClient());
-  return refund.create({
-    payment_id: mpPaymentId,
-    body: amount ? { amount } : undefined,
-  });
+  try {
+    const result = await refund.create({
+      payment_id: mpPaymentId,
+      body: amount ? { amount } : undefined,
+    });
+    mpBreaker.onSuccess();
+    return result;
+  } catch (err) {
+    mpBreaker.onFailure();
+    throw err;
+  }
 }
 
 // ── Validar firma de webhook ──────────────────────────────────────────────────
@@ -132,10 +163,16 @@ function parseSignatureHeader(xSignature) {
 
 function validateWebhookSignature(xSignature, xRequestId, dataId, opts = {}) {
   const secret = process.env.MP_WEBHOOK_SECRET;
-  if (!secret) return true; // Si no hay secret configurado, no validar (dev)
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      log.error('MP_WEBHOOK_SECRET missing in production; rejecting webhook');
+      return false;
+    }
+    return true; // dev/local only
+  }
 
   try {
-    const toleranceSec = parseInt(opts.toleranceSec || process.env.MP_WEBHOOK_TOLERANCE_SEC || '300');
+    const toleranceSec = parseInt(opts.toleranceSec || process.env.MP_WEBHOOK_TOLERANCE_SEC || '60', 10);
     const parts    = parseSignatureHeader(xSignature);
     const ts       = parts.ts;
     const received = parts.v1;

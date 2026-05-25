@@ -75,10 +75,10 @@ export function normalizeInvoiceDetail(detail) {
 
 export function buildInvoicePayload(form) {
   const payload = {
-    clientId: parseInt(form.clientId),
-    currencyId: parseInt(form.currencyId || '1'),
+    clientId: parseInt(form.clientId, 10) || null,
+    currencyId: parseInt(form.currencyId || '1', 10),
     items: form.items.filter((item) => item.description).map((item) => ({
-      ...(item.serviceId ? { serviceId: parseInt(item.serviceId) } : {}),
+      ...(item.serviceId ? { serviceId: parseInt(item.serviceId, 10) } : {}),
       description: item.description,
       quantity: item.quantity || 1,
       unitPrice: parseFloat(item.unit_price) || 0,
@@ -87,8 +87,8 @@ export function buildInvoicePayload(form) {
     })),
   }
 
-  if (form.patientId) payload.patientId = parseInt(form.patientId)
-  if (form.appointmentId) payload.appointmentId = parseInt(form.appointmentId)
+  if (form.patientId) payload.patientId = parseInt(form.patientId, 10)
+  if (form.appointmentId) payload.appointmentId = parseInt(form.appointmentId, 10)
   if (form.dueDate) payload.dueDate = form.dueDate
   if (form.notes) payload.notes = form.notes
 

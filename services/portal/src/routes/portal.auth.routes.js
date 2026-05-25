@@ -1,7 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
-const bcrypt = require('bcryptjs');
+const pwHash = require('../../../../shared/passwordHash');
 const {
   db,
   R,
@@ -17,6 +17,7 @@ const {
   PASSWORD_POLICY,
   vBody,
 } = require('../portal.common');
+const { formatDateTime } = require('../../../../shared/locale');
 
 const router = Router();
 
@@ -29,30 +30,70 @@ router.post('/register',
   validate,
   async (req, res, next) => {
     try {
-      const { email, password, firstName, lastName, phone } = req.body;
+      const { email, password, firstName, lastName, phone, activationToken } = req.body;
       const orgId = req.headers['x-org-id'] || null;
+      const allowSelfRegistration = process.env.NODE_ENV !== 'production'
+        && process.env.PORTAL_ALLOW_SELF_REGISTRATION !== 'false';
 
+      const existingOrgCond = orgId ? 'AND (c.organization_id = :orgId OR b.organization_id = :orgId)' : '';
       const existing = await db.queryOne(
-        `SELECT id FROM clients WHERE email=:email AND portal_password_hash IS NOT NULL`,
-        { email }
+        `SELECT c.id FROM clients c
+         LEFT JOIN branches b ON c.branch_id = b.id
+         WHERE c.email=:email AND c.portal_password_hash IS NOT NULL ${existingOrgCond}`,
+        { email, ...(orgId ? { orgId } : {}) }
       );
       if (existing) return R.conflict(res, 'Ya existe una cuenta con ese email');
 
-      const hash = await bcrypt.hash(password, 12);
+      const hash = await pwHash.hash(password);
+      let activation = null;
+      if (activationToken) {
+        activation = await db.queryOne(
+          `SELECT id, client_id, org_id, email
+           FROM portal_activation_tokens
+           WHERE token_hash = :hash
+             AND used_at IS NULL
+             AND expires_at > NOW()
+           LIMIT 1`,
+          { hash: require('../portal.common').jwt.hashToken(activationToken) }
+        ).catch((err) => {
+          log.warn('portal activation lookup failed', { err: err.message });
+          return null;
+        });
+        if (!activation) return R.unauthorized(res, 'Token de activacion invalido o expirado');
+        if (activation.email) {
+          const a = Buffer.from(activation.email.toLowerCase().padEnd(320, '\0'));
+          const b = Buffer.from(email.toLowerCase().padEnd(320, '\0'));
+          const same = a.length === b.length && require('crypto').timingSafeEqual(a, b);
+          if (!same) return R.forbidden(res, 'Token de activacion no corresponde al email');
+        }
+      }
+      const clientOrgCond = orgId ? 'AND (c.organization_id = :orgId OR b.organization_id = :orgId)' : '';
       const client = await db.queryOne(
         `SELECT c.id, COALESCE(c.organization_id, b.organization_id) AS organization_id
          FROM clients c
          LEFT JOIN branches b ON c.branch_id = b.id
-         WHERE c.email=:email
+         WHERE c.email=:email ${clientOrgCond}
          LIMIT 1`,
-        { email }
+        { email, ...(orgId ? { orgId } : {}) }
       );
 
       if (client) {
+        if (!allowSelfRegistration) {
+          if (!activation) return R.unauthorized(res, 'Se requiere invitacion para activar el portal');
+          if (activation.client_id && Number(activation.client_id) !== Number(client.id)) {
+            return R.forbidden(res, 'Token de activacion no corresponde al cliente');
+          }
+          if (activation.org_id && client.organization_id && Number(activation.org_id) !== Number(client.organization_id)) {
+            return R.forbidden(res, 'Token de activacion no corresponde a la organizacion del cliente');
+          }
+        }
         await db.query(
           `UPDATE clients SET portal_password_hash=:hash, updated_at=NOW() WHERE id=:id`,
           { hash, id: client.id }
         );
+        if (activation) {
+          await db.query(`UPDATE portal_activation_tokens SET used_at=NOW() WHERE id=:id`, { id: activation.id });
+        }
         const accessToken = buildOwnerToken({ ...client, email });
         const refreshToken = buildOwnerRefresh(client);
         sendWelcome({ to: email, name: firstName, orgName: 'VetManager Pro' }).catch((err) => log.warn('welcome email failed', { err: err.message }));
@@ -60,26 +101,34 @@ router.post('/register',
         return R.created(res, { accessToken, refreshToken });
       }
 
-      if (!orgId) return R.badRequest(res, 'Se requiere x-org-id para registrar una cuenta portal');
+      if (!allowSelfRegistration && !activation) return R.unauthorized(res, 'Se requiere invitacion para registrar una cuenta portal');
+      const effectiveOrgId = activation?.org_id || orgId;
+      if (!effectiveOrgId) return R.badRequest(res, 'Se requiere organizacion para registrar una cuenta portal');
       const branch = await db.queryOne(
         `SELECT id
          FROM branches
          WHERE organization_id = :orgId
          ORDER BY id
          LIMIT 1`,
-        { orgId }
+        { orgId: effectiveOrgId }
       );
       if (!branch) return R.notFound(res, 'No hay sucursales disponibles para la organizacion');
 
-      const r = await db.query(
+      const [r] = await db.query(
         `INSERT INTO clients (branch_id, first_name, last_name, email, phone, portal_password_hash, organization_id)
          VALUES (:branchId, :fn, :ln, :email, :phone, :hash, :orgId)`,
-        { branchId: branch.id, fn: firstName, ln: lastName, email, phone: phone || null, hash, orgId }
+        { branchId: branch.id, fn: firstName, ln: lastName, email, phone: phone || null, hash, orgId: effectiveOrgId }
       );
-      const accessToken = buildOwnerToken({ id: r.insertId, organization_id: orgId, email });
+      if (activation) {
+        await db.query(`UPDATE portal_activation_tokens SET used_at=NOW(), client_id=COALESCE(client_id, :clientId) WHERE id=:id`, {
+          id: activation.id,
+          clientId: r.insertId,
+        });
+      }
+      const accessToken = buildOwnerToken({ id: r.insertId, organization_id: effectiveOrgId, email });
       const refreshToken = buildOwnerRefresh({ id: r.insertId });
       sendWelcome({ to: email, name: firstName, orgName: 'VetManager Pro' }).catch((err) => log.warn('welcome email failed', { err: err.message }));
-      publishPortalEvent('portal.owner.registered', { clientId: r.insertId, email, orgId }, req);
+      publishPortalEvent('portal.owner.registered', { clientId: r.insertId, email, orgId: effectiveOrgId }, req);
       return R.created(res, { accessToken, refreshToken });
     } catch (e) { next(e); }
   }
@@ -93,19 +142,21 @@ router.post('/login',
   async (req, res, next) => {
     try {
       const { email, password } = req.body;
+      const orgId = req.headers['x-org-id'] || null;
+      const orgCond = orgId ? 'AND (c.organization_id = :orgId OR b.organization_id = :orgId)' : '';
       const client = await db.queryOne(
         `SELECT c.id, c.first_name, c.last_name, c.email, c.portal_password_hash,
                 COALESCE(c.organization_id, b.organization_id) AS organization_id,
                 c.is_active
          FROM clients c
          LEFT JOIN branches b ON c.branch_id = b.id
-         WHERE c.email=:email`,
-        { email }
+         WHERE c.email=:email ${orgCond}`,
+        { email, ...(orgId ? { orgId } : {}) }
       );
       if (!client || !client.portal_password_hash) return R.unauthorized(res, 'Email o contrasena incorrectos');
       if (!client.is_active) return R.forbidden(res, 'Cuenta desactivada');
 
-      const ok = await bcrypt.compare(password, client.portal_password_hash);
+      const ok = await pwHash.verify(password, client.portal_password_hash);
       if (!ok) return R.unauthorized(res, 'Email o contrasena incorrectos');
 
       const accessToken = buildOwnerToken(client);
@@ -130,7 +181,7 @@ router.post('/login',
           name: client.first_name,
           ip,
           userAgent: ua,
-          time: new Date().toLocaleString('es-AR', { timeZone: process.env.TZ || 'America/Argentina/Buenos_Aires' }),
+          time: formatDateTime(new Date()),
         }).catch((err) => log.warn('new device email failed', { err: err.message }));
       }
 

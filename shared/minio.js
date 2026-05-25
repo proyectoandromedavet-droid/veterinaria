@@ -63,15 +63,19 @@ async function uploadFile(buffer, originalName, bucket = BUCKETS.patients, folde
     'Content-Type': mimeType,
   });
 
-  const endpoint = getSecret('MINIO_ENDPOINT', { defaultValue: 'minio' }) || 'minio';
-  const port     = getSecret('MINIO_PORT', { defaultValue: '9000' }) || '9000';
-  return `http://${endpoint}:${port}/${bucket}/${name}`;
+  const endpoint = process.env.MINIO_ENDPOINT || 'minio';
+  const port     = process.env.MINIO_PORT || '9000';
+  const proto    = process.env.MINIO_USE_SSL === 'true' ? 'https' : 'http';
+  return `${proto}://${endpoint}:${port}/${bucket}/${name}`;
 }
 
 /**
  * Generate a presigned URL for temporary access.
  */
 async function getPresignedUrl(bucket, objectName, expirySeconds = 3600) {
+  if (!objectName || objectName.includes('..') || objectName.startsWith('/')) {
+    throw Object.assign(new Error('Invalid object name'), { code: 'INVALID_OBJECT_NAME' });
+  }
   return getClient().presignedGetObject(bucket, objectName, expirySeconds);
 }
 

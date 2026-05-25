@@ -14,6 +14,14 @@ router.post('/orders',
   async (req, res, next) => {
     try {
       const { patientId, medicalRecordId, tests, priority = 'routine', clinicalNotes } = req.body;
+      const patient = await db.queryOne(
+        `SELECT id FROM patients
+         WHERE id = :patientId
+           AND organization_id = :orgId
+           AND branch_id = :branchId`,
+        { patientId, orgId: req.user.orgId, branchId: req.user.branchId }
+      );
+      if (!patient) return R.notFound(res, 'Paciente no encontrado');
       const resolvedMedicalRecordId = await resolveMedicalRecordId(db, {
         patientId,
         branchId: req.user.branchId,
@@ -29,37 +37,40 @@ router.post('/orders',
 
       if (!normalizedTests.length) return R.badRequest(res, 'At least one valid lab test is required');
 
-      const [{ nextNum }] = await db.query(
-        `SELECT COALESCE(MAX(CAST(SUBSTRING(order_number,4) AS UNSIGNED)),0)+1 AS nextNum
-           FROM lab_orders
-          WHERE branch_id = :bid`,
-        { bid: req.user.branchId }
-      );
-      const orderNumber = `LAB${String(nextNum).padStart(6, '0')}`;
+      let orderNumber, orderId;
+      await db.transaction(async (conn) => {
+        const [{ nextNum }] = await conn.query(
+          `SELECT COALESCE(MAX(CAST(SUBSTRING(order_number,4) AS UNSIGNED)),0)+1 AS nextNum
+             FROM lab_orders
+            WHERE branch_id = :bid FOR UPDATE`,
+          { bid: req.user.branchId }
+        );
+        orderNumber = `LAB${String(nextNum).padStart(6, '0')}`;
 
-      const [r] = await db.query(
-        `INSERT INTO lab_orders
-           (branch_id, patient_id, medical_record_id, order_number, priority, clinical_notes,
-            ordered_by, status)
-         VALUES (:bid, :pid, :mid, :num, :prio, :notes, :uid, 'pending')`,
-        {
-          bid: req.user.branchId,
-          pid: patientId,
-          mid: resolvedMedicalRecordId,
-          num: orderNumber,
-          prio: priority,
-          notes: clinicalNotes || null,
-          uid: req.user.userId,
-        }
-      );
-      const orderId = r.insertId;
+        const [r] = await conn.query(
+          `INSERT INTO lab_orders
+             (branch_id, patient_id, medical_record_id, order_number, priority, clinical_notes,
+              ordered_by, status)
+           VALUES (:bid, :pid, :mid, :num, :prio, :notes, :uid, 'pending')`,
+          {
+            bid: req.user.branchId,
+            pid: patientId,
+            mid: resolvedMedicalRecordId,
+            num: orderNumber,
+            prio: priority,
+            notes: clinicalNotes || null,
+            uid: req.user.userId,
+          }
+        );
+        orderId = r.insertId;
 
-      const itemRows = normalizedTests.map((testId) => [orderId, testId, 'pending']);
-      const itemPlaceholders = itemRows.map(() => '(?,?,?)').join(', ');
-      await db.query(
-        `INSERT INTO lab_order_items (lab_order_id, lab_test_id, status) VALUES ${itemPlaceholders}`,
-        itemRows.flat()
-      );
+        const itemRows = normalizedTests.map((testId) => [orderId, testId, 'pending']);
+        const itemPlaceholders = itemRows.map(() => '(?,?,?)').join(', ');
+        await conn.query(
+          `INSERT INTO lab_order_items (lab_order_id, lab_test_id, status) VALUES ${itemPlaceholders}`,
+          itemRows.flat()
+        );
+      });
 
       return R.created(res, { id: orderId, orderNumber, medicalRecordId: resolvedMedicalRecordId });
     } catch (e) {
@@ -80,9 +91,23 @@ router.post('/orders/:id/results',
         `SELECT p.species_id, p.sex
            FROM lab_orders lo
            JOIN patients p ON lo.patient_id = p.id
-          WHERE lo.id = :oid`,
-        { oid: req.params.id }
+          WHERE lo.id = :oid
+            AND lo.branch_id = :branchId
+            AND p.organization_id = :orgId`,
+        { oid: req.params.id, branchId: req.user.branchId, orgId: req.user.orgId }
       );
+      if (!patient) return R.notFound(res, 'Orden no encontrada');
+      const itemIds = results.map((r) => Number(r.itemId)).filter(Boolean);
+      if (itemIds.length !== results.length) return R.badRequest(res, 'Todos los resultados deben incluir itemId valido');
+      const ownedItems = await db.query(
+        `SELECT loi.id FROM lab_order_items loi
+           JOIN lab_orders lo ON lo.id = loi.lab_order_id
+          WHERE loi.lab_order_id = ?
+            AND lo.branch_id = ?
+            AND loi.id IN (${itemIds.map(() => '?').join(',')})`,
+        [req.params.id, req.user.branchId, ...itemIds]
+      );
+      if (ownedItems.length !== itemIds.length) return R.forbidden(res, 'Items de orden fuera de alcance', 'LAB_ORDER_ITEM_SCOPE');
 
       const refs = await Promise.all(
         results.map((r) => db.queryOne(
@@ -102,9 +127,11 @@ router.post('/orders/:id/results',
 
       const resultRows = results.map((r, i) => {
         const ref = refs[i];
+        const criticalLow  = parseFloat(process.env.LAB_CRITICAL_LOW_FACTOR  || '0.7');
+        const criticalHigh = parseFloat(process.env.LAB_CRITICAL_HIGH_FACTOR || '1.3');
         const isCritical = ref && r.valueNumeric != null
-          ? (parseFloat(r.valueNumeric) < parseFloat(ref.min_value) * 0.7
-            || parseFloat(r.valueNumeric) > parseFloat(ref.max_value) * 1.3)
+          ? (parseFloat(r.valueNumeric) < parseFloat(ref.min_value) * criticalLow
+            || parseFloat(r.valueNumeric) > parseFloat(ref.max_value) * criticalHigh)
           : false;
 
         return [
@@ -128,7 +155,6 @@ router.post('/orders/:id/results',
         resultRows.flat()
       );
 
-      const itemIds = results.map((r) => r.itemId);
       await db.query(
         `UPDATE lab_order_items SET status = 'completed' WHERE id IN (${itemIds.map(() => '?').join(',')})`,
         itemIds

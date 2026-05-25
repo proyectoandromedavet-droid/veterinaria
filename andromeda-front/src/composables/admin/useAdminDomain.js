@@ -159,7 +159,11 @@ export async function loadTablePreview(tableName) {
 }
 
 export async function loadPortalHealth() {
-  return normalizePortalHealth(await platformApi.healthDeep())
+  try {
+    return normalizePortalHealth(await platformApi.healthDeep())
+  } catch (err) {
+    return { error: true, message: err?.message || 'Health check failed' }
+  }
 }
 
 export function extractAdminError(error, fallback) {

@@ -226,7 +226,7 @@ function labelizeKey(key) {
 
 export function buildMedicalRecordPayload(form) {
   const payload = {
-    patientId: parseInt(form.patientId),
+    patientId: parseInt(form.patientId, 10),
     chiefComplaint: form.chiefComplaint,
   }
   if (form.reasonForVisit) payload.reasonForVisit = form.reasonForVisit
@@ -312,7 +312,7 @@ export function buildTreatmentPayload(form) {
   if (form.treatment.doseUnit) tr.doseUnit = form.treatment.doseUnit
   if (form.treatment.frequency) tr.frequency = form.treatment.frequency
   if (form.treatment.route) tr.route = form.treatment.route
-  if (form.treatment.durationDays) tr.durationDays = parseInt(form.treatment.durationDays)
+  if (form.treatment.durationDays) tr.durationDays = parseInt(form.treatment.durationDays, 10)
   if (form.treatment.startDate) tr.startDate = form.treatment.startDate
   if (form.treatment.notes) tr.notes = form.treatment.notes
   return tr
@@ -320,7 +320,7 @@ export function buildTreatmentPayload(form) {
 
 export function buildLabOrderPayload(form, recordId) {
   return {
-    patientId: parseInt(form.patientId),
+    patientId: parseInt(form.patientId, 10),
     medicalRecordId: recordId,
     priority: form.labOrder.priority,
     clinicalNotes: form.labOrder.clinicalNotes || form.chiefComplaint,
@@ -330,9 +330,9 @@ export function buildLabOrderPayload(form, recordId) {
 
 export function buildImagingOrderPayload(form, recordId) {
   return {
-    patientId: parseInt(form.patientId),
+    patientId: parseInt(form.patientId, 10),
     medicalRecordId: recordId,
-    imagingTypeId: parseInt(form.imagingOrder.imagingTypeId),
+    imagingTypeId: parseInt(form.imagingOrder.imagingTypeId, 10),
     priority: form.imagingOrder.priority,
     bodyRegion: form.imagingOrder.bodyRegion || undefined,
     clinicalIndication: form.imagingOrder.clinicalIndication || form.chiefComplaint,
@@ -342,11 +342,11 @@ export function buildImagingOrderPayload(form, recordId) {
 
 export function buildHospitalizationOrderPayload(form, recordId) {
   return {
-    patientId: parseInt(form.patientId),
+    patientId: parseInt(form.patientId, 10),
     medicalRecordId: recordId,
-    responsibleVetId: parseInt(form.hospitalizationOrder.responsibleVetId),
-    wardId: form.hospitalizationOrder.wardId ? parseInt(form.hospitalizationOrder.wardId) : undefined,
-    kennelId: form.hospitalizationOrder.kennelId ? parseInt(form.hospitalizationOrder.kennelId) : undefined,
+    responsibleVetId: parseInt(form.hospitalizationOrder.responsibleVetId, 10),
+    wardId: form.hospitalizationOrder.wardId ? parseInt(form.hospitalizationOrder.wardId, 10) : undefined,
+    kennelId: form.hospitalizationOrder.kennelId ? parseInt(form.hospitalizationOrder.kennelId, 10) : undefined,
     hospitalizationReason: form.hospitalizationOrder.hospitalizationReason,
     admissionDiagnosis: form.hospitalizationOrder.admissionDiagnosis || undefined,
     admissionWeight: form.hospitalizationOrder.admissionWeight || undefined,
@@ -357,10 +357,10 @@ export function buildHospitalizationOrderPayload(form, recordId) {
 
 export function buildSurgeryOrderPayload(form, recordId) {
   const surgeryPayload = {
-    patientId: parseInt(form.patientId),
+    patientId: parseInt(form.patientId, 10),
     medicalRecordId: recordId,
-    surgeryTypeId: parseInt(form.surgeryOrder.surgeryTypeId),
-    leadSurgeonId: parseInt(form.surgeryOrder.leadSurgeonId),
+    surgeryTypeId: parseInt(form.surgeryOrder.surgeryTypeId, 10),
+    leadSurgeonId: parseInt(form.surgeryOrder.leadSurgeonId, 10),
     scheduledDate: form.surgeryOrder.startTime
       ? `${form.surgeryOrder.scheduledDate}T${form.surgeryOrder.startTime}`
       : `${form.surgeryOrder.scheduledDate}T09:00`,
@@ -379,14 +379,17 @@ export function buildPrescriptionPayload(form) {
       const i = { medicationName: item.medicationName, dose: item.dose, frequency: item.frequency }
       if (item.doseUnit) i.doseUnit = item.doseUnit
       if (item.route) i.route = item.route
-      if (item.durationDays) i.durationDays = parseInt(item.durationDays)
+      if (item.durationDays) i.durationDays = parseInt(item.durationDays, 10)
       if (item.quantity) i.quantity = parseFloat(item.quantity)
       if (item.instructions) i.instructions = item.instructions
       return i
     }),
   }
   if (form.prescriptionNotes) rxPayload.notes = form.prescriptionNotes
-  if (form.prescriptionRefills !== '') rxPayload.refills = parseInt(form.prescriptionRefills)
+  if (form.prescriptionRefills !== '') {
+    const refills = parseInt(form.prescriptionRefills, 10)
+    if (!isNaN(refills)) rxPayload.refills = refills
+  }
   return rxPayload
 }
 
@@ -679,7 +682,7 @@ export async function loadProfessionalsForEvolutions(auth) {
     const { data } = await adminUsersApi.list({ limit: 100 })
     return asArray(data?.data || data)
       .map(normalizeProfessional)
-      .filter((entry) => entry && entry.isActive && entry.roles.some((role) => ['veterinarian', 'surgeon', 'vet_technician', 'tele_vet'].includes(role) || true))
+      .filter((entry) => entry && entry.isActive && entry.roles.some((role) => ['veterinarian', 'surgeon', 'vet_technician', 'tele_vet'].includes(role)))
   }
 
   const self = normalizeProfessional(auth?.user || null)
@@ -706,7 +709,18 @@ export async function loadRelatedOrders(record) {
   }
 }
 
+let _recordCreating = false
 export async function createMedicalRecordWithAttachments(form) {
+  if (_recordCreating) throw new Error('Guardado en progreso, por favor espere')
+  _recordCreating = true
+  try {
+    return await _doCreateMedicalRecordWithAttachments(form)
+  } finally {
+    _recordCreating = false
+  }
+}
+
+async function _doCreateMedicalRecordWithAttachments(form) {
   const payload = buildMedicalRecordPayload(form)
   const { data } = await http.post('/medical-records', payload)
   const recordId = data.data?.id || data.id
@@ -753,7 +767,7 @@ export async function createMedicalRecordWithAttachments(form) {
 
 export async function submitDetailLabOrder(detailRecord, detailOrders) {
   await http.post('/lab/orders', {
-    patientId: parseInt(detailRecord.patient_id),
+    patientId: parseInt(detailRecord.patient_id, 10),
     medicalRecordId: detailRecord.id,
     priority: detailOrders.lab.priority,
     clinicalNotes: detailOrders.lab.clinicalNotes || detailRecord.chief_complaint,
@@ -763,9 +777,9 @@ export async function submitDetailLabOrder(detailRecord, detailOrders) {
 
 export async function submitDetailImagingOrder(detailRecord, detailOrders) {
   await http.post('/imaging/orders', {
-    patientId: parseInt(detailRecord.patient_id),
+    patientId: parseInt(detailRecord.patient_id, 10),
     medicalRecordId: detailRecord.id,
-    imagingTypeId: parseInt(detailOrders.imaging.imagingTypeId),
+    imagingTypeId: parseInt(detailOrders.imaging.imagingTypeId, 10),
     priority: detailOrders.imaging.priority,
     bodyRegion: detailOrders.imaging.bodyRegion || undefined,
     clinicalIndication: detailOrders.imaging.clinicalIndication || detailRecord.chief_complaint,
@@ -775,11 +789,11 @@ export async function submitDetailImagingOrder(detailRecord, detailOrders) {
 
 export async function submitDetailHospitalization(detailRecord, detailOrders) {
   await http.post('/hospitalizations', {
-    patientId: parseInt(detailRecord.patient_id),
+    patientId: parseInt(detailRecord.patient_id, 10),
     medicalRecordId: detailRecord.id,
-    responsibleVetId: parseInt(detailOrders.hospitalization.responsibleVetId),
-    wardId: detailOrders.hospitalization.wardId ? parseInt(detailOrders.hospitalization.wardId) : undefined,
-    kennelId: detailOrders.hospitalization.kennelId ? parseInt(detailOrders.hospitalization.kennelId) : undefined,
+    responsibleVetId: parseInt(detailOrders.hospitalization.responsibleVetId, 10),
+    wardId: detailOrders.hospitalization.wardId ? parseInt(detailOrders.hospitalization.wardId, 10) : undefined,
+    kennelId: detailOrders.hospitalization.kennelId ? parseInt(detailOrders.hospitalization.kennelId, 10) : undefined,
     hospitalizationReason: detailOrders.hospitalization.hospitalizationReason,
     admissionDiagnosis: detailOrders.hospitalization.admissionDiagnosis || undefined,
     admissionWeight: detailOrders.hospitalization.admissionWeight || undefined,
@@ -790,10 +804,10 @@ export async function submitDetailHospitalization(detailRecord, detailOrders) {
 
 export async function submitDetailSurgery(detailRecord, detailOrders) {
   const payload = {
-    patientId: parseInt(detailRecord.patient_id),
+    patientId: parseInt(detailRecord.patient_id, 10),
     medicalRecordId: detailRecord.id,
-    surgeryTypeId: parseInt(detailOrders.surgery.surgeryTypeId),
-    leadSurgeonId: parseInt(detailOrders.surgery.leadSurgeonId),
+    surgeryTypeId: parseInt(detailOrders.surgery.surgeryTypeId, 10),
+    leadSurgeonId: parseInt(detailOrders.surgery.leadSurgeonId, 10),
     scheduledDate: detailOrders.surgery.startTime
       ? `${detailOrders.surgery.scheduledDate}T${detailOrders.surgery.startTime}`
       : `${detailOrders.surgery.scheduledDate}T09:00`,

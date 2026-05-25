@@ -7,7 +7,8 @@
  */
 
 const PROVIDER = process.env.AI_PROVIDER || 'openai';
-const DEFAULT_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '1024');
+const DEFAULT_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '1024', 10);
+const HARD_MAX_TOKENS = parseInt(process.env.AI_HARD_MAX_TOKENS || '4096', 10);
 const { getBreaker } = require('./circuitBreaker');
 const { getSecret } = require('./secrets');
 const aiBreaker = getBreaker('openai', {
@@ -17,28 +18,20 @@ const aiBreaker = getBreaker('openai', {
 });
 
 // ─── HTTP helper ──────────────────────────────────────────────────────────────
+// OT-076/OT-077: replaced manual https.request implementation with global fetch +
+// AbortSignal.timeout for cleaner async/await and built-in timeout support.
 
-function _post(hostname, path, extraHeaders, body) {
-  const https = require('https');
-  return new Promise((resolve, reject) => {
-    const payload = JSON.stringify(body);
-    const headers = {
-      'Content-Type'  : 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-      ...extraHeaders,
-    };
-    const req = https.request(
-      { hostname, path, method: 'POST', headers },
-      res => {
-        let d = '';
-        res.on('data', c => d += c);
-        res.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
-      }
-    );
-    req.on('error', reject);
-    req.write(payload);
-    req.end();
+const AI_HTTP_TIMEOUT_MS = parseInt(process.env.AI_HTTP_TIMEOUT_MS || '30000', 10);
+
+async function _post(hostname, path, extraHeaders, body) {
+  const controller = AbortSignal.timeout(AI_HTTP_TIMEOUT_MS);
+  const response = await fetch(`https://${hostname}${path}`, {
+    method:  'POST',
+    signal:  controller,
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
+    body:    JSON.stringify(body),
   });
+  return response.json();
 }
 
 // ─── Adapters ─────────────────────────────────────────────────────────────────
@@ -51,7 +44,7 @@ const adapters = {
       const body = {
         model      : opts.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
         messages,
-        max_tokens : opts.maxTokens || DEFAULT_MAX_TOKENS,
+        max_tokens : Math.min(opts.maxTokens || DEFAULT_MAX_TOKENS, HARD_MAX_TOKENS),
         temperature: opts.temperature ?? 0.3,
       };
       if (opts.json) body.response_format = { type: 'json_object' };
@@ -76,7 +69,7 @@ const adapters = {
         {
           model     : opts.model || process.env.OPENAI_VISION_MODEL || 'gpt-4o',
           messages  : [{ role: 'user', content: [imgContent, { type: 'text', text: prompt }] }],
-          max_tokens: opts.maxTokens || 1024,
+          max_tokens: Math.min(opts.maxTokens || 1024, HARD_MAX_TOKENS),
         }
       );
       if (res.error) throw Object.assign(new Error(res.error.message), { code: 'AI_API_ERROR', provider: 'openai' });
@@ -101,7 +94,7 @@ const adapters = {
       const filtered = messages.filter(m => m.role !== 'system');
       const body = {
         model     : opts.model || process.env.ANTHROPIC_MODEL || 'claude-haiku-20240307',
-        max_tokens: opts.maxTokens || DEFAULT_MAX_TOKENS,
+        max_tokens: Math.min(opts.maxTokens || DEFAULT_MAX_TOKENS, HARD_MAX_TOKENS),
         messages  : filtered,
       };
       if (system) body.system = system;
@@ -125,7 +118,7 @@ const adapters = {
         { 'x-api-key': getSecret('ANTHROPIC_API_KEY', { defaultValue: '' }), 'anthropic-version': '2023-06-01' },
         {
           model     : opts.model || process.env.ANTHROPIC_VISION_MODEL || 'claude-opus-4-5',
-          max_tokens: opts.maxTokens || 1024,
+          max_tokens: Math.min(opts.maxTokens || 1024, HARD_MAX_TOKENS),
           messages  : [{
             role   : 'user',
             content: [

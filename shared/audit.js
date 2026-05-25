@@ -120,32 +120,49 @@ function auditMiddleware(options = {}) {
 
 async function writeAuditLog(entry) {
   try {
-    const immutablePayload = buildImmutablePayload(entry);
-    const prevHash = await getPreviousAuditHash(entry.org_id);
-    const entryHash = computeAuditHash(prevHash, immutablePayload);
+    await db.transaction(async (conn) => {
+      const lockName = `audit-chain:${entry.org_id || 'global'}`;
+      const lock = await conn.queryOne('SELECT GET_LOCK(:lockName, 5) AS acquired', { lockName });
+      if (Number(lock?.acquired) !== 1) throw new Error('Unable to acquire audit chain lock');
 
-    await db.query(
-      `INSERT INTO audit_logs
-         (user_id, org_id, branch_id, action, resource, resource_id,
-          method, path, status_code, ip_address, user_agent,
-          request_id, request_body, duration_ms, prev_hash, entry_hash, created_at)
-       VALUES
-         (:user_id, :org_id, :branch_id, :action, :resource, :resource_id,
-          :method, :path, :status_code, :ip_address, :user_agent,
-          :request_id, :request_body, :duration_ms, :prev_hash, :entry_hash, :created_at)`,
-      { ...entry, prev_hash: prevHash, entry_hash: entryHash },
-    );
-    await writeImmutableAuditLog({ auditEntry: entry, immutablePayload, prevHash, entryHash });
+      try {
+        const immutablePayload = buildImmutablePayload(entry);
+        const prevHash = await getPreviousAuditHash(conn, entry.org_id);
+        const entryHash = computeAuditHash(prevHash, immutablePayload);
+
+        const [result] = await conn.query(
+          `INSERT INTO audit_logs
+             (user_id, org_id, branch_id, action, resource, resource_id,
+              method, path, status_code, ip_address, user_agent,
+              request_id, request_body, duration_ms, prev_hash, entry_hash, created_at)
+           VALUES
+             (:user_id, :org_id, :branch_id, :action, :resource, :resource_id,
+              :method, :path, :status_code, :ip_address, :user_agent,
+              :request_id, :request_body, :duration_ms, :prev_hash, :entry_hash, :created_at)`,
+          { ...entry, prev_hash: prevHash, entry_hash: entryHash },
+        );
+        await writeImmutableAuditLog(conn, {
+          auditEntry: entry,
+          auditLogId: result.insertId,
+          immutablePayload,
+          prevHash,
+          entryHash,
+        });
+      } finally {
+        await conn.query('SELECT RELEASE_LOCK(:lockName)', { lockName }).catch(() => {});
+      }
+    });
   } catch (err) {
     log.warn('Audit write failed', { error: err.message, orgId: entry.org_id, resource: entry.resource });
   }
 }
 
 function getAuditSecret() {
-  return process.env.AUDIT_CHAIN_SECRET
+  const secret = process.env.AUDIT_CHAIN_SECRET
     || process.env.FIELD_ENCRYPTION_SECRET
-    || process.env.JWT_SECRET
-    || 'audit-chain-default';
+    || process.env.JWT_SECRET;
+  if (!secret) throw new Error('AUDIT_CHAIN_SECRET must be configured');
+  return secret;
 }
 
 function buildImmutablePayload(entry) {
@@ -175,34 +192,34 @@ function computeAuditHash(prevHash, payload) {
     .digest('hex');
 }
 
-async function getPreviousAuditHash(orgId) {
-  const row = await db.queryOne(
+async function getPreviousAuditHash(conn, orgId) {
+  const row = await conn.queryOne(
     `SELECT entry_hash
      FROM audit_log_immutable
      WHERE (:orgId IS NULL OR org_id = :orgId)
      ORDER BY id DESC
-     LIMIT 1`,
+     LIMIT 1
+     FOR UPDATE`,
     { orgId: orgId || null }
-  ).catch(() => null);
+  );
   return row?.entry_hash || null;
 }
 
-async function writeImmutableAuditLog({ auditEntry, immutablePayload, prevHash, entryHash }) {
-  await db.query(
+async function writeImmutableAuditLog(conn, { auditEntry, auditLogId, immutablePayload, prevHash, entryHash }) {
+  await conn.query(
     `INSERT INTO audit_log_immutable
        (org_id, audit_log_id, payload_json, prev_hash, entry_hash, export_status, created_at)
      VALUES
-       (:org_id, (
-          SELECT id FROM audit_logs WHERE entry_hash = :entry_hash ORDER BY id DESC LIMIT 1
-       ), :payload_json, :prev_hash, :entry_hash, 'pending', :created_at)`,
+       (:org_id, :audit_log_id, :payload_json, :prev_hash, :entry_hash, 'pending', :created_at)`,
     {
       org_id: auditEntry.org_id || null,
+      audit_log_id: auditLogId,
       payload_json: JSON.stringify(immutablePayload),
       prev_hash: prevHash,
       entry_hash: entryHash,
       created_at: auditEntry.created_at,
     }
-  ).catch(() => {});
+  );
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────

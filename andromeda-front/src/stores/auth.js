@@ -78,8 +78,12 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function setTokens(at) {
-    accessToken.value = at
     const payload = parseJwt(at)
+    if (payload?.exp && payload.exp * 1000 < Date.now()) {
+      logError('auth.setTokens', new Error('Received already-expired access token'))
+      return
+    }
+    accessToken.value = at
     if (payload) user.value = normalizeUser(payload)
   }
 
@@ -87,19 +91,21 @@ export const useAuthStore = defineStore('auth', () => {
     if (hydratePromise) return hydratePromise
     hydrating.value = true
     hydratePromise = (async () => {
-      const hadSession = localStorage.getItem('vet_session') === '1'
-      if (!accessToken.value && hadSession) {
-        try {
-          await refresh()
-        } catch (error) {
-          localStorage.removeItem('vet_session')
-          logError('auth.bootstrap.refresh', error)
+      try {
+        const hadSession = localStorage.getItem('vet_session') === '1'
+        if (!accessToken.value && hadSession) {
+          try {
+            await refresh()
+          } catch (error) {
+            localStorage.removeItem('vet_session')
+            logError('auth.bootstrap.refresh', error)
+          }
         }
+        hydrated.value = true
+      } finally {
+        hydrating.value = false
+        hydratePromise = null
       }
-
-      hydrated.value = true
-      hydrating.value = false
-      hydratePromise = null
     })()
 
     return hydratePromise
@@ -136,6 +142,7 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await authApi.refresh()
     const payload = res.data?.data || res.data
     setTokens(payload.accessToken)
+    clearCsrfToken()
     await ensureCsrfToken().catch((error) => {
       logError('auth.refresh.csrf', error)
     })
@@ -150,10 +157,12 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = normalizeUser({ ...user.value, ...payload })
   }
 
-  function logout() {
-    authApi.logout().catch((error) => {
+  async function logout() {
+    try {
+      await authApi.logout()
+    } catch (error) {
       logError('auth.logout', error)
-    })
+    }
     localStorage.removeItem('vet_session')
     accessToken.value = null
     user.value = null
@@ -173,7 +182,8 @@ export const useAuthStore = defineStore('auth', () => {
 
     const items = []
 
-    if (all || r.some((x) => ['branch_manager', 'veterinarian', 'vet_technician', 'receptionist', 'tele_vet', 'read_only'].includes(x))) {
+    // OT-107: imaging_tech and api_user added to relevant menu items
+    if (all || r.some((x) => ['branch_manager', 'veterinarian', 'vet_technician', 'receptionist', 'tele_vet', 'read_only', 'imaging_tech', 'api_user'].includes(x))) {
       items.push({ key: 'dashboard', label: 'Inicio', icon: '🏠', to: '/' })
     }
 
@@ -181,11 +191,11 @@ export const useAuthStore = defineStore('auth', () => {
       items.push({ key: 'appointments', label: 'Turnos', icon: '📅', to: '/turnos' })
     }
 
-    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'branch_manager', 'read_only'].includes(x))) {
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'branch_manager', 'read_only', 'imaging_tech'].includes(x))) {
       items.push({ key: 'patients', label: 'Pacientes', icon: '🐾', to: '/pacientes' })
     }
 
-    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'surgeon', 'tele_vet'].includes(x))) {
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'surgeon', 'tele_vet', 'imaging_tech'].includes(x))) {
       items.push({ key: 'medical', label: 'Evoluciones', icon: '📋', to: '/evoluciones' })
     }
 
@@ -197,11 +207,11 @@ export const useAuthStore = defineStore('auth', () => {
       items.push({ key: 'laboratorio', label: 'Laboratorio', icon: '🧪', to: '/laboratorio' })
     }
 
-    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician'].includes(x))) {
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician', 'imaging_tech'].includes(x))) {
       items.push({ key: 'imagenes', label: 'Imágenes', icon: '🩻', to: '/imagenes' })
     }
 
-    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician'].includes(x))) {
+    if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician', 'imaging_tech'].includes(x))) {
       items.push({ key: 'patologia', label: 'Patología', icon: '🔬', to: '/patologia' })
     }
 
@@ -237,11 +247,15 @@ export const useAuthStore = defineStore('auth', () => {
       items.push({ key: 'admin', label: 'Administrar', icon: '⚙️', to: '/admin' })
     }
 
+    if (all) {
+      items.push({ key: 'portal', label: 'Portal', icon: 'P', to: orgId.value ? `/portal?orgId=${orgId.value}` : '/portal' })
+    }
+
     if (all || r.length) {
       items.push({ key: 'notifications', label: 'Notificaciones', icon: '🔔', to: '/notificaciones' })
     }
 
-    if (all || r.some((x) => ['branch_manager', 'veterinarian', 'vet_technician', 'surgeon', 'lab_technician', 'read_only'].includes(x))) {
+    if (all || r.some((x) => ['branch_manager', 'veterinarian', 'vet_technician', 'surgeon', 'lab_technician', 'read_only', 'imaging_tech'].includes(x))) {
       items.push({ key: 'documents', label: 'Documentos', icon: '📨', to: '/documentos' })
     }
 
