@@ -64,12 +64,7 @@ async function isEnabled(flag, orgId) {
 async function getFlags(orgId) {
   const cached = await readOrgFlags(orgId);
   if (cached) return cached;
-
-  const defaults = { ...DEFAULT_FLAGS };
-  if (orgId) {
-    await cache.set(`ff:org:${orgId}`, defaults, FLAG_CACHE_TTL_S);
-  }
-  return defaults;
+  return { ...DEFAULT_FLAGS };
 }
 
 async function setFlag(orgId, flag, value) {

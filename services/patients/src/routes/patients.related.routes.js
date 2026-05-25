@@ -133,6 +133,8 @@ router.post('/:id/allergies',
   validate,
   async (req, res, next) => {
     try {
+      const visiblePatient = await ensurePatientVisible(req.params.id, req.user);
+      if (!visiblePatient) return R.notFound(res, 'Patient not found');
       const { allergen, severity, reaction, notes } = req.body;
       await db.query(
         `INSERT INTO patient_allergies (patient_id, allergen, severity, reaction_description, notes)
@@ -149,6 +151,8 @@ router.post('/:id/chronic-conditions',
   validate,
   async (req, res, next) => {
     try {
+      const visiblePatient = await ensurePatientVisible(req.params.id, req.user);
+      if (!visiblePatient) return R.notFound(res, 'Patient not found');
       const { conditionName, diagnosisCode, diagnosedAt, managedWith, notes } = req.body;
       await db.query(
         `INSERT INTO patient_chronic_conditions
@@ -170,6 +174,8 @@ router.post('/:id/chronic-conditions',
 
 router.delete('/:id/allergies/:aid', async (req, res, next) => {
   try {
+    const visiblePatient = await ensurePatientVisible(req.params.id, req.user);
+    if (!visiblePatient) return R.notFound(res, 'Patient not found');
     await db.query(
       `UPDATE patient_allergies SET is_active = 0 WHERE id = :aid AND patient_id = :pid`,
       { aid: req.params.aid, pid: req.params.id }
@@ -180,6 +186,8 @@ router.delete('/:id/allergies/:aid', async (req, res, next) => {
 
 router.delete('/:id/chronic-conditions/:cid', async (req, res, next) => {
   try {
+    const visiblePatient = await ensurePatientVisible(req.params.id, req.user);
+    if (!visiblePatient) return R.notFound(res, 'Patient not found');
     await db.query(
       `UPDATE patient_chronic_conditions SET is_active = 0 WHERE id = :cid AND patient_id = :pid`,
       { cid: req.params.cid, pid: req.params.id }

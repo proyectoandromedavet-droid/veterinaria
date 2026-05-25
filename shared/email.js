@@ -9,7 +9,17 @@
  */
 
 const nodemailer = require('nodemailer');
+const { formatDate } = require('./locale');
 const { getSecret } = require('./secrets');
+
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
 
 // ── Transport ─────────────────────────────────────────────────────────────────
 function createTransport() {
@@ -92,13 +102,13 @@ async function sendPasswordReset({ to, token, expiresInMinutes = 60 }) {
 // ── Welcome ───────────────────────────────────────────────────────────────────
 async function sendWelcome({ to, name, orgName, tempPassword = null }) {
   const credBlock = tempPassword
-    ? `<p>Su contraseña temporal es: <strong style="font-size:18px;letter-spacing:2px;">${tempPassword}</strong></p>
+    ? `<p>Su contraseña temporal es: <strong style="font-size:18px;letter-spacing:2px;">${escHtml(tempPassword)}</strong></p>
        <p style="color:#dc2626;">Por seguridad, cambie esta contraseña en su primer inicio de sesión.</p>`
     : '';
 
   const html = baseHtml(`
-    <p>Hola <strong>${name}</strong>,</p>
-    <p>Su cuenta en <strong>${orgName}</strong> ha sido creada exitosamente en VetManager Pro.</p>
+    <p>Hola <strong>${escHtml(name)}</strong>,</p>
+    <p>Su cuenta en <strong>${escHtml(orgName)}</strong> ha sido creada exitosamente en VetManager Pro.</p>
     ${credBlock}
     <a href="${APP_URL}/login" class="btn">Iniciar sesión</a>
     <p style="font-size:12px;color:#6b7280;">Si no esperaba este correo, ignórelo o contáctenos.</p>
@@ -111,12 +121,12 @@ async function sendWelcome({ to, name, orgName, tempPassword = null }) {
 async function sendNewDeviceLogin({ to, name, ip, userAgent, time, appUrl }) {
   const url = appUrl || APP_URL;
   const html = baseHtml(`
-    <p>Hola <strong>${name}</strong>,</p>
+    <p>Hola <strong>${escHtml(name)}</strong>,</p>
     <p>Detectamos un inicio de sesión en su cuenta desde un dispositivo o ubicación no reconocida:</p>
     <ul>
-      <li><strong>Fecha y hora:</strong> ${time}</li>
-      <li><strong>IP:</strong> ${ip}</li>
-      <li><strong>Dispositivo:</strong> ${userAgent}</li>
+      <li><strong>Fecha y hora:</strong> ${escHtml(time)}</li>
+      <li><strong>IP:</strong> ${escHtml(ip)}</li>
+      <li><strong>Dispositivo:</strong> ${escHtml(userAgent)}</li>
     </ul>
     <p>Si fue usted, puede ignorar este mensaje.</p>
     <p>Si <strong>no reconoce</strong> esta actividad, cierre todas sus sesiones de inmediato:</p>
@@ -134,7 +144,7 @@ async function sendNewDeviceLogin({ to, name, ip, userAgent, time, appUrl }) {
 // ── 2FA enabled confirmation ──────────────────────────────────────────────────
 async function send2faEnabled({ to, name }) {
   const html = baseHtml(`
-    <p>Hola <strong>${name}</strong>,</p>
+    <p>Hola <strong>${escHtml(name)}</strong>,</p>
     <p>La autenticación de dos factores ha sido <strong>activada</strong> en su cuenta.</p>
     <p>Si no realizó este cambio, contáctenos inmediatamente.</p>
   `, 'Autenticación 2FA activada');
@@ -145,12 +155,12 @@ async function send2faEnabled({ to, name }) {
 // ── Appointment reminder ──────────────────────────────────────────────────────
 async function sendAppointmentReminder({ to, ownerName, petName, datetime, vetName, clinicName }) {
   const html = baseHtml(`
-    <p>Hola <strong>${ownerName}</strong>,</p>
-    <p>Le recordamos que tiene una cita programada para su mascota <strong>${petName}</strong>:</p>
+    <p>Hola <strong>${escHtml(ownerName)}</strong>,</p>
+    <p>Le recordamos que tiene una cita programada para su mascota <strong>${escHtml(petName)}</strong>:</p>
     <ul>
-      <li><strong>Fecha y hora:</strong> ${datetime}</li>
-      <li><strong>Veterinario:</strong> ${vetName}</li>
-      <li><strong>Clínica:</strong> ${clinicName}</li>
+      <li><strong>Fecha y hora:</strong> ${escHtml(datetime)}</li>
+      <li><strong>Veterinario:</strong> ${escHtml(vetName)}</li>
+      <li><strong>Clínica:</strong> ${escHtml(clinicName)}</li>
     </ul>
     <p>Si necesita cancelar o reprogramar, contáctenos con anticipación.</p>
   `, 'Recordatorio de cita veterinaria');
@@ -163,10 +173,10 @@ async function sendCriticalLabAlert({ to, vetName, patientName, testName, value,
   const html = baseHtml(`
     <p>Alerta de resultado crítico de laboratorio:</p>
     <ul>
-      <li><strong>Paciente:</strong> ${patientName}</li>
-      <li><strong>Prueba:</strong> ${testName}</li>
-      <li><strong>Resultado:</strong> ${value} ${unit}</li>
-      <li><strong>Rango referencia:</strong> ${referenceRange}</li>
+      <li><strong>Paciente:</strong> ${escHtml(patientName)}</li>
+      <li><strong>Prueba:</strong> ${escHtml(testName)}</li>
+      <li><strong>Resultado:</strong> ${escHtml(value)} ${escHtml(unit)}</li>
+      <li><strong>Rango referencia:</strong> ${escHtml(referenceRange)}</li>
     </ul>
     <p>Por favor revise y tome las medidas necesarias.</p>
   `, 'Resultado crítico de laboratorio');
@@ -177,13 +187,13 @@ async function sendCriticalLabAlert({ to, vetName, patientName, testName, value,
 // ── Invoice / payment receipt ─────────────────────────────────────────────────
 async function sendInvoiceReceipt({ to, ownerName, invoiceNumber, total, paidAt, clinicName }) {
   const html = baseHtml(`
-    <p>Hola <strong>${ownerName}</strong>,</p>
+    <p>Hola <strong>${escHtml(ownerName)}</strong>,</p>
     <p>Su pago ha sido recibido correctamente.</p>
     <ul>
-      <li><strong>Número de factura:</strong> ${invoiceNumber}</li>
-      <li><strong>Total pagado:</strong> ${total}</li>
-      <li><strong>Fecha:</strong> ${paidAt}</li>
-      <li><strong>Clínica:</strong> ${clinicName}</li>
+      <li><strong>Número de factura:</strong> ${escHtml(invoiceNumber)}</li>
+      <li><strong>Total pagado:</strong> ${escHtml(total)}</li>
+      <li><strong>Fecha:</strong> ${escHtml(paidAt)}</li>
+      <li><strong>Clínica:</strong> ${escHtml(clinicName)}</li>
     </ul>
     <p>Gracias por confiar en VetManager Pro.</p>
   `, 'Comprobante de pago');
@@ -215,7 +225,7 @@ async function sendReportEmail ({ email, subject, reportName, buffer, filename, 
         <h2 style="color:#2563eb;">📊 Reporte Programado</h2>
         <p>Hola,</p>
         <p>Se adjunta el reporte <strong>${reportName}</strong> generado automáticamente el
-           <strong>${new Date().toLocaleDateString('es-AR')}</strong>.</p>
+           <strong>${formatDate(new Date())}</strong>.</p>
         <p style="color:#64748b;font-size:13px;">
           Este correo fue generado automáticamente por VetManager Pro.<br>
           Para cambiar la configuración de reportes programados, ingresá al panel de administración.

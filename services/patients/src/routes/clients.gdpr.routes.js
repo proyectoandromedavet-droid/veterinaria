@@ -6,8 +6,18 @@ const { db, R, body, logClientsError } = require('./clients.common');
 
 const router = Router();
 
+async function requireClientBranch(clientId, branchId, res) {
+  const client = await db.queryOne(
+    `SELECT id FROM clients WHERE id = :id AND branch_id = :bid`,
+    { id: clientId, bid: branchId }
+  );
+  if (!client) { R.notFound(res, 'Cliente no encontrado'); return false; }
+  return true;
+}
+
 router.get('/:id/gdpr/consents', async (req, res, next) => {
   try {
+    if (!await requireClientBranch(req.params.id, req.user.branchId, res)) return;
     const consents = await gdpr.getConsents(req.params.id);
     return R.ok(res, consents);
   } catch (e) {
@@ -21,6 +31,7 @@ router.post('/:id/gdpr/consents',
   body('granted').isBoolean(),
   async (req, res, next) => {
     try {
+      if (!await requireClientBranch(req.params.id, req.user.branchId, res)) return;
       const { consentType, granted, source, version } = req.body;
       const result = await gdpr.recordConsent({
         clientId: req.params.id,
@@ -54,6 +65,7 @@ router.post('/:id/gdpr/consents',
 
 router.delete('/:id/gdpr/consents', async (req, res, next) => {
   try {
+    if (!await requireClientBranch(req.params.id, req.user.branchId, res)) return;
     await gdpr.withdrawAllConsents(req.params.id, 'staff');
     return R.noContent(res);
   } catch (e) {
@@ -64,6 +76,15 @@ router.delete('/:id/gdpr/consents', async (req, res, next) => {
 
 router.get('/:id/gdpr/export', async (req, res, next) => {
   try {
+    // OT-101: GDPR personal-data exports must only be served over HTTPS.
+    // In production, reject plaintext HTTP requests (e.g., misconfigured proxies
+    // or direct internal calls without TLS).
+    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    if (!isSecure && process.env.NODE_ENV === 'production') {
+      return R.error(res, 403, 'GDPR exports require a secure HTTPS connection', null, 'HTTPS_REQUIRED');
+    }
+
+    if (!await requireClientBranch(req.params.id, req.user.branchId, res)) return;
     const data = await gdpr.exportPersonalData(req.params.id, req.user.orgId);
     await db.query(
       `INSERT INTO gdpr_audit_trail (client_id, user_id, action, performed_by, ip_address)
@@ -89,6 +110,7 @@ router.post('/:id/gdpr/requests',
   body('requestType').isIn(['access', 'erasure', 'portability', 'rectification', 'restriction', 'objection']),
   async (req, res, next) => {
     try {
+      if (!await requireClientBranch(req.params.id, req.user.branchId, res)) return;
       const result = await gdpr.createDataRequest({
         clientId: req.params.id,
         requestType: req.body.requestType,
@@ -133,6 +155,13 @@ router.patch('/gdpr/requests/:reqId',
   body('status').isIn(['in_progress', 'completed', 'rejected']),
   async (req, res, next) => {
     try {
+      const reqData = await db.queryOne(
+        `SELECT gdr.id FROM gdpr_data_requests gdr
+         JOIN clients c ON gdr.client_id = c.id
+         WHERE gdr.id = :reqId AND c.branch_id = :bid`,
+        { reqId: req.params.reqId, bid: req.user.branchId }
+      );
+      if (!reqData) return R.notFound(res, 'Solicitud no encontrada');
       await gdpr.updateDataRequest(req.params.reqId, req.body.status, req.user.userId);
       return R.noContent(res);
     } catch (e) {
@@ -144,6 +173,7 @@ router.patch('/gdpr/requests/:reqId',
 
 router.delete('/:id/gdpr/erase', async (req, res, next) => {
   try {
+    if (!await requireClientBranch(req.params.id, req.user.branchId, res)) return;
     const result = await gdpr.anonymizeClient(req.params.id, req.user.orgId, req.user.userId);
     return R.ok(res, result);
   } catch (e) {

@@ -123,7 +123,8 @@ router.get('/appointments', async (req, res, next) => {
          ROUND(AVG(duration_minutes),1) AS avg_duration_minutes
        FROM appointments
        WHERE branch_id = :bid
-         AND DATE(scheduled_date) BETWEEN :from AND :to`,
+         AND scheduled_date >= :from
+         AND scheduled_date < DATE_ADD(:to, INTERVAL 1 DAY)`,
       { bid: req.user.branchId, from, to }
     );
 
@@ -131,7 +132,9 @@ router.get('/appointments', async (req, res, next) => {
       `SELECT at2.name AS type, COUNT(*) AS count, ROUND(COUNT(*)*100.0/SUM(COUNT(*)) OVER(),2) AS pct
        FROM appointments a
        LEFT JOIN appointment_types at2 ON a.appointment_type_id = at2.id
-       WHERE a.branch_id=:bid AND DATE(a.scheduled_date) BETWEEN :from AND :to
+       WHERE a.branch_id=:bid
+         AND a.scheduled_date >= :from
+         AND a.scheduled_date < DATE_ADD(:to, INTERVAL 1 DAY)
        GROUP BY at2.name ORDER BY count DESC`,
       { bid: req.user.branchId, from, to }
     );
@@ -154,7 +157,8 @@ router.get('/new-patients', async (req, res, next) => {
        JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type='primary'
        JOIN clients cl ON po.client_id = cl.id AND cl.branch_id = :bid
        JOIN species sp ON p.species_id = sp.id
-       WHERE p.created_at BETWEEN :from AND :to
+       WHERE p.created_at >= :from
+         AND p.created_at < DATE_ADD(:to, INTERVAL 1 DAY)
        GROUP BY period, sp.common_name ORDER BY period, species_count DESC`,
       { fmt, bid: req.user.branchId, from: f, to: t }
     );
@@ -173,7 +177,8 @@ router.get('/diagnoses', async (req, res, next) => {
        JOIN appointments a ON mr.appointment_id = a.id AND a.branch_id = :bid
        JOIN patients p ON mr.patient_id = p.id
        JOIN species sp ON p.species_id = sp.id
-       WHERE DATE(d.created_at) BETWEEN :from AND :to
+       WHERE d.created_at >= :from
+         AND d.created_at < DATE_ADD(:to, INTERVAL 1 DAY)
          AND d.is_primary = TRUE
        ORDER BY d.created_at DESC`,
       { bid: req.user.branchId, from, to }
@@ -253,7 +258,8 @@ router.get('/lab-turnaround', async (req, res, next) => {
        WHERE lo.branch_id = :bid
          AND lo.status = 'completed'
          AND lo.reported_at IS NOT NULL
-         AND DATE(lo.ordered_at) BETWEEN :from AND :to
+         AND lo.ordered_at >= :from
+         AND lo.ordered_at < DATE_ADD(:to, INTERVAL 1 DAY)
        GROUP BY ltc.name ORDER BY avg_hours DESC`,
       { bid: req.user.branchId, from, to }
     );
@@ -274,7 +280,9 @@ router.get('/telemedicine', async (req, res, next) => {
                 ROUND(AVG(tr.overall_score),2) AS avg_rating
          FROM tele_sessions ts
          LEFT JOIN tele_ratings tr ON tr.session_id = ts.id
-         WHERE ts.branch_id=:bid AND DATE(ts.scheduled_at) BETWEEN :from AND :to`,
+         WHERE ts.branch_id=:bid
+           AND ts.scheduled_at >= :from
+           AND ts.scheduled_at < DATE_ADD(:to, INTERVAL 1 DAY)`,
         { bid: req.user.branchId, from, to }
       ),
       db.query(
@@ -282,7 +290,9 @@ router.get('/telemedicine', async (req, res, next) => {
                 ROUND(AVG(tr.overall_score),2) AS avg_rating
          FROM tele_sessions ts
          LEFT JOIN tele_ratings tr ON tr.session_id = ts.id
-         WHERE ts.branch_id=:bid AND DATE(ts.scheduled_at) BETWEEN :from AND :to
+         WHERE ts.branch_id=:bid
+           AND ts.scheduled_at >= :from
+           AND ts.scheduled_at < DATE_ADD(:to, INTERVAL 1 DAY)
          GROUP BY session_type ORDER BY count DESC`,
         { bid: req.user.branchId, from, to }
       ),
@@ -305,7 +315,9 @@ router.get('/grooming', async (req, res, next) => {
        JOIN groomers g ON ga.groomer_id = g.id
        JOIN users    u ON g.user_id     = u.id
        LEFT JOIN grooming_ratings gr2 ON gr2.grooming_appointment_id = ga.id
-       WHERE ga.branch_id=:bid AND DATE(ga.scheduled_at) BETWEEN :from AND :to
+       WHERE ga.branch_id=:bid
+         AND ga.scheduled_at >= :from
+         AND ga.scheduled_at < DATE_ADD(:to, INTERVAL 1 DAY)
        GROUP BY g.id ORDER BY revenue DESC`,
       { bid: req.user.branchId, from, to }
     );
@@ -323,7 +335,7 @@ router.get('/security', async (req, res, next) => {
          LEFT JOIN users u ON u.id = lh.user_id
          WHERE lh.success = 0
            AND lh.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
-           AND (u.branch_id = :bid OR lh.user_id IS NULL)
+           AND u.branch_id = :bid
          ORDER BY lh.created_at DESC
          LIMIT 50`,
         { bid: req.user.branchId },
@@ -369,7 +381,8 @@ router.get('/executive', async (req, res, next) => {
          JOIN appointments a ON mr.appointment_id = a.id
          JOIN branches b ON b.id = a.branch_id
          WHERE b.organization_id = :orgId
-           AND DATE(d.created_at) BETWEEN :from AND :to
+           AND d.created_at >= :from
+           AND d.created_at < DATE_ADD(:to, INTERVAL 1 DAY)
            AND d.is_primary = TRUE
          GROUP BY d.diagnosis_name
          ORDER BY frequency DESC

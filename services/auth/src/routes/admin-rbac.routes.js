@@ -30,6 +30,19 @@ const { createLogger } = require('../../../../shared/logger');
 const router = Router();
 const log = createLogger('auth-admin-rbac');
 
+/**
+ * Verifies that the requesting user is allowed to operate on the given orgId.
+ * Superadmins may operate on any org; org_admins are restricted to their own org.
+ */
+function assertOrgAccess(req, res, orgId) {
+  const isSuperAdmin = req.user?.roles?.includes('superadmin') ?? false;
+  if (!isSuperAdmin && parseInt(orgId, 10) !== parseInt(req.user?.orgId, 10)) {
+    R.forbidden(res, 'Insufficient privileges for this organization');
+    return false;
+  }
+  return true;
+}
+
 function parsePermissionList(value) {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string' && value.trim()) {
@@ -86,6 +99,7 @@ router.get('/orgs/:orgId/overrides',
   async (req, res, next) => {
     try {
       const { orgId } = req.params;
+      if (!assertOrgAccess(req, res, orgId)) return;
       const rows = await db.query(
         'SELECT role_name, added_permissions, removed_permissions, updated_at FROM org_role_overrides WHERE org_id = :orgId',
         { orgId }
@@ -108,6 +122,7 @@ router.get('/orgs/:orgId/roles/:role/effective',
   async (req, res, next) => {
     try {
       const { orgId, role } = req.params;
+      if (!assertOrgAccess(req, res, orgId)) return;
       const permissions = await getEffectivePermissions(role, orgId);
       res.json({ success: true, data: { role, orgId, permissions } });
     } catch (err) { next(err); }
@@ -123,6 +138,7 @@ router.put('/orgs/:orgId/roles/:role',
   async (req, res, next) => {
     try {
       const { orgId, role } = req.params;
+      if (!assertOrgAccess(req, res, orgId)) return;
       const grant  = req.body.grant  || [];
       const revoke = req.body.revoke || [];
       const previousRow = await db.queryOne(
@@ -132,6 +148,19 @@ router.put('/orgs/:orgId/roles/:role',
 
       if (!ROLE_PERMISSIONS[role]) {
         return R.notFound(res, `Role '${role}' not found`, 'RBAC_002');
+      }
+
+      const allKnown = new Set(Object.values(ROLE_PERMISSIONS).flat());
+      const permPattern = /^[\w*]+:[\w*]+$/;
+      const unknown = [...grant, ...revoke].filter(
+        (p) => p !== '*' && !allKnown.has(p) && !permPattern.test(p)
+      );
+      if (unknown.length) {
+        return R.badRequest(res, `Unknown permissions: ${unknown.join(', ')}`);
+      }
+      const hasStar = [...grant, ...revoke].some((p) => p === '*' || p.includes('*'));
+      if (hasStar && !req.user?.roles?.includes('superadmin')) {
+        return R.forbidden(res, 'Wildcard permissions require superadmin');
       }
 
       await setRoleOverride(orgId, role, grant, revoke);
@@ -157,6 +186,7 @@ router.delete('/orgs/:orgId/roles/:role',
   async (req, res, next) => {
     try {
       const { orgId, role } = req.params;
+      if (!assertOrgAccess(req, res, orgId)) return;
       const previousRow = await db.queryOne(
         'SELECT added_permissions, removed_permissions FROM org_role_overrides WHERE org_id = :orgId AND role_name = :role',
         { orgId, role }
@@ -186,6 +216,7 @@ router.post('/orgs/:orgId/sync',
   async (req, res, next) => {
     try {
       const { orgId } = req.params;
+      if (!assertOrgAccess(req, res, orgId)) return;
       await loadOrgOverridesFromDb(orgId);
       res.json({ success: true, message: `RBAC cache warmed for org ${orgId}` });
     } catch (err) { next(err); }
@@ -194,7 +225,8 @@ router.post('/orgs/:orgId/sync',
 
 router.get('/security-alerts', async (req, res, next) => {
   try {
-    const orgId              = req.headers['x-org-id'];
+    const orgId              = req.user.orgId;
+    if (!orgId) return R.forbidden(res, 'Organization context required');
     const onlyUnacknowledged = req.query.unacked === 'true';
     const { getAlerts }      = require('../../../../shared/dlp');
     const alerts             = await getAlerts(orgId, { onlyUnacknowledged });
@@ -204,8 +236,14 @@ router.get('/security-alerts', async (req, res, next) => {
 
 router.post('/security-alerts/:id/acknowledge', async (req, res, next) => {
   try {
+    const [alert] = await db.query(
+      'SELECT org_id FROM security_alerts WHERE id = :id',
+      { id: req.params.id }
+    );
+    if (!alert) return R.notFound(res, 'Alert not found');
+    if (String(alert.org_id) !== String(req.user.orgId)) return R.forbidden(res, 'Access denied');
     const { acknowledgeAlert } = require('../../../../shared/dlp');
-    await acknowledgeAlert(req.params.id, req.headers['x-user-id']);
+    await acknowledgeAlert(req.params.id, req.user.userId);
     res.json({ success: true });
   } catch (err) { next(err); }
 });

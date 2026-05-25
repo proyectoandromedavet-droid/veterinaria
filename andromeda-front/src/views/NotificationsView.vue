@@ -37,7 +37,7 @@
         </button>
       </div>
       <label class="toggle">
-        <input v-model="unreadOnly" type="checkbox" @change="loadInbox" />
+        <input id="notifications-unread-only" name="notifications-unread-only" v-model="unreadOnly" type="checkbox" @change="loadInbox" />
         <span>Solo no leidas</span>
       </label>
     </div>
@@ -59,7 +59,7 @@
           <p class="message">{{ item.message || 'Sin contenido' }}</p>
           <div class="notification-meta">
             <span>{{ item.notification_type || 'general' }}</span>
-            <a v-if="item.action_url" :href="item.action_url" target="_blank" rel="noreferrer">Abrir accion</a>
+            <a v-if="item.action_url && isSafeUrl(item.action_url)" :href="item.action_url" target="_blank" rel="noreferrer noopener">Abrir accion</a>
           </div>
           <div class="notification-actions">
             <BaseButton v-if="!item.read_at" size="sm" variant="ghost" @click="markRead(item.id)">Marcar leida</BaseButton>
@@ -179,6 +179,15 @@ function asArray(value) {
 function formatDate(value) {
   if (!value) return '-'
   return new Date(value).toLocaleString('es-AR')
+}
+
+function isSafeUrl(url) {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 async function loadInbox() {

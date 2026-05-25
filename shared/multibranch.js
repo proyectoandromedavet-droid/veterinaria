@@ -135,48 +135,46 @@ async function transferStock (opts) {
   await assertSameOrg(fromBranchId, toBranchId);
   if (fromBranchId === toBranchId) throw Object.assign(new Error('Misma sucursal'), { code: 'SAME_BRANCH' });
 
-  // Verificar stock disponible
-  const stock = await db.queryOne(
-    `SELECT stock_quantity FROM inventory_items WHERE id = :id AND branch_id = :bid`,
-    { id: itemId, bid: fromBranchId }
-  );
-  if (!stock) throw Object.assign(new Error('Ítem no encontrado en sucursal origen'), { code: 'ITEM_NOT_FOUND' });
-  if (stock.stock_quantity < quantity) {
-    throw Object.assign(
-      new Error(`Stock insuficiente: disponible ${stock.stock_quantity}, solicitado ${quantity}`),
-      { code: 'INSUFFICIENT_STOCK' }
+  let transferId;
+  await db.transaction(async (conn) => {
+    // Lock the source item to prevent concurrent double-spend
+    const [stockRows] = await conn.query(
+      `SELECT stock_quantity FROM inventory_items WHERE id = ? AND branch_id = ? FOR UPDATE`,
+      [itemId, fromBranchId]
     );
-  }
-
-  // Registrar transferencia
-  const [r] = await db.query(
-    `INSERT INTO stock_transfers
-       (item_id, from_branch_id, to_branch_id, quantity, batch_id, requested_by, reason, status)
-     VALUES (:itemId, :from, :to, :qty, :batch, :uid, :reason, 'completed')`,
-    {
-      itemId, from: fromBranchId, to: toBranchId,
-      qty: quantity, batch: batchId || null,
-      uid: requestedByUserId, reason: reason || null,
+    const stock = stockRows?.[0];
+    if (!stock) throw Object.assign(new Error('Ítem no encontrado en sucursal origen'), { code: 'ITEM_NOT_FOUND' });
+    if (stock.stock_quantity < quantity) {
+      throw Object.assign(
+        new Error(`Stock insuficiente: disponible ${stock.stock_quantity}, solicitado ${quantity}`),
+        { code: 'INSUFFICIENT_STOCK' }
+      );
     }
-  );
 
-  // Descontar del origen
-  await db.query(
-    `UPDATE inventory_items SET stock_quantity = stock_quantity - :qty, updated_at = NOW()
-     WHERE id = :id AND branch_id = :from`,
-    { qty: quantity, id: itemId, from: fromBranchId }
-  );
+    const [r] = await conn.query(
+      `INSERT INTO stock_transfers
+         (item_id, from_branch_id, to_branch_id, quantity, batch_id, requested_by, reason, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')`,
+      [itemId, fromBranchId, toBranchId, quantity, batchId || null, requestedByUserId, reason || null]
+    );
+    transferId = r.insertId;
 
-  // Agregar al destino (upsert)
-  await db.query(
-    `INSERT INTO inventory_items (branch_id, name, category_id, stock_quantity, unit_cost, sale_price, sku)
-     SELECT :toBid, name, category_id, :qty, unit_cost, sale_price, CONCAT(sku, '-TRF', :trid)
-     FROM inventory_items WHERE id = :id
-     ON DUPLICATE KEY UPDATE stock_quantity = stock_quantity + :qty`,
-    { toBid: toBranchId, qty: quantity, trid: r.insertId, id: itemId }
-  );
+    await conn.query(
+      `UPDATE inventory_items SET stock_quantity = stock_quantity - ?, updated_at = NOW()
+       WHERE id = ? AND branch_id = ?`,
+      [quantity, itemId, fromBranchId]
+    );
 
-  return { transferId: r.insertId };
+    await conn.query(
+      `INSERT INTO inventory_items (branch_id, name, category_id, stock_quantity, unit_cost, sale_price, sku)
+       SELECT ?, name, category_id, ?, unit_cost, sale_price, CONCAT(sku, '-TRF', ?)
+       FROM inventory_items WHERE id = ?
+       ON DUPLICATE KEY UPDATE stock_quantity = stock_quantity + ?`,
+      [toBranchId, quantity, transferId, itemId, quantity]
+    );
+  });
+
+  return { transferId };
 }
 
 // ─── KPIs consolidados ────────────────────────────────────────────────────────
@@ -216,7 +214,9 @@ async function consolidatedFinancials (orgId, from, to) {
        LEFT JOIN clients cl ON cl.branch_id = b.id
        LEFT JOIN patient_owners po ON po.client_id = cl.id AND po.ownership_type = 'primary'
        LEFT JOIN patients p ON po.patient_id = p.id AND p.is_active = TRUE
-       LEFT JOIN appointments a ON a.branch_id = b.id AND DATE(a.scheduled_date) BETWEEN :from AND :to
+       LEFT JOIN appointments a ON a.branch_id = b.id
+        AND a.scheduled_date >= :from
+        AND a.scheduled_date < DATE_ADD(:to, INTERVAL 1 DAY)
        WHERE b.organization_id = :orgId AND b.is_active = TRUE
        GROUP BY b.id ORDER BY b.name`,
       { orgId, from, to }
@@ -310,10 +310,10 @@ async function crossBranchPatientHistory (patientId, orgId) {
     db.query(
       `SELECT pt.*, bf.name AS from_branch, bt.name AS to_branch
        FROM patient_transfers pt
-       JOIN branches bf ON pt.from_branch_id = bf.id
+       JOIN branches bf ON pt.from_branch_id = bf.id AND bf.organization_id = :orgId
        JOIN branches bt ON pt.to_branch_id   = bt.id
        WHERE pt.patient_id = :pid ORDER BY pt.created_at DESC`,
-      { pid: patientId }
+      { pid: patientId, orgId }
     ),
   ]);
 

@@ -17,6 +17,8 @@ const DANGEROUS_BROWSER_HEADERS = [
   'x-org-id',
   'x-tenant-id',
   'x-branch-id',
+  'x-api-key-scopes',
+  'x-auth-type',
   'x-internal-sig',
   'x-forwarded-for',
   'x-forwarded-host',
@@ -26,6 +28,21 @@ const DANGEROUS_BROWSER_HEADERS = [
 
 function resolveOrgContext(req) {
   return req.user?.orgId || req.tenantOrgId || req.publicOrgIdHint || '';
+}
+
+// OT-073: deduplicate exportClientSpan calls (was duplicated in on.error and on.proxyRes)
+function emitProxySpan(req, name, { error, statusCode } = {}) {
+  return exportClientSpan({
+    serviceName:  'gateway',
+    operation:    `${req?.method || 'GET'} ${req?.originalUrl || '/'}`,
+    targetService: name || 'unknown',
+    traceId:      req?.traceId,
+    parentSpanId: req?.spanId,
+    startedAt:    req?._proxyStartedAtHr || process.hrtime.bigint(),
+    ...(error      ? { error }      : {}),
+    ...(statusCode ? { statusCode } : {}),
+    tags: { path: req?.originalUrl || '/' },
+  }).catch(() => {});
 }
 
 function makeProxy(target, pathRewrite = {}, name) {
@@ -38,20 +55,13 @@ function makeProxy(target, pathRewrite = {}, name) {
       return resolveRuntimeServiceTarget(name);
     },
     changeOrigin: true,
+    timeout: parseInt(process.env.GATEWAY_PROXY_TIMEOUT_MS || '30000', 10),
+    proxyTimeout: parseInt(process.env.GATEWAY_PROXY_TIMEOUT_MS || '30000', 10),
     pathRewrite,
     on: {
       error(_err, req, res) {
         breaker?.onFailure();
-        exportClientSpan({
-          serviceName: 'gateway',
-          operation: `${req?.method || 'GET'} ${req?.originalUrl || '/'}`,
-          targetService: name || 'unknown',
-          traceId: req?.traceId,
-          parentSpanId: req?.spanId,
-          startedAt: req?._proxyStartedAtHr || process.hrtime.bigint(),
-          error: _err,
-          tags: { path: req?.originalUrl || '/' },
-        }).catch(() => {});
+        emitProxySpan(req, name, { error: _err });
         logger.error('Gateway proxy upstream error', {
           service: name || 'unknown',
           target,
@@ -73,16 +83,7 @@ function makeProxy(target, pathRewrite = {}, name) {
       proxyRes(proxyRes, req) {
         if (proxyRes.statusCode >= 500) breaker?.onFailure();
         else breaker?.onSuccess();
-        exportClientSpan({
-          serviceName: 'gateway',
-          operation: `${req.method} ${req.originalUrl}`,
-          targetService: name || 'unknown',
-          traceId: req.traceId,
-          parentSpanId: req.spanId,
-          startedAt: req._proxyStartedAtHr || process.hrtime.bigint(),
-          statusCode: proxyRes.statusCode,
-          tags: { path: req.originalUrl },
-        }).catch(() => {});
+        emitProxySpan(req, name, { statusCode: proxyRes.statusCode });
         logger.info('Gateway proxy response', {
           service: name || 'unknown',
           method: req.method,
@@ -106,25 +107,37 @@ function makeProxy(target, pathRewrite = {}, name) {
           proxyReq.setHeader('X-User-Roles', (req.user.roles || []).join(','));
           proxyReq.setHeader('X-User-Email', req.user.email || '');
           proxyReq.setHeader('X-JTI', req.user.jti || '');
+          if (req.isApiKey) {
+            proxyReq.setHeader('X-Auth-Type', 'api_key');
+            proxyReq.setHeader('X-Api-Key-Scopes', (req.user.scopes || []).join(','));
+          }
         } else if (req.tenantOrgId) {
           proxyReq.setHeader('X-Org-Id', req.tenantOrgId);
         } else if (req.publicOrgIdHint) {
           proxyReq.setHeader('X-Org-Id', req.publicOrgIdHint);
         }
 
-        proxyReq.setHeader('X-Request-Id', req.headers['x-request-id'] || req.requestId || Date.now().toString());
+        proxyReq.setHeader('X-Request-Id', req.requestId || Date.now().toString());
         const traceHeaders = buildOutgoingTraceHeaders(req);
         proxyReq.setHeader('X-Trace-Id', traceHeaders['X-Trace-Id']);
         proxyReq.setHeader('X-Parent-Span-Id', traceHeaders['X-Parent-Span-Id']);
         proxyReq.setHeader('X-Span-Id', traceHeaders['X-Span-Id']);
         proxyReq.setHeader('traceparent', traceHeaders.traceparent);
         proxyReq.setHeader('X-Forwarded-For', req.ip);
+        proxyReq.setHeader('X-Forwarded-Host', req.headers.host || req.hostname || '');
+        proxyReq.setHeader('X-Forwarded-Proto', req.secure ? 'https' : 'http');
+        if (req.socket?.localPort) {
+          proxyReq.setHeader('X-Forwarded-Port', String(req.socket.localPort));
+        }
 
         const sigPath = (proxyReq.path || req.path).split('?')[0];
         const sig = signRequest(req.method, sigPath, resolveOrgContext(req));
         if (sig) proxyReq.setHeader(INTERNAL_SIG_HEADER, sig);
 
-        if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+        if (req.rawBody && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+          proxyReq.setHeader('Content-Length', req.rawBody.length);
+          proxyReq.write(req.rawBody);
+        } else if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
           const bodyData = JSON.stringify(req.body);
           proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
           proxyReq.write(bodyData);

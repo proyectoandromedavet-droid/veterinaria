@@ -89,6 +89,25 @@ const ALERT_THRESHOLD = parseFloat(process.env.USAGE_ALERT_THRESHOLD || '0.8');
 
 const DEFAULT_PLAN = process.env.DEFAULT_PLAN_TIER || 'free';
 
+// OT-097: Absolute monthly cap applied even to Infinity tiers (pro/enterprise).
+// Prevents runaway spend from misconfiguration or compromised org tokens.
+// Override via env vars (set to a large number to effectively disable).
+const MAX_ABSOLUTE_LIMITS = {
+  ai_diagnosis:       parseInt(process.env.MAX_AI_DIAGNOSIS_MONTHLY        || '2000', 10),
+  ai_image_analysis:  parseInt(process.env.MAX_AI_IMAGE_ANALYSIS_MONTHLY   || '1000', 10),
+  ai_chatbot:         parseInt(process.env.MAX_AI_CHATBOT_MONTHLY          || '5000', 10),
+  ai_risk_assessment: parseInt(process.env.MAX_AI_RISK_ASSESSMENT_MONTHLY  || '1500', 10),
+};
+
+// OT-093: Per-user daily caps — prevents a single user from consuming the entire org quota.
+// Keys: usage:user:{userId}:{feature}:{YYYY-MM-DD} — expires at end of day.
+const USER_DAILY_LIMITS = {
+  ai_diagnosis:       parseInt(process.env.USER_DAILY_AI_DIAGNOSIS        || '20',  10),
+  ai_image_analysis:  parseInt(process.env.USER_DAILY_AI_IMAGE_ANALYSIS   || '10',  10),
+  ai_chatbot:         parseInt(process.env.USER_DAILY_AI_CHATBOT          || '100', 10),
+  ai_risk_assessment: parseInt(process.env.USER_DAILY_AI_RISK_ASSESSMENT  || '10',  10),
+};
+
 function getUsageLimitMode(feature = '') {
   const expensiveFeatures = new Set([
     'ai_diagnosis',
@@ -161,8 +180,13 @@ async function setPlanTier(orgId, tier) {
 async function getLimit(orgId, feature, { mode = getUsageLimitMode(feature) } = {}) {
   const tier   = await getPlanTier(orgId, { mode });
   const limits = PLAN_LIMITS[tier] || PLAN_LIMITS[DEFAULT_PLAN];
-  const limit  = limits[feature];
+  let limit    = limits[feature];
   if (limit === undefined) return Infinity; // feature not in limits → always allowed
+
+  // OT-097: Apply absolute max cap even for Infinity tiers (pro/enterprise).
+  if (limit === Infinity && MAX_ABSOLUTE_LIMITS[feature] !== undefined) {
+    limit = MAX_ABSOLUTE_LIMITS[feature];
+  }
   return limit;
 }
 
@@ -290,7 +314,35 @@ function getAlertLogger() {
 }
 
 /**
+ * OT-096: Fire-and-forget webhook notification when usage threshold is crossed.
+ * Sends to USAGE_ALERT_WEBHOOK_URL if configured (no-op otherwise).
+ */
+async function _sendUsageAlertWebhook({ orgId, feature, current, limit, pct, level }) {
+  const webhookUrl = process.env.USAGE_ALERT_WEBHOOK_URL;
+  if (!webhookUrl) return;
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId,
+        feature,
+        current,
+        limit:     limit === Infinity ? 'unlimited' : limit,
+        pct:       Math.round(pct * 100),
+        level,
+        timestamp: new Date().toISOString(),
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (err) {
+    getAlertLogger().warn('Usage alert webhook failed', { orgId, feature, error: err.message });
+  }
+}
+
+/**
  * Emit a structured warning when usage crosses ALERT_THRESHOLD (default 80%).
+ * OT-096: Also fires a webhook to USAGE_ALERT_WEBHOOK_URL if configured.
  * Called internally; also exported for manual use.
  * @param {string|number} orgId
  * @param {string}        feature
@@ -311,6 +363,9 @@ function emitUsageAlert(orgId, feature, current, limit) {
     threshold: Math.round(ALERT_THRESHOLD * 100),
     level,
   });
+
+  // OT-096: fire webhook asynchronously — never blocks the request
+  _sendUsageAlertWebhook({ orgId, feature, current, limit, pct, level }).catch(() => {});
 }
 
 /**
@@ -326,6 +381,27 @@ function emitUsageAlert(orgId, feature, current, limit) {
  * @param {string}  feature         — feature name matching PLAN_LIMITS keys
  * @param {boolean} [autoRecord=true] — increment counter on pass-through
  */
+async function _atomicCheckAndIncrement(orgId, feature, limit, mode) {
+  if (limit === Infinity) return { allowed: true, current: 0 };
+  try {
+    const redis = await getRedis();
+    const key   = `usage:${orgId}:${feature}:${currentMonth()}`;
+    const pipe  = redis.multi();
+    pipe.incrBy(key, 1);
+    pipe.expire(key, secsUntilMonthEnd());
+    const [newVal] = await pipe.exec();
+    if (newVal > limit) {
+      await redis.incrBy(key, -1);
+      return { allowed: false, current: newVal - 1 };
+    }
+    return { allowed: true, current: newVal };
+  } catch (err) {
+    logDependencyIssue(log, 'usage_limits', mode, 'Atomic usage check failed', err, { orgId, feature });
+    if (mode === 'strict') return { allowed: false, current: 0 };
+    return { allowed: true, current: 0 };
+  }
+}
+
 function requireUsageLimit(feature, autoRecord = true) {
   return async (req, res, next) => {
     const mode = getUsageLimitMode(feature);
@@ -333,14 +409,15 @@ function requireUsageLimit(feature, autoRecord = true) {
       const orgId = req.user?.orgId;
       if (!orgId) return next(); // unauthenticated requests are not quota-tracked
 
-      const { allowed, current, limit } = await checkLimit(orgId, feature, { mode });
+      const limit = await getLimit(orgId, feature, { mode });
+      const { allowed, current } = await _atomicCheckAndIncrement(orgId, feature, limit, mode);
 
       const resetEpoch = Math.floor(Date.now() / 1000) + secsUntilMonthEnd();
       const cap        = limit === Infinity ? 'unlimited' : limit;
 
       res.setHeader('X-RateLimit-Feature',   feature);
       res.setHeader('X-RateLimit-Limit',     cap);
-      res.setHeader('X-RateLimit-Remaining', limit === Infinity ? 'unlimited' : Math.max(0, limit - current - 1));
+      res.setHeader('X-RateLimit-Remaining', limit === Infinity ? 'unlimited' : Math.max(0, limit - current));
       res.setHeader('X-RateLimit-Reset',     resetEpoch);
 
       if (!allowed) {
@@ -361,12 +438,10 @@ function requireUsageLimit(feature, autoRecord = true) {
       emitUsageAlert(orgId, feature, current, limit);
 
       if (autoRecord) {
-        // Record usage after response is sent so it doesn't delay the request
+        // Roll back the increment if the handler returns an error
         res.on('finish', () => {
-          if (res.statusCode < 400) {
-            recordUsage(orgId, feature, 1, { mode }).catch((err) => {
-              logDependencyIssue(log, 'usage_limits', mode, 'Post-response usage record failed', err, { orgId, feature });
-            });
+          if (res.statusCode >= 400 && limit !== Infinity) {
+            recordUsage(orgId, feature, -1, { mode }).catch(() => {});
           }
         });
       }
@@ -391,8 +466,78 @@ function requireUsageLimit(feature, autoRecord = true) {
   };
 }
 
+/** Returns YYYY-MM-DD string for the current UTC day. */
+function currentDay() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Seconds until end of current UTC day. */
+function secsUntilDayEnd() {
+  const now  = new Date();
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  return Math.max(1, Math.floor((next - now) / 1000));
+}
+
+/**
+ * OT-093: Express middleware — per-user daily rate limit for AI features.
+ * Prevents a single user from consuming the entire org's monthly quota in seconds.
+ *
+ * Tracked in Redis: usage:user:{userId}:{feature}:{YYYY-MM-DD}
+ * Cap defined in USER_DAILY_LIMITS (configurable via env).
+ *
+ * On Redis unavailable → fail-open (allow through).
+ *
+ * @param {string} feature — feature name matching USER_DAILY_LIMITS keys
+ */
+function requireUserUsageLimit(feature) {
+  return async (req, res, next) => {
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) return next(); // unauthenticated — not tracked
+
+    const dailyCap = USER_DAILY_LIMITS[feature];
+    if (dailyCap === undefined) return next(); // feature has no per-user cap defined
+
+    try {
+      const redis = await getRedis();
+      const key   = `usage:user:${userId}:${feature}:${currentDay()}`;
+      const raw   = await redis.get(key);
+      const count = raw ? parseInt(raw, 10) : 0;
+
+      if (count >= dailyCap) {
+        return res.status(429).json({
+          success: false,
+          error: {
+            message: `Daily user quota for '${feature}' exceeded (${count}/${dailyCap}). Try again tomorrow.`,
+            code:    'USER_QUOTA_EXCEEDED',
+            feature,
+            current: count,
+            limit:   dailyCap,
+          },
+        });
+      }
+
+      // Increment on successful response
+      res.on('finish', () => {
+        if (res.statusCode < 400) {
+          const pipe = redis.multi();
+          pipe.incrBy(key, 1);
+          pipe.expire(key, secsUntilDayEnd());
+          pipe.exec().catch(() => {});
+        }
+      });
+
+      next();
+    } catch {
+      // Redis unavailable — fail-open (better to allow than block legitimate requests)
+      next();
+    }
+  };
+}
+
 module.exports = {
   PLAN_LIMITS,
+  MAX_ABSOLUTE_LIMITS,
+  USER_DAILY_LIMITS,
   ALERT_THRESHOLD,
   getPlanTier,
   setPlanTier,
@@ -401,6 +546,7 @@ module.exports = {
   recordUsage,
   checkLimit,
   requireUsageLimit,
+  requireUserUsageLimit,
   recordStorage,
   getStorageUsage,
   checkStorageLimit,

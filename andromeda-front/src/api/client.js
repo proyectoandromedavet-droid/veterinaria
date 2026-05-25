@@ -6,6 +6,7 @@ import { logError } from '../utils/errors'
 // En dev local con Vite, el proxy de vite.config.js reescribe /api/v1 → gateway:4050.
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 const DEFAULT_ORIGIN = 'http://localhost:4050'
+const API_TIMEOUT_MS = 180000
 
 function getGatewayOrigin() {
   const runtimeOrigin = typeof window !== 'undefined' && window.location?.origin
@@ -28,7 +29,10 @@ let csrfTokenExpiresAt = 0
 const CSRF_TTL_MS = 55 * 60 * 1000 // 55 min (gateway TTL es 1h)
 
 async function fetchCsrfToken() {
-  const res = await axios.get(`${getGatewayOrigin()}/csrf-token`, { withCredentials: true })
+  const res = await axios.get(`${getGatewayOrigin()}/csrf-token`, {
+    withCredentials: true,
+    timeout: API_TIMEOUT_MS,
+  })
   const token = res.data?.data?.csrfToken
   if (token) {
     csrfTokenCache = token
@@ -42,9 +46,10 @@ async function ensureCsrfToken() {
   if (csrfTokenCache && Date.now() < csrfTokenExpiresAt) return csrfTokenCache
 
   if (!csrfTokenPromise) {
-    csrfTokenPromise = fetchCsrfToken().finally(() => {
-      csrfTokenPromise = null
-    })
+    csrfTokenPromise = fetchCsrfToken().then(
+      (token) => { csrfTokenPromise = null; return token },
+      (err)   => { csrfTokenPromise = null; throw err }
+    )
   }
 
   return csrfTokenPromise
@@ -53,7 +58,7 @@ async function ensureCsrfToken() {
 export const http = axios.create({
   baseURL: API_URL,
   withCredentials: true,   // envía cookies (refresh token httpOnly)
-  timeout: 15000,
+  timeout: API_TIMEOUT_MS,
 })
 
 // Inyecta el access token en cada request
@@ -108,16 +113,19 @@ http.interceptors.response.use(
       try {
         const auth = useAuthStore()
         await auth.refresh()
+        const freshToken = auth.accessToken
         queue.forEach(({ resolve, config }) => {
-          config.headers.Authorization = `Bearer ${auth.accessToken}`
+          config.headers = config.headers || {}
+          config.headers.Authorization = `Bearer ${freshToken}`
           resolve(http(config))
         })
         queue = []
-        original.headers.Authorization = `Bearer ${auth.accessToken}`
+        original.headers = original.headers || {}
+        original.headers.Authorization = `Bearer ${freshToken}`
         return http(original)
       } catch (refreshError) {
         logError('api.refresh', refreshError, { url: original?.url, method: original?.method })
-        queue.forEach(({ reject }) => reject(err))
+        queue.forEach(({ reject }) => reject(refreshError))
         queue = []
         const auth = useAuthStore()
         auth.logout()

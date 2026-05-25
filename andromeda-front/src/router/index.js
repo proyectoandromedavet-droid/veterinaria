@@ -31,13 +31,13 @@ const routes = [
       { path: 'reportes',  name: 'reportes',     component: () => import('../views/ReportesView.vue') },
       { path: 'notificaciones', name: 'notificaciones', component: () => import('../views/NotificationsView.vue') },
       { path: 'documentos', name: 'documentos', component: () => import('../views/DocumentosView.vue') },
-      { path: 'ai', name: 'ai', component: () => import('../views/AiView.vue') },
+      { path: 'ai', name: 'ai', component: () => import('../views/AiView.vue'), meta: { requiresPerm: 'ai:use' } },
       { path: 'laboratorio',      name: 'laboratorio',      component: () => import('../views/LaboratorioView.vue') },
       { path: 'imagenes',         name: 'imagenes',         component: () => import('../views/ImagenesView.vue') },
       { path: 'cirugias',         name: 'cirugias',         component: () => import('../views/CirugiasView.vue') },
       { path: 'hospitalizaciones', name: 'hospitalizaciones', component: () => import('../views/HospitalizacionesView.vue') },
       { path: 'patologia',        name: 'patologia',        component: () => import('../views/PatologiaView.vue') },
-      { path: 'admin',     name: 'admin',        component: () => import('../views/AdminView.vue') },
+      { path: 'admin',     name: 'admin',        component: () => import('../views/AdminView.vue'), meta: { requiresRole: ['org_admin', 'superadmin'] } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },
@@ -48,10 +48,25 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+  await auth.bootstrap()
+
   if (to.meta.requiresAuth && !auth.isAuthenticated) return '/login'
   if (to.path === '/login' && auth.isAuthenticated) return '/'
+
+  // Role guard
+  if (to.meta.requiresRole) {
+    const allowed = Array.isArray(to.meta.requiresRole) ? to.meta.requiresRole : [to.meta.requiresRole]
+    if (!auth.hasRole(...allowed)) return '/'
+  }
+
+  // Permission guard
+  if (to.meta.requiresPerm) {
+    if (!auth.can(to.meta.requiresPerm)) return '/'
+  }
+
+  return true
 })
 
 export default router

@@ -27,7 +27,7 @@
           <BaseButton variant="ghost" @click="loadPortalHealth" :disabled="portalHealthLoading">
             {{ portalHealthLoading ? 'Verificando…' : 'Actualizar' }}
           </BaseButton>
-          <a class="portal-link" href="/portal" target="_blank" rel="noopener noreferrer">
+          <a class="portal-link" :href="portalHref" target="_blank" rel="noopener noreferrer">
             Abrir portal
           </a>
         </div>
@@ -118,6 +118,7 @@
                     :name="`admin-role-${user.id}`"
                     class="role-select"
                     :value="firstRole(user.roles)"
+                    :aria-label="`${t('admin.role')}: ${user.email}`"
                     :disabled="changingRoleId === user.id"
                     @change="handleRoleChange(user, $event.target.value)"
                   >
@@ -235,13 +236,16 @@
       </header>
 
       <div class="rbac-controls">
+        <label for="admin-rbac-role" class="sr-only">{{ t('admin.role') }}</label>
         <select id="admin-rbac-role" name="admin-rbac-role" v-model="overrideForm.role" class="role-select">
           <option value="">{{ t('admin.selectRole') }}</option>
           <option v-for="role in roleCatalog" :key="role.name" :value="role.name">
             {{ formatRole(role.name) }}
           </option>
         </select>
+        <label for="admin-rbac-grant" class="sr-only">{{ t('admin.grant') }}</label>
         <input id="admin-rbac-grant" name="admin-rbac-grant" v-model.trim="overrideForm.grant" type="text" :placeholder="t('admin.grantPlaceholder')" />
+        <label for="admin-rbac-revoke" class="sr-only">{{ t('admin.revoke') }}</label>
         <input id="admin-rbac-revoke" name="admin-rbac-revoke" v-model.trim="overrideForm.revoke" type="text" :placeholder="t('admin.revokePlaceholder')" />
         <BaseButton :disabled="savingOverride" @click="saveOverride">{{ t('admin.saveOverride') }}</BaseButton>
       </div>
@@ -324,8 +328,8 @@
       </table>
     </section>
 
-    <!-- ── Explorador de base de datos ───────────────────────────────────── -->
-    <section class="panel panel--stacked">
+    <!-- ── Explorador de base de datos (solo superadmin) ───────────────── -->
+    <section v-if="isSuperAdmin" class="panel panel--stacked">
       <header class="section-head">
         <div>
           <h3>Explorador de datos</h3>
@@ -500,7 +504,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BaseButton from '../components/base/BaseButton.vue'
 import BaseModal from '../components/base/BaseModal.vue'
@@ -533,6 +537,7 @@ import { logError } from '../utils/errors'
 
 const auth   = useAuthStore()
 const router = useRouter()
+const isSuperAdmin = computed(() => auth.hasRole('superadmin'))
 
 const users = ref([])
 const meta = ref({ page: 1, totalPages: 1 })
@@ -601,6 +606,7 @@ const portalHealth = reactive({
   checkedAt: '',
 })
 const portalHealthChecks = ref([])
+const portalHref = computed(() => auth.orgId ? `/portal?orgId=${encodeURIComponent(auth.orgId)}` : '/portal')
 
 function openModal() {
   resetForm()
@@ -644,7 +650,7 @@ async function handleCreate() {
       lastName: form.lastName,
       email: form.email,
       role: form.role,
-      branchId: auth.user?.branchId || auth.user?.branch_id || 1,
+      branchId: auth.user?.branchId || auth.user?.branch_id || null,
     }
     if (form.phone) payload.phone = form.phone
     if (form.licenseNumber) payload.licenseNumber = form.licenseNumber
@@ -928,7 +934,7 @@ onMounted(async () => {
   await loadOverrides()
   await loadPortalHealth()
   await loadLogs()
-  await loadDbTableList()
+  if (isSuperAdmin.value) await loadDbTableList()
 })
 </script>
 

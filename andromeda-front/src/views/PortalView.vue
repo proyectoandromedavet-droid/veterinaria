@@ -92,13 +92,13 @@
         </div>
 
         <form v-if="authMode === 'login'" class="form-grid" @submit.prevent="handleLogin">
-          <label>
+          <label for="portal-login-email">
             <span>Email</span>
-            <input v-model.trim="loginForm.email" type="email" autocomplete="email" required />
+            <input id="portal-login-email" name="portal-login-email" v-model.trim="loginForm.email" type="email" autocomplete="email" required />
           </label>
-          <label>
+          <label for="portal-login-password">
             <span>Contrasena</span>
-            <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
+            <input id="portal-login-password" name="portal-login-password" v-model="loginForm.password" type="password" autocomplete="current-password" required />
           </label>
           <button class="primary-button" type="submit" :disabled="authBusy">
             {{ authBusy ? 'Ingresando...' : 'Entrar al portal' }}
@@ -107,26 +107,26 @@
 
         <form v-else-if="authMode === 'register'" class="form-grid" @submit.prevent="handleRegister">
           <div class="two-cols">
-            <label>
+            <label for="portal-register-first-name">
               <span>Nombre</span>
-              <input v-model.trim="registerForm.firstName" type="text" autocomplete="given-name" required />
+              <input id="portal-register-first-name" name="portal-register-first-name" v-model.trim="registerForm.firstName" type="text" autocomplete="given-name" required />
             </label>
-            <label>
+            <label for="portal-register-last-name">
               <span>Apellido</span>
-              <input v-model.trim="registerForm.lastName" type="text" autocomplete="family-name" required />
+              <input id="portal-register-last-name" name="portal-register-last-name" v-model.trim="registerForm.lastName" type="text" autocomplete="family-name" required />
             </label>
           </div>
-          <label>
+          <label for="portal-register-email">
             <span>Email</span>
-            <input v-model.trim="registerForm.email" type="email" autocomplete="email" required />
+            <input id="portal-register-email" name="portal-register-email" v-model.trim="registerForm.email" type="email" autocomplete="email" required />
           </label>
-          <label>
+          <label for="portal-register-phone">
             <span>Telefono</span>
-            <input v-model.trim="registerForm.phone" type="tel" autocomplete="tel" />
+            <input id="portal-register-phone" name="portal-register-phone" v-model.trim="registerForm.phone" type="tel" autocomplete="tel" />
           </label>
-          <label>
+          <label for="portal-register-password">
             <span>Contrasena</span>
-            <input v-model="registerForm.password" type="password" autocomplete="new-password" required />
+            <input id="portal-register-password" name="portal-register-password" v-model="registerForm.password" type="password" autocomplete="new-password" required />
           </label>
           <button class="primary-button" type="submit" :disabled="authBusy">
             {{ authBusy ? 'Creando cuenta...' : 'Crear cuenta' }}
@@ -134,9 +134,9 @@
         </form>
 
         <form v-else class="form-grid" @submit.prevent="handleForgotPassword">
-          <label>
+          <label for="portal-forgot-email">
             <span>Email</span>
-            <input v-model.trim="forgotForm.email" type="email" autocomplete="email" required />
+            <input id="portal-forgot-email" name="portal-forgot-email" v-model.trim="forgotForm.email" type="email" autocomplete="email" required />
           </label>
           <button class="primary-button" type="submit" :disabled="authBusy">
             {{ authBusy ? 'Enviando...' : 'Solicitar recuperacion' }}
@@ -292,30 +292,30 @@
           </div>
 
           <form class="form-grid" @submit.prevent="createAppointment">
-            <label>
+            <label for="portal-appointment-patient">
               <span>Mascota</span>
-              <select v-model="appointmentForm.patientId" required>
+              <select id="portal-appointment-patient" name="portal-appointment-patient" v-model="appointmentForm.patientId" required>
                 <option value="" disabled>Selecciona una mascota</option>
                 <option v-for="pet in pets" :key="pet.id" :value="pet.id">{{ pet.name }}</option>
               </select>
             </label>
             <div class="two-cols">
-              <label>
+              <label for="portal-appointment-date">
                 <span>Fecha y hora</span>
-                <input v-model="appointmentForm.appointmentDate" type="datetime-local" required />
+                <input id="portal-appointment-date" name="portal-appointment-date" v-model="appointmentForm.appointmentDate" type="datetime-local" required />
               </label>
-              <label>
+              <label for="portal-appointment-branch">
                 <span>Sucursal</span>
-                <input v-model.trim="appointmentForm.branchId" type="text" placeholder="Opcional" />
+                <input id="portal-appointment-branch" name="portal-appointment-branch" v-model.trim="appointmentForm.branchId" type="text" placeholder="Opcional" />
               </label>
             </div>
-            <label>
+            <label for="portal-appointment-reason">
               <span>Motivo</span>
-              <input v-model.trim="appointmentForm.reason" type="text" required />
+              <input id="portal-appointment-reason" name="portal-appointment-reason" v-model.trim="appointmentForm.reason" type="text" required />
             </label>
-            <label>
+            <label for="portal-appointment-notes">
               <span>Notas</span>
-              <textarea v-model.trim="appointmentForm.notes" rows="3" placeholder="Opcional"></textarea>
+              <textarea id="portal-appointment-notes" name="portal-appointment-notes" v-model.trim="appointmentForm.notes" rows="3" placeholder="Opcional"></textarea>
             </label>
             <button class="primary-button" type="submit" :disabled="portalBusy === 'appointment'">
               {{ portalBusy === 'appointment' ? 'Enviando...' : 'Solicitar turno' }}
@@ -364,11 +364,11 @@
                   Pagar
                 </button>
                 <a
-                  v-if="invoicePaymentLinks[invoice.id]"
+                  v-if="invoicePaymentLinks[invoice.id] && isSafeUrl(invoicePaymentLinks[invoice.id])"
                   class="ghost-button"
                   :href="invoicePaymentLinks[invoice.id]"
                   target="_blank"
-                  rel="noopener"
+                  rel="noopener noreferrer"
                 >
                   Abrir pago
                 </a>
@@ -419,7 +419,7 @@
                 <p>{{ formatDateTime(session.session_date) }} - {{ session.vet_name || 'Profesional' }}</p>
                 <small>{{ session.status }} - {{ session.session_type || 'telemedicina' }}</small>
               </div>
-              <a v-if="session.meeting_url" class="ghost-button" :href="session.meeting_url" target="_blank" rel="noopener">
+              <a v-if="session.meeting_url && isSafeUrl(session.meeting_url)" class="ghost-button" :href="session.meeting_url" target="_blank" rel="noopener noreferrer">
                 Abrir sala
               </a>
             </article>
@@ -435,28 +435,28 @@
 
           <form class="form-grid" @submit.prevent="saveProfile">
             <div class="two-cols">
-              <label>
+              <label for="portal-profile-first-name">
                 <span>Nombre</span>
-                <input v-model.trim="profileForm.firstName" type="text" required />
+                <input id="portal-profile-first-name" name="portal-profile-first-name" v-model.trim="profileForm.firstName" type="text" required />
               </label>
-              <label>
+              <label for="portal-profile-last-name">
                 <span>Apellido</span>
-                <input v-model.trim="profileForm.lastName" type="text" required />
+                <input id="portal-profile-last-name" name="portal-profile-last-name" v-model.trim="profileForm.lastName" type="text" required />
               </label>
             </div>
             <div class="two-cols">
-              <label>
+              <label for="portal-profile-phone">
                 <span>Telefono</span>
-                <input v-model.trim="profileForm.phone" type="tel" />
+                <input id="portal-profile-phone" name="portal-profile-phone" v-model.trim="profileForm.phone" type="tel" />
               </label>
-              <label>
+              <label for="portal-profile-city">
                 <span>Ciudad</span>
-                <input v-model.trim="profileForm.city" type="text" />
+                <input id="portal-profile-city" name="portal-profile-city" v-model.trim="profileForm.city" type="text" />
               </label>
             </div>
-            <label>
+            <label for="portal-profile-address">
               <span>Direccion</span>
-              <input v-model.trim="profileForm.address" type="text" />
+              <input id="portal-profile-address" name="portal-profile-address" v-model.trim="profileForm.address" type="text" />
             </label>
             <button class="primary-button" type="submit" :disabled="portalBusy === 'profile'">
               {{ portalBusy === 'profile' ? 'Guardando...' : 'Guardar perfil' }}
@@ -465,13 +465,13 @@
 
           <form class="form-grid form-grid--spaced" @submit.prevent="changePassword">
             <h4>Cambiar contrasena</h4>
-            <label>
+            <label for="portal-password-current">
               <span>Contrasena actual</span>
-              <input v-model="passwordForm.currentPassword" type="password" required />
+              <input id="portal-password-current" name="portal-password-current" v-model="passwordForm.currentPassword" type="password" required />
             </label>
-            <label>
+            <label for="portal-password-new">
               <span>Nueva contrasena</span>
-              <input v-model="passwordForm.newPassword" type="password" required />
+              <input id="portal-password-new" name="portal-password-new" v-model="passwordForm.newPassword" type="password" required />
             </label>
             <button class="primary-button primary-button--soft" type="submit" :disabled="portalBusy === 'password'">
               {{ portalBusy === 'password' ? 'Actualizando...' : 'Actualizar contrasena' }}
@@ -488,22 +488,22 @@
 
         <form class="form-grid" @submit.prevent="registerFcm">
           <div class="two-cols">
-            <label>
+            <label for="portal-fcm-token">
               <span>Token</span>
-              <input v-model.trim="fcmForm.token" type="text" required />
+              <input id="portal-fcm-token" name="portal-fcm-token" v-model.trim="fcmForm.token" type="text" required />
             </label>
-            <label>
+            <label for="portal-fcm-platform">
               <span>Plataforma</span>
-              <select v-model="fcmForm.platform">
+              <select id="portal-fcm-platform" name="portal-fcm-platform" v-model="fcmForm.platform">
                 <option value="web">Web</option>
                 <option value="android">Android</option>
                 <option value="ios">iOS</option>
               </select>
             </label>
           </div>
-          <label>
+          <label for="portal-fcm-device-name">
             <span>Nombre del dispositivo</span>
-            <input v-model.trim="fcmForm.deviceName" type="text" placeholder="Ej: Chrome en notebook" />
+            <input id="portal-fcm-device-name" name="portal-fcm-device-name" v-model.trim="fcmForm.deviceName" type="text" placeholder="Ej: Chrome en notebook" />
           </label>
           <button class="primary-button" type="submit" :disabled="portalBusy === 'fcm'">
             {{ portalBusy === 'fcm' ? 'Registrando...' : 'Registrar push' }}
@@ -644,9 +644,18 @@ function showSuccess(message) {
 }
 
 function showError(error, fallback) {
-  errorMessage.value = extractErrorMessage(error, fallback, { includeRequestId: true })
+  errorMessage.value = extractPortalError(error, fallback)
   notice.value = ''
-  logError('portal.view', error)
+  logPortalViewError('portal.view', error)
+}
+
+function isSafeUrl(url) {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 function formatDate(value) {

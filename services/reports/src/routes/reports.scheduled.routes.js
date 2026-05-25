@@ -65,6 +65,16 @@ router.post('/', async (req, res, next) => {
       return R.badRequest(res, 'name, reportType, frequency y recipients son requeridos');
     }
 
+    let resolvedBranchId = branchId || req.user.branchId;
+    if (branchId) {
+      const branch = await db.queryOne(
+        `SELECT id FROM branches WHERE id = :bid AND organization_id = :orgId`,
+        { bid: branchId, orgId: req.user.orgId }
+      );
+      if (!branch) return R.forbidden(res, 'La sucursal no pertenece a la organizacion');
+      resolvedBranchId = branch.id;
+    }
+
     const nextRun = calcNextRun(frequency, dayOfWeek, dayOfMonth);
 
     const [r] = await db.query(
@@ -74,7 +84,7 @@ router.post('/', async (req, res, next) => {
        VALUES (:orgId, :bid, :name, :type, :freq, :dow, :dom, :fmt, :recip, :params, :next, :uid)`,
       {
         orgId: req.user.orgId,
-        bid: branchId || req.user.branchId,
+        bid: resolvedBranchId,
         name, type: reportType, freq: frequency,
         dow: dayOfWeek || null,
         dom: dayOfMonth || null,

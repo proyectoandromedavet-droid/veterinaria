@@ -3,7 +3,10 @@ import { http, ensureCsrfToken } from './client'
 import { logError } from '../utils/errors'
 
 const STORAGE_KEY = 'portal.owner.session'
+const REFRESH_STORAGE_KEY = 'portal.owner.refresh'
+const ORG_STORAGE_KEY = 'portal.owner.orgId'
 const SAFE_METHODS = new Set(['get', 'head', 'options'])
+const PORTAL_TIMEOUT_MS = 180000
 
 function getBaseURL() {
   return http.defaults.baseURL || '/api/v1'
@@ -13,11 +16,12 @@ function readStoredSession() {
   if (typeof window === 'undefined') return { accessToken: null, refreshToken: null, owner: null }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { accessToken: null, refreshToken: null, owner: null }
+    const refreshToken = window.sessionStorage.getItem(REFRESH_STORAGE_KEY) || null
+    if (!raw) return { accessToken: null, refreshToken, owner: null }
     const parsed = JSON.parse(raw)
     return {
       accessToken: parsed.accessToken || null,
-      refreshToken: parsed.refreshToken || null,
+      refreshToken,
       owner: parsed.owner || null,
     }
   } catch (error) {
@@ -30,15 +34,33 @@ function writeStoredSession(session) {
   if (typeof window === 'undefined') return
   const payload = {
     accessToken: session?.accessToken || null,
-    refreshToken: session?.refreshToken || null,
     owner: session?.owner || null,
   }
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  if (session?.refreshToken) {
+    window.sessionStorage.setItem(REFRESH_STORAGE_KEY, session.refreshToken)
+  }
 }
 
 function clearStoredSession() {
   if (typeof window === 'undefined') return
   window.localStorage.removeItem(STORAGE_KEY)
+  window.sessionStorage.removeItem(REFRESH_STORAGE_KEY)
+}
+
+function getPortalOrgId() {
+  if (typeof window === 'undefined') return import.meta.env.VITE_PORTAL_ORG_ID || ''
+  const queryOrgId = new URLSearchParams(window.location.search).get('orgId')
+  if (queryOrgId) {
+    const parsed = parseInt(queryOrgId, 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      console.warn('portal: ignoring invalid orgId from URL')
+    } else {
+      window.localStorage.setItem(ORG_STORAGE_KEY, String(parsed))
+      return String(parsed)
+    }
+  }
+  return window.localStorage.getItem(ORG_STORAGE_KEY) || import.meta.env.VITE_PORTAL_ORG_ID || ''
 }
 
 let currentSession = readStoredSession()
@@ -73,17 +95,21 @@ function unwrap(response) {
 const refreshClient = axios.create({
   baseURL: getBaseURL(),
   withCredentials: true,
-  timeout: 15000,
+  timeout: PORTAL_TIMEOUT_MS,
 })
 
 const portalHttp = axios.create({
   baseURL: getBaseURL(),
   withCredentials: true,
-  timeout: 15000,
+  timeout: PORTAL_TIMEOUT_MS,
 })
 
 async function attachCsrf(cfg) {
   cfg.headers = cfg.headers || {}
+  const orgId = getPortalOrgId()
+  if (orgId && !cfg.headers['X-Org-Id'] && !cfg.headers['x-org-id']) {
+    cfg.headers['X-Org-Id'] = orgId
+  }
   const method = (cfg.method || 'get').toLowerCase()
   if (!SAFE_METHODS.has(method)) {
     const csrfToken = await ensureCsrfToken()

@@ -86,6 +86,16 @@ router.patch('/transfers/patients/:id',
   validate,
   async (req, res, next) => {
     try {
+      const existing = await db.queryOne(
+        `SELECT pt.status FROM patient_transfers pt
+         JOIN branches bf ON pt.from_branch_id = bf.id
+         WHERE pt.id = :id AND bf.organization_id = :orgId`,
+        { id: req.params.id, orgId: req.user.orgId }
+      );
+      if (!existing) return R.notFound(res, 'Transferencia no encontrada');
+      if (['approved', 'rejected'].includes(existing.status)) {
+        return R.badRequest(res, `La transferencia ya fue ${existing.status} y no puede modificarse`);
+      }
       await db.query(
         `UPDATE patient_transfers SET status=:status, approved_by=:uid, updated_at=NOW()
          WHERE id=:id`,

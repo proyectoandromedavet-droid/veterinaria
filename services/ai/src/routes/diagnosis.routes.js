@@ -12,21 +12,33 @@ const {
   requirePerm,
   validate,
   getUser,
+  withAiTimeout,
   log,
 } = require('../ai.common');
+const { requireUsageLimit, requireUserUsageLimit } = require('../../../../shared/usageLimits');
 
 const router = Router();
 
 router.post('/',
   requirePerm('ai:use'),
+  requireUsageLimit('ai_diagnosis'),
+  requireUserUsageLimit('ai_diagnosis'),  // OT-093: per-user daily cap
   body('patientId').isInt({ min: 1 }),
-  body('symptoms').isArray({ min: 1 }),
-  body('symptoms.*').isString().trim().notEmpty(),
-  body('anamnesis').optional().isString(),
+  body('symptoms').isArray({ min: 1, max: 20 }),
+  // OT-092: per-item length cap + control-char strip on symptoms
+  body('symptoms.*')
+    .isString().trim()
+    .customSanitizer((v) => v.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''))
+    .notEmpty().isLength({ max: 500 }),
+  // OT-092: anamnesis length cap
+  body('anamnesis').optional().isString().trim()
+    .customSanitizer((v) => v.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''))
+    .isLength({ max: 3000 }),
   validate,
   async (req, res, next) => {
     try {
-      const { patientId, symptoms, anamnesis, contextLines = 3 } = req.body;
+      const { patientId, symptoms, anamnesis } = req.body;
+      const contextLines = Math.min(Math.max(parseInt(req.body.contextLines ?? 3, 10) || 3, 1), 20);
       const user = getUser(req);
       const { select, orgFilter } = await buildPatientSelect();
 
@@ -51,6 +63,7 @@ router.post('/',
          ORDER BY mr.created_at DESC LIMIT :n`,
         { pid: patientId, org: user.orgId, n: contextLines }
       );
+      const sanitizeForPrompt = (s) => String(s || '').replace(/[\r\n]/g, ' ').replace(/[<>{}\\]/g, '').slice(0, 500);
       const recentHistory = records.length
         ? records.map((r) => {
             const when = r.created_at?.toISOString?.().slice(0, 10) ?? '';
@@ -58,14 +71,17 @@ router.post('/',
               .split('||')
               .filter(Boolean)
               .map(decrypt)
+              .map(sanitizeForPrompt)
               .join(', ') || 'N/A';
-            const notes = decrypt(r.notes) || 'N/A';
-            return `[${when}] Motivo: ${decrypt(r.chief_complaint) || 'N/A'} | Dx: ${diagnoses} | Notas: ${notes}`;
+            const notes = sanitizeForPrompt(decrypt(r.notes)) || 'N/A';
+            return `[${when}] Motivo: ${sanitizeForPrompt(decrypt(r.chief_complaint)) || 'N/A'} | Dx: ${diagnoses} | Notas: ${notes}`;
           }).join('\n')
         : null;
 
       const messages = buildDiagnosisPrompt(patient, symptoms, anamnesis, recentHistory);
-      const raw = await ai.complete(messages, { json: true, maxTokens: 1500, temperature: 0.2 });
+      const raw = await withAiTimeout((signal) =>
+        ai.complete(messages, { json: true, maxTokens: 1500, temperature: 0.2, signal })
+      );
 
       let parsed;
       try { parsed = JSON.parse(raw); }

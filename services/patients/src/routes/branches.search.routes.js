@@ -3,6 +3,23 @@
 const { Router } = require('express');
 const { db, R, logBranchesError } = require('./branches.common');
 
+function maskEmail(email) {
+  if (!email) return null;
+  const [user, domain] = email.split('@');
+  return `${user.slice(0, 2)}***@${domain}`;
+}
+function maskPhone(phone) {
+  if (!phone) return null;
+  const s = String(phone);
+  return s.slice(0, 3) + '***' + s.slice(-2);
+}
+function hasPiiAccess(req) {
+  const roles = req.user?.roles || [];
+  return Array.isArray(roles)
+    ? roles.some(r => ['org_admin', 'branch_manager', 'receptionist', 'superadmin'].includes(r))
+    : false;
+}
+
 const router = Router();
 
 router.get('/search/patients', async (req, res, next) => {
@@ -30,9 +47,15 @@ router.get('/search/patients', async (req, res, next) => {
          AND p.is_active = TRUE
        ORDER BY p.name
        LIMIT :limit OFFSET :offset`,
-      { orgId: req.user.orgId, s: search, limit: parseInt(limit), offset: parseInt(offset) }
+      { orgId: req.user.orgId, s: search, limit: Math.min(parseInt(limit, 10) || 20, 100), offset: parseInt(offset, 10) || 0 }
     );
-    return R.ok(res, rows, { query: q });
+    const pii = hasPiiAccess(req);
+    const safeRows = rows.map(r => ({
+      ...r,
+      owner_phone: pii ? r.owner_phone : maskPhone(r.owner_phone),
+      owner_email: pii ? r.owner_email : maskEmail(r.owner_email),
+    }));
+    return R.ok(res, safeRows, { query: q });
   } catch (e) {
     logBranchesError('GET /branches/search/patients', e, { orgId: req.user?.orgId, query: req.query });
     next(e);
@@ -60,9 +83,16 @@ router.get('/search/clients', async (req, res, next) => {
          AND cl.is_active = TRUE
        GROUP BY cl.id ORDER BY client_name
        LIMIT :limit OFFSET :offset`,
-      { orgId: req.user.orgId, s: search, limit: parseInt(limit), offset: parseInt(offset) }
+      { orgId: req.user.orgId, s: search, limit: Math.min(parseInt(limit, 10) || 20, 100), offset: parseInt(offset, 10) || 0 }
     );
-    return R.ok(res, rows, { query: q });
+    const pii = hasPiiAccess(req);
+    const safeRows = rows.map(r => ({
+      ...r,
+      email: pii ? r.email : maskEmail(r.email),
+      phone: pii ? r.phone : maskPhone(r.phone),
+      dni:   pii ? r.dni : (r.dni ? '***' : null),
+    }));
+    return R.ok(res, safeRows, { query: q });
   } catch (e) {
     logBranchesError('GET /branches/search/clients', e, { orgId: req.user?.orgId, query: req.query });
     next(e);

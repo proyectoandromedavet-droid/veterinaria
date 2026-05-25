@@ -26,10 +26,16 @@ router.post('/:id/physical-exam', async (req, res, next) => {
       'generalObservations',
     ]);
 
+    const ALLOWED_PE_COLS = new Set([
+      'mucous_membranes', 'hydration_status', 'lymph_nodes', 'skin_coat', 'eyes', 'ears',
+      'nose_throat', 'oral_cavity', 'cardiovascular', 'respiratory', 'abdomen',
+      'musculoskeletal', 'neurological', 'urogenital', 'pain_assessment', 'general_observations',
+      'temperature_celsius', 'heart_rate', 'respiratory_rate', 'weight_kg', 'body_condition_score',
+    ]);
     const cols = Object.entries(encryptedTextFields).map(([k, v]) => {
       const col = k.replace(/([A-Z])/g, '_$1').toLowerCase();
       return { col, v };
-    }).filter(({ col }) => col !== 'medical_record_id');
+    }).filter(({ col }) => ALLOWED_PE_COLS.has(col));
 
     const colNames = cols.map((c) => c.col).join(', ');
     const vals = cols.map(() => '?').join(', ');

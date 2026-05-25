@@ -11,8 +11,8 @@ function registerPatientsRoutes(app, registerVersioned) {
   registerVersioned(app, 'use', 'species', authMiddleware, tenantLimiter, makeServiceProxy('patients'));
   registerVersioned(app, 'use', 'breeds', authMiddleware, tenantLimiter, makeServiceProxy('patients'));
   registerVersioned(app, 'use', 'branches', authMiddleware, tenantLimiter, makeServiceProxy('patients'));
-  registerVersioned(app, 'use', 'clients/signatures/public-key', makeServiceProxy('patients'));
-  registerVersioned(app, 'use', 'clients/signatures/verify', makeServiceProxy('patients'));
+  registerVersioned(app, 'use', 'clients/signatures/public-key', authMiddleware, tenantLimiter, makeServiceProxy('patients'));
+  registerVersioned(app, 'use', 'clients/signatures/verify', authMiddleware, tenantLimiter, makeServiceProxy('patients'));
 }
 
 module.exports = { registerPatientsRoutes };

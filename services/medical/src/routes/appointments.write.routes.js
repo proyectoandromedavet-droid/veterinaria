@@ -18,6 +18,12 @@ router.post('/',
         appointmentTypeId, reason, notes, isEmergency = false,
       } = req.body;
 
+      const patient = await db.queryOne(
+        `SELECT id FROM patients WHERE id = :pid AND organization_id = :orgId`,
+        { pid: patientId, orgId: req.user.orgId }
+      );
+      if (!patient) return R.notFound(res, 'Paciente no encontrado');
+
       let branchId = req.user.branchId || null;
       if (!branchId && vetId) {
         const vet = await db.queryOne('SELECT branch_id FROM users WHERE id = :vid', { vid: vetId });

@@ -63,9 +63,12 @@
 
       <!-- Filtros -->
       <div class="filters">
-        <input v-model="dateFrom" type="date" class="filter-input" @change="load()" />
-        <input v-model="dateTo"   type="date" class="filter-input" @change="load()" />
-        <select v-model="statusFilter" class="filter-select" @change="load()">
+        <label for="billing-date-from" class="sr-only">{{ t('billing.from') }}</label>
+        <input id="billing-date-from" name="billing-date-from" v-model="dateFrom" type="date" class="filter-input" @change="load()" />
+        <label for="billing-date-to" class="sr-only">{{ t('billing.to') }}</label>
+        <input id="billing-date-to" name="billing-date-to" v-model="dateTo" type="date" class="filter-input" @change="load()" />
+        <label for="billing-status-filter" class="sr-only">{{ t('billing.allStatuses') }}</label>
+        <select id="billing-status-filter" name="billing-status-filter" v-model="statusFilter" class="filter-select" @change="load()">
           <option value="">{{ t('billing.allStatuses') }}</option>
           <option value="draft">{{ t('billing.draft') }}</option>
           <option value="pending">{{ t('billing.pendingStatus') }}</option>
@@ -73,7 +76,8 @@
           <option value="overdue">{{ t('billing.overdueStatus') }}</option>
           <option value="cancelled">{{ t('billing.cancelledStatus') }}</option>
         </select>
-        <input v-model.trim="search" type="search" :placeholder="t('billing.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
+        <label for="billing-search" class="sr-only">{{ t('billing.searchPlaceholder') }}</label>
+        <input id="billing-search" name="billing-search" v-model.trim="search" type="search" :placeholder="t('billing.searchPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoad()" />
       </div>
 
       <div v-if="loading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('billing.loading') }}</div>
@@ -137,12 +141,12 @@
       <div class="consol-filters card">
         <div class="consol-filters__inner">
           <div class="field">
-            <label>{{ t('billing.from') }}</label>
-            <input v-model="consolFrom" type="date" class="filter-input" />
+            <label for="billing-consol-from">{{ t('billing.from') }}</label>
+            <input id="billing-consol-from" name="billing-consol-from" v-model="consolFrom" type="date" class="filter-input" />
           </div>
           <div class="field">
-            <label>{{ t('billing.to') }}</label>
-            <input v-model="consolTo" type="date" class="filter-input" />
+            <label for="billing-consol-to">{{ t('billing.to') }}</label>
+            <input id="billing-consol-to" name="billing-consol-to" v-model="consolTo" type="date" class="filter-input" />
           </div>
           <button type="button" class="btn-primary" @click="loadConsolidated()" :disabled="consolLoading">
             <span v-if="consolLoading" class="spin spin--sm" />
@@ -215,29 +219,29 @@
             <div class="form-body">
               <div class="form-grid">
                 <div class="field">
-                  <label>{{ t('billing.clientIdLabel') }} <span class="req">*</span></label>
-                  <input v-model.trim="form.clientId" type="text" :placeholder="t('billing.clientIdLabel')" :disabled="saving" required />
+                  <label for="billing-client-id">{{ t('billing.clientIdLabel') }} <span class="req">*</span></label>
+                  <input id="billing-client-id" name="billing-client-id" v-model.trim="form.clientId" type="text" :placeholder="t('billing.clientIdLabel')" :disabled="saving" required />
                   <span v-if="fe.clientId" class="field-error">{{ fe.clientId }}</span>
                 </div>
                 <div class="field">
-                  <label>{{ t('billing.patientIdLabel') }}</label>
-                  <input v-model.trim="form.patientId" type="text" :placeholder="t('billing.patientIdLabel')" :disabled="saving" />
+                  <label for="billing-patient-id">{{ t('billing.patientIdLabel') }}</label>
+                  <input id="billing-patient-id" name="billing-patient-id" v-model.trim="form.patientId" type="text" :placeholder="t('billing.patientIdLabel')" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Turno ID</label>
-                  <input v-model.trim="form.appointmentId" type="text" placeholder="Opcional" :disabled="saving" />
+                  <label for="billing-appointment-id">Turno ID</label>
+                  <input id="billing-appointment-id" name="billing-appointment-id" v-model.trim="form.appointmentId" type="text" placeholder="Opcional" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('billing.dueDateLabel') }}</label>
-                  <input v-model="form.dueDate" type="date" :disabled="saving" />
+                  <label for="billing-due-date">{{ t('billing.dueDateLabel') }}</label>
+                  <input id="billing-due-date" name="billing-due-date" v-model="form.dueDate" type="date" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>Moneda ID</label>
-                  <input v-model.trim="form.currencyId" type="text" placeholder="1" :disabled="saving" />
+                  <label for="billing-currency-id">Moneda ID</label>
+                  <input id="billing-currency-id" name="billing-currency-id" v-model.trim="form.currencyId" type="text" placeholder="1" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label>{{ t('billing.paymentMethodLabel') }}</label>
-                  <select v-model="form.paymentMethod" :disabled="saving">
+                  <label for="billing-payment-method">{{ t('billing.paymentMethodLabel') }}</label>
+                  <select id="billing-payment-method" name="billing-payment-method" v-model="form.paymentMethod" :disabled="saving">
                     <option value="">{{ t('billing.noSpecific') }}</option>
                     <option value="cash">{{ t('billing.cash') }}</option>
                     <option value="credit_card">{{ t('billing.creditCard') }}</option>
@@ -256,12 +260,12 @@
                 </div>
                 <div class="items-list">
                   <div v-for="(item, idx) in form.items" :key="idx" class="item-row">
-                    <input v-model.trim="item.serviceId" type="text" placeholder="Srv ID" class="item-svc" :disabled="saving" />
-                    <input v-model.trim="item.description" type="text" :placeholder="t('billing.descriptionPlaceholder')" class="item-desc" :disabled="saving" />
-                    <input v-model.number="item.quantity"  type="number" min="1" :placeholder="t('billing.quantityPlaceholder')" class="item-qty" :disabled="saving" />
-                    <input v-model.number="item.unit_price" type="number" min="0" step="0.01" :placeholder="t('billing.unitPricePlaceholder')" class="item-price" :disabled="saving" />
-                    <input v-model.number="item.tax_pct" type="number" min="0" step="0.01" placeholder="% IVA" class="item-tax" :disabled="saving" />
-                    <input v-model.number="item.discount_pct" type="number" min="0" step="0.01" placeholder="% Desc." class="item-tax" :disabled="saving" />
+                    <input :id="`billing-item-service-${idx}`" :name="`billing-item-service-${idx}`" v-model.trim="item.serviceId" type="text" placeholder="Srv ID" class="item-svc" :disabled="saving" aria-label="Servicio del item" />
+                    <input :id="`billing-item-description-${idx}`" :name="`billing-item-description-${idx}`" v-model.trim="item.description" type="text" :placeholder="t('billing.descriptionPlaceholder')" class="item-desc" :disabled="saving" :aria-label="t('billing.descriptionPlaceholder')" />
+                    <input :id="`billing-item-quantity-${idx}`" :name="`billing-item-quantity-${idx}`" v-model.number="item.quantity" type="number" min="1" :placeholder="t('billing.quantityPlaceholder')" class="item-qty" :disabled="saving" :aria-label="t('billing.quantityPlaceholder')" />
+                    <input :id="`billing-item-unit-price-${idx}`" :name="`billing-item-unit-price-${idx}`" v-model.number="item.unit_price" type="number" min="0" step="0.01" :placeholder="t('billing.unitPricePlaceholder')" class="item-price" :disabled="saving" :aria-label="t('billing.unitPricePlaceholder')" />
+                    <input :id="`billing-item-tax-${idx}`" :name="`billing-item-tax-${idx}`" v-model.number="item.tax_pct" type="number" min="0" step="0.01" placeholder="% IVA" class="item-tax" :disabled="saving" aria-label="IVA del item" />
+                    <input :id="`billing-item-discount-${idx}`" :name="`billing-item-discount-${idx}`" v-model.number="item.discount_pct" type="number" min="0" step="0.01" placeholder="% Desc." class="item-tax" :disabled="saving" aria-label="Descuento del item" />
                     <span class="item-total">${{ ((item.quantity || 0) * (item.unit_price || 0)).toFixed(2) }}</span>
                     <button type="button" class="btn-del-item" @click="removeItem(idx)" :disabled="form.items.length <= 1">✕</button>
                   </div>
@@ -273,8 +277,8 @@
               </div>
 
               <div class="field">
-                <label>{{ t('billing.notesLabel') }}</label>
-                <textarea v-model.trim="form.notes" rows="2" :placeholder="t('billing.notesPlaceholder')" :disabled="saving" />
+                <label for="billing-notes">{{ t('billing.notesLabel') }}</label>
+                <textarea id="billing-notes" name="billing-notes" v-model.trim="form.notes" rows="2" :placeholder="t('billing.notesPlaceholder')" :disabled="saving" />
               </div>
             </div>
             <div v-if="saveError" class="alert alert--error mx" role="alert">{{ saveError }}</div>
@@ -458,8 +462,8 @@
               <strong>${{ formatMoney(payTarget?.total_amount) }}</strong>
             </p>
             <div class="field">
-              <label>{{ t('billing.paymentMethodLabel') }} <span class="req">*</span></label>
-              <select v-model="payMethod" :disabled="payingSaving">
+              <label for="billing-pay-method">{{ t('billing.paymentMethodLabel') }} <span class="req">*</span></label>
+              <select id="billing-pay-method" name="billing-pay-method" v-model="payMethod" :disabled="payingSaving">
                 <option value="">{{ t('billing.selectPaymentMethod') }}</option>
                 <option value="cash">{{ t('billing.cash') }}</option>
                 <option value="credit_card">{{ t('billing.creditCard') }}</option>
@@ -486,7 +490,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { t } from '../i18n'
 import BaseButton from '../components/base/BaseButton.vue'
 import {
@@ -761,9 +765,11 @@ async function loadConsolidated() {
 }
 
 onMounted(load)
+onUnmounted(() => clearTimeout(timer))
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .page-header__left { display: flex; align-items: center; gap: 14px; }

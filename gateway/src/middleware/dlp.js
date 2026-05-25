@@ -16,8 +16,8 @@ async function dlpMiddleware(req, res, next) {
   const policy = matchDlpPolicy(req);
   if (!policy) return next();
 
-  const userId = req.user?.userId || req.headers['x-user-id'];
-  const orgId  = req.user?.orgId  || req.headers['x-org-id'];
+  const userId = req.user?.userId;
+  const orgId  = req.user?.orgId;
 
   if (!userId || !orgId) return next();
 

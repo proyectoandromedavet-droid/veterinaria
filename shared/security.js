@@ -8,6 +8,10 @@
  */
 
 const helmet      = require('helmet');
+// OT-088: hpp@0.2.3 sin updates desde 2016 pero funcional y sin CVEs conocidos.
+// Protege contra HTTP Parameter Pollution (duplicación de query params).
+// Alternativa evaluada: implementar inline con express-validator (addSanitizers).
+// Mantenemos hpp por ahora: funcionalidad crítica, superficie de código mínima.
 const hpp         = require('hpp');
 const compression = require('compression');
 const crypto      = require('crypto');
@@ -54,6 +58,7 @@ function buildCspDirectives() {
     manifestSrc: ["'self'"],
     workerSrc: ["'self'", 'blob:'],
     upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+    ...(process.env.CSP_REPORT_URI ? { reportUri: [process.env.CSP_REPORT_URI] } : {}),
   };
 }
 
@@ -61,6 +66,8 @@ const helmetMiddleware = helmet({
   contentSecurityPolicy: {
     directives: buildCspDirectives(),
   },
+  // frameguard explicitly set to DENY to match frameAncestors:'none' in CSP
+  frameguard: { action: 'deny' },
   crossOriginEmbedderPolicy: false,  // allow Swagger UI assets
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
@@ -122,7 +129,8 @@ function sanitize(req, _res, next) {
 
 // ── Request ID ────────────────────────────────────────────────────────────────
 function requestId(req, res, next) {
-  const id = req.headers['x-request-id'] || uuidv4();
+  const raw = req.headers['x-request-id'];
+  const id = (raw && /^[\w\-]{1,64}$/.test(raw)) ? raw : uuidv4();
   req.requestId = id;
   res.locals.requestId = id;
   res.setHeader('X-Request-Id', id);
@@ -195,12 +203,9 @@ async function idempotency(req, res, next) {
 
     // Intercept response to cache it
     const origJson = res.json.bind(res);
-    res.json = async function(body) {
-      try {
-        await redis.setEx(redisKey, 86400, JSON.stringify({ status: res.statusCode, body }));
-      } catch (err) {
-        log.warn('Idempotency cache write failed', { error: err.message, key: redisKey });
-      }
+    res.json = function(body) {
+      redis.setEx(redisKey, 86400, JSON.stringify({ status: res.statusCode, body }))
+        .catch((err) => log.warn('Idempotency cache write failed', { error: err.message, key: redisKey }));
       return origJson(body);
     };
   } catch (err) {

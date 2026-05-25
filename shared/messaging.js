@@ -102,10 +102,24 @@ const templates = {
  * @param {string}                  templateName Nombre del template en `templates`
  * @param {object}                  vars         Variables del template
  */
+function sanitizeTemplateVar(key, val) {
+  const s = String(val || '').replace(/[\r\n\t]/g, ' ').trim().slice(0, 200);
+  if (key === 'link') {
+    try {
+      const parsed = new URL(s);
+      if (parsed.protocol !== 'https:') return '[enlace no valido]';
+    } catch { return '[enlace no valido]'; }
+  }
+  return s;
+}
+
 async function sendTemplate(channel, to, templateName, vars) {
   const fn = templates[templateName];
   if (!fn) throw new Error(`Template '${templateName}' no existe`);
-  const body = fn(vars);
+  const safeVars = Object.fromEntries(
+    Object.entries(vars || {}).map(([k, v]) => [k, sanitizeTemplateVar(k, v)])
+  );
+  const body = fn(safeVars);
 
   const results = [];
   if (channel === 'sms' || channel === 'both') {

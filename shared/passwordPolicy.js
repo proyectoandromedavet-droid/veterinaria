@@ -23,6 +23,9 @@
  */
 
 const { AppError } = require('./errors');
+const { createLogger } = require('./logger');
+
+const log = createLogger('password-policy');
 
 // ── Configuración ─────────────────────────────────────────────────────────────
 
@@ -194,6 +197,3 @@ function passwordPolicyMiddleware(field = 'password', opts = {}) {
 }
 
 module.exports = { validatePassword, enforcePassword, passwordPolicyMiddleware };
-const { createLogger } = require('./logger');
-
-const log = createLogger('password-policy');

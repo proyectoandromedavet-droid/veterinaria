@@ -13,9 +13,13 @@ const REQUEST_TIMEOUT_MS = Number(process.env.AUDIT_TIMEOUT_MS || 20000);
 const REPORT_PATH = process.env.AUDIT_REPORT_PATH || path.join(process.cwd(), 'runtime-route-audit-report.json');
 const PATH_FILTER = process.env.AUDIT_PATH_FILTER ? new RegExp(process.env.AUDIT_PATH_FILTER, 'i') : null;
 
+if (!process.env.AUDIT_EMAIL || !process.env.AUDIT_PASSWORD) {
+  console.error('AUDIT_EMAIL and AUDIT_PASSWORD env vars are required');
+  process.exit(1);
+}
 const ADMIN_CREDS = {
-  email: process.env.AUDIT_EMAIL || 'admin@andromeda-vet.com',
-  password: process.env.AUDIT_PASSWORD || 'Admin123!',
+  email: process.env.AUDIT_EMAIL,
+  password: process.env.AUDIT_PASSWORD,
 };
 
 function deepClone(value) {

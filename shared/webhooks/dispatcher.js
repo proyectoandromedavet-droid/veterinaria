@@ -32,6 +32,7 @@ function isSafeWebhookUrl(rawUrl) {
 
 const MAX_RETRIES = 5;
 const BACKOFF_MS  = [60_000, 300_000, 1_800_000, 7_200_000, 28_800_000];
+const CLAIM_TTL_MS = Math.max(30_000, parseInt(process.env.WEBHOOK_DELIVERY_CLAIM_TTL_MS || '120000', 10));
 
 /**
  * Enqueue a webhook event for all subscribers of that event type.
@@ -73,22 +74,49 @@ async function enqueue({ event, payload, orgId = null }) {
  */
 async function processPending() {
   const rows = await db.query(
+    `SELECT id
+       FROM webhook_deliveries
+      WHERE status = 'pending'
+        AND next_attempt_at <= NOW()
+      ORDER BY next_attempt_at ASC, id ASC
+      LIMIT 50`,
+  );
+
+  await Promise.allSettled(rows.map(async ({ id }) => {
+    const delivery = await claimDelivery(id);
+    if (!delivery) return;
+    await deliver(delivery);
+  }));
+}
+
+async function claimDelivery(id) {
+  const leaseUntil = new Date(Date.now() + CLAIM_TTL_MS);
+  const [claim] = await db.query(
+    `UPDATE webhook_deliveries
+        SET attempt_count = attempt_count + 1,
+            last_attempt_at = NOW(),
+            next_attempt_at = :leaseUntil
+      WHERE id = :id
+        AND status = 'pending'
+        AND next_attempt_at <= NOW()`,
+    { id, leaseUntil },
+  );
+
+  if (claim.affectedRows !== 1) return null;
+
+  return db.queryOne(
     `SELECT wd.id, wd.endpoint_id, wd.event_type, wd.payload, wd.attempt_count,
             we.url, we.secret
        FROM webhook_deliveries wd
-       JOIN webhook_endpoints  we ON we.id = wd.endpoint_id
-      WHERE wd.status = 'pending'
-        AND wd.next_attempt_at <= NOW()
-      LIMIT 50
-      FOR UPDATE SKIP LOCKED`,
+       JOIN webhook_endpoints we ON we.id = wd.endpoint_id
+      WHERE wd.id = :id`,
+    { id },
   );
-
-  await Promise.allSettled(rows.map(deliver));
 }
 
 async function deliver(row) {
   const { id, url, secret, payload, attempt_count } = row;
-  const attempt = (attempt_count || 0) + 1;
+  const attempt = attempt_count || 1;
   const sig     = sign(payload, secret || '');
 
   let success = false;
@@ -118,6 +146,7 @@ async function deliver(row) {
         'X-Delivery-Id':   String(id),
       },
       timeout: 10_000,
+      maxRedirects: 0,
     });
 
     success        = resp.status >= 200 && resp.status < 300;
@@ -153,4 +182,16 @@ async function deliver(row) {
   webhookDeliveries?.inc({ event: row.event_type, result: success ? 'success' : 'failure' });
 }
 
-module.exports = { enqueue, processPending };
+async function getQueueStats() {
+  const rows = await db.query(
+    `SELECT status, COUNT(*) AS cnt
+     FROM webhook_deliveries
+     WHERE status IN ('pending','processing','failed')
+     GROUP BY status`
+  );
+  const stats = { pending: 0, processing: 0, failed: 0 };
+  for (const r of rows) stats[r.status] = Number(r.cnt);
+  return stats;
+}
+
+module.exports = { enqueue, processPending, getQueueStats };

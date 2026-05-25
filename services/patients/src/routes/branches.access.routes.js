@@ -63,6 +63,13 @@ router.post('/access',
 
 router.delete('/access/:id', async (req, res, next) => {
   try {
+    const row = await db.queryOne(
+      `SELECT cba.id FROM cross_branch_access cba
+       JOIN branches b ON cba.branch_id = b.id
+       WHERE cba.id = :id AND b.organization_id = :orgId`,
+      { id: req.params.id, orgId: req.user.orgId }
+    );
+    if (!row) return R.notFound(res, 'Acceso no encontrado');
     await db.query(
       `UPDATE cross_branch_access SET is_active=0 WHERE id=:id`,
       { id: req.params.id }
