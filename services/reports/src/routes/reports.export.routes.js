@@ -11,7 +11,7 @@ const {
   fetchReportData,
   defaultCols,
 } = require('../reports.common');
-const { trackExport } = require('../../../shared/dlp');
+const { trackExport } = require('../../../../shared/dlp');
 
 const router = Router();
 
