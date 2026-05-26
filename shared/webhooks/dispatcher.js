@@ -58,6 +58,34 @@ async function enqueue({ event, payload, orgId = null }) {
 
   const payloadJson = JSON.stringify({ event, data: payload, timestamp: new Date().toISOString() });
 
+  // Guard against storing extremely large payloads in the deliveries table.
+  // 64 KB is ample for any legitimate webhook payload; truncation prevents
+  // unbounded DB growth and limits accidental PII storage in retry queues.
+  const MAX_PAYLOAD_BYTES = 65536;
+  if (Buffer.byteLength(payloadJson, 'utf8') > MAX_PAYLOAD_BYTES) {
+    const { createLogger } = require('../logger');
+    createLogger('webhook-dispatcher').warn('Webhook payload truncated — exceeds 64 KB', {
+      event,
+      orgId,
+      payloadSize: Buffer.byteLength(payloadJson, 'utf8'),
+    });
+    // Store a stub payload so the delivery record still exists for monitoring
+    const stubPayload = JSON.stringify({
+      event,
+      data:      { _truncated: true, _reason: 'payload_too_large' },
+      timestamp: new Date().toISOString(),
+    });
+    for (const ep of endpoints) {
+      await db.query(
+        `INSERT INTO webhook_deliveries
+           (endpoint_id, event_type, payload, status, next_attempt_at, created_at)
+         VALUES (:endpointId, :event, :payload, 'failed', NOW(), NOW())`,
+        { endpointId: ep.id, event, payload: stubPayload },
+      );
+    }
+    return;
+  }
+
   for (const ep of endpoints) {
     await db.query(
       `INSERT INTO webhook_deliveries

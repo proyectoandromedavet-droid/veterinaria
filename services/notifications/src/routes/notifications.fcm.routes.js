@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { requirePerm } = require('../../../../shared/serviceBase');
 const {
   R,
   db,
@@ -11,6 +12,21 @@ const {
 } = require('../notifications.common');
 
 const router = express.Router();
+
+// FCM topic: solo [a-zA-Z0-9-_.~%] (máx 900 chars según documentación Firebase)
+const FCM_TOPIC_SEGMENT_RE = /^[a-zA-Z0-9_\-]+$/;
+
+function sanitizeTopicSegment(segment) {
+  if (!segment || !FCM_TOPIC_SEGMENT_RE.test(String(segment))) return null;
+  return String(segment).slice(0, 64);
+}
+
+function allowedTopicForUser(topic, user) {
+  if (!topic || !user?.orgId) return false;
+  if (topic === `org_${user.orgId}`) return true;
+  if (user.branchId && topic === `branch_${user.branchId}`) return true;
+  return (user.roles || []).some((role) => topic === `role_${user.orgId}_${role}`);
+}
 
 router.post('/register', async (req, res, next) => {
   try {
@@ -83,7 +99,7 @@ router.get('/tokens', async (req, res, next) => {
   }
 });
 
-router.post('/send', async (req, res, next) => {
+router.post('/send', requirePerm('notifications:send'), async (req, res, next) => {
   try {
     const { targetUserIds, topic, title, body: msgBody, data, imageUrl } = req.body;
     if (!title || !msgBody) return R.badRequest(res, 'title y body requeridos');
@@ -92,13 +108,14 @@ router.post('/send', async (req, res, next) => {
     let result;
 
     if (topic) {
+      if (!allowedTopicForUser(topic, req.user)) return R.forbidden(res, 'Topic fuera del alcance del usuario', 'FCM_TOPIC_FORBIDDEN');
       await fcm.sendToTopic(topic, payload);
       result = { method: 'topic', topic };
     } else if (targetUserIds?.length) {
       const tokenRows = await db.query(
         `SELECT token FROM user_fcm_tokens
-         WHERE user_id IN (:uids) AND is_active=1`,
-        { uids: targetUserIds }
+         WHERE user_id IN (:uids) AND org_id=:orgId AND is_active=1`,
+        { uids: targetUserIds, orgId: req.user.orgId }
       );
       const tokens = tokenRows.map((r) => r.token);
       if (!tokens.length) return R.ok(res, { sent: 0, message: 'Sin tokens registrados' });
@@ -122,13 +139,15 @@ router.post('/send', async (req, res, next) => {
   }
 });
 
-router.post('/broadcast', async (req, res, next) => {
+router.post('/broadcast', requirePerm('notifications:send'), async (req, res, next) => {
   try {
-    const { orgId, branchId, roles, title, body: msgBody, data, imageUrl } = req.body;
+    const { branchId, roles, title, body: msgBody, data, imageUrl } = req.body;
     if (!title || !msgBody) return R.badRequest(res, 'title y body requeridos');
 
     const payload = { title, body: msgBody, data, imageUrl };
     const results = [];
+    const orgId = req.user.orgId;
+    const effectiveBranchId = branchId || req.user.branchId || null;
 
     if (orgId) {
       try {
@@ -139,24 +158,34 @@ router.post('/broadcast', async (req, res, next) => {
       }
       results.push(`org_${orgId}`);
     }
-    if (branchId) {
-      try {
-        await fcm.sendToTopic(`branch_${branchId}`, payload);
-      } catch (err) {
-        await queueNotificationRetry({ channel: 'push_topic', payload: { topic: `branch_${branchId}`, payload }, req });
-        log.warn('fcm branch broadcast failed', { err: err.message, branchId });
+    if (effectiveBranchId) {
+      if (req.user.branchId && Number(effectiveBranchId) !== Number(req.user.branchId)) {
+        return R.forbidden(res, 'Sucursal fuera del alcance del usuario', 'FCM_BRANCH_FORBIDDEN');
       }
-      results.push(`branch_${branchId}`);
+      try {
+        await fcm.sendToTopic(`branch_${effectiveBranchId}`, payload);
+      } catch (err) {
+        await queueNotificationRetry({ channel: 'push_topic', payload: { topic: `branch_${effectiveBranchId}`, payload }, req });
+        log.warn('fcm branch broadcast failed', { err: err.message, branchId: effectiveBranchId });
+      }
+      results.push(`branch_${effectiveBranchId}`);
     }
     if (roles?.length && orgId) {
+      if (roles.length > 50) return R.badRequest(res, 'roles no puede superar 50 entradas');
       for (const role of roles) {
-        try {
-          await fcm.sendToTopic(`role_${orgId}_${role}`, payload);
-        } catch (err) {
-          await queueNotificationRetry({ channel: 'push_topic', payload: { topic: `role_${orgId}_${role}`, payload }, req });
-          log.warn('fcm role broadcast failed', { err: err.message, role, orgId });
+        const cleanRole = sanitizeTopicSegment(role);
+        if (!cleanRole) {
+          log.warn('fcm broadcast: invalid role segment skipped', { role, orgId });
+          continue;
         }
-        results.push(`role_${orgId}_${role}`);
+        const topic = `role_${orgId}_${cleanRole}`;
+        try {
+          await fcm.sendToTopic(topic, payload);
+        } catch (err) {
+          await queueNotificationRetry({ channel: 'push_topic', payload: { topic, payload }, req });
+          log.warn('fcm role broadcast failed', { err: err.message, role: cleanRole, orgId });
+        }
+        results.push(topic);
       }
     }
 

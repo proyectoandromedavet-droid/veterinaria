@@ -182,9 +182,17 @@ function validateWebhookSignature(xSignature, xRequestId, dataId, opts = {}) {
     if (Math.abs(now - Number(ts)) > toleranceSec) return false;
 
     const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
-    const expected = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
-    if (expected.length !== received.length) return false;
-    return crypto.timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(received, 'utf8'));
+    const expectedBuf = crypto.createHmac('sha256', secret).update(manifest).digest();
+    // SEC: convertir el hash recibido a Buffer de 32 bytes para comparación en tiempo constante.
+    // No comparar .length de strings primero — haría early-exit y filtraría timing sobre longitud.
+    // Si received no es hex válido de 64 chars, substituir por un buffer de ceros (falla segura).
+    let receivedBuf;
+    if (typeof received === 'string' && /^[a-f0-9]{64}$/i.test(received)) {
+      receivedBuf = Buffer.from(received, 'hex');
+    } else {
+      receivedBuf = Buffer.alloc(32, 0);  // longitud fija, falla segura
+    }
+    return crypto.timingSafeEqual(expectedBuf, receivedBuf);
   } catch (err) {
     log.warn('MercadoPago webhook signature validation failed', { error: err.message });
     return false;

@@ -3,6 +3,8 @@
 const { validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
+const { createLogger } = require('../../../../shared/logger');
+const log = createLogger('lab-imaging.pathology');
 
 const validate = (req, res, next) => {
   const e = validationResult(req);
@@ -11,7 +13,7 @@ const validate = (req, res, next) => {
 };
 
 function logPathologyError(route, err, meta = {}) {
-  console.error(`[lab-imaging:pathology] ${route} failed`, {
+  log.error(`${route} failed`, {
     message: err?.message,
     code: err?.code,
     errno: err?.errno,

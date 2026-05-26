@@ -317,9 +317,37 @@ function getAlertLogger() {
  * OT-096: Fire-and-forget webhook notification when usage threshold is crossed.
  * Sends to USAGE_ALERT_WEBHOOK_URL if configured (no-op otherwise).
  */
+// SEC: validar que USAGE_ALERT_WEBHOOK_URL sea una URL HTTPS pública para evitar SSRF.
+function _validateWebhookUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    // Rechazar hostnames internos / loopback
+    if (
+      host === 'localhost' ||
+      host.startsWith('127.') ||
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      host.startsWith('172.') ||
+      host === '::1' ||
+      host.endsWith('.internal') ||
+      host.endsWith('.local')
+    ) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function _sendUsageAlertWebhook({ orgId, feature, current, limit, pct, level }) {
   const webhookUrl = process.env.USAGE_ALERT_WEBHOOK_URL;
   if (!webhookUrl) return;
+  // SEC: rechazar URLs internas para prevenir SSRF
+  if (!_validateWebhookUrl(webhookUrl)) {
+    getAlertLogger().warn('USAGE_ALERT_WEBHOOK_URL rechazada — debe ser https:// público', { webhookUrl: webhookUrl.slice(0, 40) });
+    return;
+  }
   try {
     await fetch(webhookUrl, {
       method: 'POST',
@@ -500,29 +528,34 @@ function requireUserUsageLimit(feature) {
     try {
       const redis = await getRedis();
       const key   = `usage:user:${userId}:${feature}:${currentDay()}`;
-      const raw   = await redis.get(key);
-      const count = raw ? parseInt(raw, 10) : 0;
 
-      if (count >= dailyCap) {
+      // SEC: usar INCR atómico para evitar race condition TOCTOU.
+      // El patrón anterior (GET → compare → increment en finish) permitía que N requests
+      // concurrentes leyeran el mismo valor y pasaran el check simultáneamente.
+      const pipe = redis.multi();
+      pipe.incrBy(key, 1);
+      pipe.expire(key, secsUntilDayEnd());
+      const [newCount] = await pipe.exec();
+
+      if (newCount > dailyCap) {
+        // Revertir el incremento — el usuario ya excedió el límite
+        await redis.incrBy(key, -1).catch(() => {});
         return res.status(429).json({
           success: false,
           error: {
-            message: `Daily user quota for '${feature}' exceeded (${count}/${dailyCap}). Try again tomorrow.`,
+            message: `Daily user quota for '${feature}' exceeded (${newCount - 1}/${dailyCap}). Try again tomorrow.`,
             code:    'USER_QUOTA_EXCEEDED',
             feature,
-            current: count,
+            current: newCount - 1,
             limit:   dailyCap,
           },
         });
       }
 
-      // Increment on successful response
+      // Revertir si el handler falla (status >= 400)
       res.on('finish', () => {
-        if (res.statusCode < 400) {
-          const pipe = redis.multi();
-          pipe.incrBy(key, 1);
-          pipe.expire(key, secsUntilDayEnd());
-          pipe.exec().catch(() => {});
+        if (res.statusCode >= 400) {
+          redis.incrBy(key, -1).catch(() => {});
         }
       });
 

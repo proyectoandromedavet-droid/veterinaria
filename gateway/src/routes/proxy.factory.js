@@ -124,7 +124,10 @@ function makeProxy(target, pathRewrite = {}, name) {
         proxyReq.setHeader('X-Span-Id', traceHeaders['X-Span-Id']);
         proxyReq.setHeader('traceparent', traceHeaders.traceparent);
         proxyReq.setHeader('X-Forwarded-For', req.ip);
-        proxyReq.setHeader('X-Forwarded-Host', req.headers.host || req.hostname || '');
+        // Use req.hostname (parsed by Express from the Host header, validated) rather than
+        // the raw req.headers.host which is attacker-controlled and enables Host Header Injection
+        // in downstream services that trust X-Forwarded-Host.
+        proxyReq.setHeader('X-Forwarded-Host', req.hostname || '');
         proxyReq.setHeader('X-Forwarded-Proto', req.secure ? 'https' : 'http');
         if (req.socket?.localPort) {
           proxyReq.setHeader('X-Forwarded-Port', String(req.socket.localPort));

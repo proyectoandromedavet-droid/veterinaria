@@ -7,6 +7,19 @@ jest.mock('../../shared/internalAuth', () => ({
   verifySignature: jest.fn(() => ({ ok: true })),
   HEADER: 'x-internal-sig',
 }));
+jest.mock('../../shared/cache', () => ({
+  get: jest.fn().mockResolvedValue(null),
+  set: jest.fn().mockResolvedValue(undefined),
+  del: jest.fn().mockResolvedValue(undefined),
+  invalidatePrefix: jest.fn().mockResolvedValue(undefined),
+  remember: jest.fn((_key, fn) => fn()),
+  cacheMiddleware: jest.fn(() => (_req, _res, next) => next()),
+  httpCacheHeaders: jest.fn(() => (_req, _res, next) => next()),
+  getClient: jest.fn().mockResolvedValue({
+    ping: jest.fn().mockResolvedValue('PONG'),
+    quit: jest.fn().mockResolvedValue(undefined),
+  }),
+}));
 
 const request = require('supertest');
 const db = require('../../shared/db');
@@ -26,6 +39,8 @@ const AUTH = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  db.query.mockReset();
+  db.queryOne.mockReset();
 });
 
 describe('medical service', () => {
@@ -87,5 +102,19 @@ describe('medical service', () => {
     expect(executed[0]).not.toContain('sp_sign_medical_record');
     expect(executed[0]).toContain('signed_at = NOW()');
     expect(executed[0]).toContain('signed_by = :uid');
+  });
+
+  test('POST /prescriptions/:id rejects incomplete prescription items before touching DB', async () => {
+    const res = await request(app)
+      .post('/prescriptions/321')
+      .set(AUTH)
+      .send({
+        items: [
+          { dose: '5 mg', frequency: 'cada 12 horas' },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });

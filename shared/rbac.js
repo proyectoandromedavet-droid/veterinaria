@@ -19,19 +19,23 @@ const ROLE_PERMISSIONS = {
   org_admin: [
     'org:read', 'org:update',
     'branches:*', 'users:*',
+    'settings:*',
     'ai:*',
     'patients:*', 'clients:*',
     'appointments:*', 'medical_records:*',
     'lab:*', 'imaging:*', 'surgery:*', 'hospitalization:*',
     'vaccinations:*', 'deworming:*',
     'invoices:*', 'payments:*', 'inventory:*',
+    'billing:*',
     'telemedicine:*', 'grooming:*',
+    'notifications:*',
     'reports:*', 'audit:read',
   ],
 
   branch_manager: [
     'branches:read', 'branches:update',
     'users:read', 'users:create', 'users:update',
+    'settings:*',
     'ai:*',
     'patients:*', 'clients:*',
     'appointments:*', 'medical_records:*',
@@ -39,6 +43,7 @@ const ROLE_PERMISSIONS = {
     'vaccinations:*', 'deworming:*',
     'invoices:*', 'payments:*', 'inventory:*',
     'telemedicine:*', 'grooming:*',
+    'notifications:*',
     'reports:read',
   ],
 
@@ -52,6 +57,7 @@ const ROLE_PERMISSIONS = {
     'vaccinations:*', 'deworming:*',
     'telemedicine:read', 'telemedicine:create', 'telemedicine:update',
     'invoices:read', 'invoices:create',
+    'notifications:send',
     'reports:read',
   ],
 
@@ -71,7 +77,8 @@ const ROLE_PERMISSIONS = {
     'clients:read', 'clients:create', 'clients:update',
     'appointments:*',
     'invoices:read', 'invoices:create',
-    'payments:create',
+    'payments:read', 'payments:create',
+    'notifications:send',
   ],
 
   groomer: [
@@ -101,6 +108,7 @@ const ROLE_PERMISSIONS = {
 
   accountant: [
     'invoices:*', 'payments:*',
+    'billing:read',
     'reports:read',
     'clients:read',
   ],
@@ -172,6 +180,23 @@ function hasPermission(roles, perm) {
   return false;
 }
 
+function hasScopePermission(scopes, perm) {
+  if (!Array.isArray(scopes) || scopes.length === 0) return false;
+  if (scopes.includes('*') || scopes.includes(perm)) return true;
+  const [resource] = perm.split(':');
+  if (scopes.includes(`${resource}:*`)) return true;
+  if (perm.startsWith('crud:')) {
+    const [, table] = perm.split(':');
+    if (scopes.includes(`crud:${table}:*`)) return true;
+  }
+  return false;
+}
+
+function requestAllowsPermissionScope(req, perm) {
+  if (req.user?.authType !== 'api_key') return true;
+  return hasScopePermission(req.user.apiKeyScopes || [], perm);
+}
+
 /**
  * Express middleware factory.
  * Usage: router.get('/patients', requirePermission('patients:read'), handler)
@@ -179,9 +204,11 @@ function hasPermission(roles, perm) {
 function requirePermission(perm) {
   return async (req, res, next) => {
     const roles = req.user?.roles || [];
-    const orgId = req.user?.orgId || req.user?.organization_id || req.headers?.['x-org-id'] || null;
+    // orgId SOLO del token JWT autenticado — nunca del header de la request.
+    // Leer x-org-id del cliente permitiría a un atacante forjar el scope de permisos.
+    const orgId = req.user?.orgId || req.user?.organization_id || null;
     const allowed = await hasPermissionDynamic(roles, perm, orgId);
-    if (!allowed) {
+    if (!allowed || !requestAllowsPermissionScope(req, perm)) {
       getRbacDenials()?.inc({ permission: perm, role: roles[0] || 'none', service: 'unknown' });
       return R.error(res, 403, `Forbidden: requires permission '${perm}'`, null, 'RBAC_003');
     }
@@ -196,8 +223,11 @@ function requirePermission(perm) {
 function requireAny(...perms) {
   return async (req, res, next) => {
     const roles = req.user?.roles || [];
-    const orgId = req.user?.orgId || req.user?.organization_id || req.headers?.['x-org-id'] || null;
-    const checks = await Promise.all(perms.map(p => hasPermissionDynamic(roles, p, orgId)));
+    // orgId SOLO del JWT autenticado — nunca del header del cliente.
+    const orgId = req.user?.orgId || req.user?.organization_id || null;
+    const checks = await Promise.all(perms.map(async p =>
+      (await hasPermissionDynamic(roles, p, orgId)) && requestAllowsPermissionScope(req, p)
+    ));
     if (checks.some(Boolean)) return next();
 
     getRbacDenials()?.inc({ permission: perms.join('|'), role: roles[0] || 'none', service: 'unknown' });
@@ -212,8 +242,12 @@ function requireAny(...perms) {
 function requireAll(...perms) {
   return async (req, res, next) => {
     const roles = req.user?.roles || [];
-    const orgId = req.user?.orgId || req.user?.organization_id || req.headers?.['x-org-id'] || null;
-    const results = await Promise.all(perms.map(async (p) => ({ perm: p, ok: await hasPermissionDynamic(roles, p, orgId) })));
+    // orgId SOLO del JWT autenticado — nunca del header del cliente.
+    const orgId = req.user?.orgId || req.user?.organization_id || null;
+    const results = await Promise.all(perms.map(async (p) => ({
+      perm: p,
+      ok: (await hasPermissionDynamic(roles, p, orgId)) && requestAllowsPermissionScope(req, p),
+    })));
     const missing = results.filter(r => !r.ok).map(r => r.perm);
     if (!missing.length) return next();
 
@@ -303,15 +337,16 @@ async function getEffectivePermissions(roleName, orgId) {
  * @param {string[]}      grant    — extra permissions to add
  * @param {string[]}      revoke   — permissions to remove
  */
+// OT-080: persist to DB first, then update Redis cache.
+// This way if the DB write fails we throw before corrupting the cache.
+// If Redis update fails after a successful DB write we only log — DB is the source of truth.
 async function setRoleOverride(orgId, roleName, grant = [], revoke = []) {
   const cache = _getCache();
   if (!cache) throw new Error('Cache unavailable');
   const key = `rbac:org:${orgId}:role:${roleName}`;
-  await cache.set(key, { grant, revoke }, RBAC_OVERRIDE_TTL);
 
-  // Persist to DB so overrides survive Redis restarts
-  if (process.env.NODE_ENV === 'test') return;
-  try {
+  // 1. Persist to DB first (source of truth)
+  if (process.env.NODE_ENV !== 'test') {
     const db = require('./db');
     await db.query(
       `INSERT INTO org_role_overrides (org_id, role_name, added_permissions, removed_permissions)
@@ -322,8 +357,14 @@ async function setRoleOverride(orgId, roleName, grant = [], revoke = []) {
          updated_at          = NOW()`,
       { orgId, roleName, grant: JSON.stringify(grant), revoke: JSON.stringify(revoke) }
     );
+    // ^ Throws on DB error — Redis update below is skipped, cache stays consistent.
+  }
+
+  // 2. Update Redis cache (best-effort)
+  try {
+    await cache.set(key, { grant, revoke }, RBAC_OVERRIDE_TTL);
   } catch (err) {
-    log.warn('RBAC override DB persistence skipped', {
+    log.warn('RBAC override Redis cache update skipped — will reload from DB on next request', {
       orgId,
       roleName,
       error: err.message,
@@ -389,6 +430,7 @@ async function hasPermissionDynamic(roles, perm, orgId) {
 module.exports = {
   ROLE_PERMISSIONS,
   hasPermission,
+  hasScopePermission,
   requirePermission,
   requireAny,
   requireAll,

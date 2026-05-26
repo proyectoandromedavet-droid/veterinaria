@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div v-show="active === 0">
     <div class="section-title">{{ t('evolutions.generalData') }}</div>
     <div class="form-grid">
@@ -23,11 +23,11 @@
             @click="emit('select-patient', pt)"
           >
             {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-            <span v-if="pt.hc_number" class="autocomplete__owner"> · HC {{ pt.hc_number }}</span>
-            <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
+            <span v-if="pt.hc_number" class="autocomplete__owner"> | HC {{ pt.hc_number }}</span>
+            <span class="autocomplete__owner">- {{ pt.primary_owner || '' }}</span>
           </button>
         </div>
-        <div v-if="form.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+        <div v-if="form.patientId" class="selected-patient">&#x2705; {{ selectedPatientLabel }}</div>
         <span v-if="errors.patientId" class="field-error">{{ errors.patientId }}</span>
       </div>
 
@@ -99,7 +99,7 @@
       </div>
       <div class="field">
         <label>{{ t('evolutions.duration') }}</label>
-        <input v-model.trim="form.illnessDuration" type="text" placeholder="Ej: 3 días, 2 semanas" :disabled="saving" />
+        <input v-model.trim="form.illnessDuration" type="text" placeholder="Ej: 3 dias, 2 semanas" :disabled="saving" />
       </div>
       <div class="field">
         <label>{{ t('evolutions.onset') }}</label>
@@ -144,7 +144,7 @@
           <option value="decreased">Disminuida</option>
           <option value="absent">Ausente</option>
           <option value="diarrhea">Diarrea</option>
-          <option value="constipation">Constipación</option>
+          <option value="constipation">Constipacion</option>
         </select>
       </div>
     </div>
@@ -178,7 +178,7 @@
         </select>
       </div>
       <div class="field">
-        <label>Marca / alimento específico</label>
+        <label>Marca / alimento especifico</label>
         <input v-model.trim="form.feedingBrand" type="text" placeholder="Ej: Royal Canin Adult" :disabled="saving" />
       </div>
       <div class="field">
@@ -192,21 +192,21 @@
       </div>
       <div class="field">
         <label>Viajes recientes</label>
-        <input v-model.trim="form.recentTravel" type="text" placeholder="Destino y fecha aproximada…" :disabled="saving" />
+        <input v-model.trim="form.recentTravel" type="text" placeholder="Destino y fecha aproximada..." :disabled="saving" />
       </div>
       <div class="field field--full">
         <label>{{ t('evolutions.vaccinationHistory') }}
-          <span v-if="loadingHistory" class="history-loading">⏳ cargando…</span>
+          <span v-if="loadingHistory" class="history-loading">&#x23F3; cargando...</span>
           <span v-else-if="form.patientId && !form.vaccinationHistory" class="history-empty">sin registros</span>
         </label>
-        <textarea v-model.trim="form.vaccinationHistory" rows="3" placeholder="Vacunas aplicadas, fechas y laboratorio…" :disabled="saving" />
+        <textarea v-model.trim="form.vaccinationHistory" rows="3" placeholder="Vacunas aplicadas, fechas y laboratorio..." :disabled="saving" />
       </div>
       <div class="field field--full">
         <label>{{ t('evolutions.dewormingHistory') }}
-          <span v-if="loadingHistory" class="history-loading">⏳ cargando…</span>
+          <span v-if="loadingHistory" class="history-loading">&#x23F3; cargando...</span>
           <span v-else-if="form.patientId && !form.dewormingHistory" class="history-empty">sin registros</span>
         </label>
-        <textarea v-model.trim="form.dewormingHistory" rows="3" placeholder="Antiparasitarios internos/externos, productos y fechas…" :disabled="saving" />
+        <textarea v-model.trim="form.dewormingHistory" rows="3" placeholder="Antiparasitarios internos/externos, productos y fechas..." :disabled="saving" />
       </div>
       <div class="field field--full">
         <label>{{ t('evolutions.previousIllnesses') }}</label>
@@ -214,8 +214,8 @@
       </div>
       <div class="field field--full">
         <label>{{ t('evolutions.previousSurgeries') }}
-          <span v-if="loadingHistory" class="history-loading">⏳ cargando…</span>
-          <span v-else-if="form.patientId && !form.previousSurgeries" class="history-empty">sin cirugías</span>
+          <span v-if="loadingHistory" class="history-loading">&#x23F3; cargando...</span>
+          <span v-else-if="form.patientId && !form.previousSurgeries" class="history-empty">sin cirugias</span>
         </label>
         <textarea v-model.trim="form.previousSurgeries" rows="3" :placeholder="t('evolutions.previousProceduresPlaceholder')" :disabled="saving" />
       </div>
@@ -248,9 +248,9 @@ const props = defineProps({
 const emit = defineEmits(['search-patients', 'select-patient'])
 
 function petEmoji(species) {
-  if (!species) return '🐾'
+  if (!species) return '\u{1F43E}'
   const sl = String(species).toLowerCase()
-  const map = { perro: '🐶', dog: '🐶', gato: '🐱', cat: '🐱', conejo: '🐰', rabbit: '🐰', loro: '🦜', bird: '🦜', pez: '🐟', fish: '🐟', tortuga: '🐢', reptile: '🦎', hamster: '🐹' }
-  return map[sl] || '🐾'
+  const map = { perro: '\u{1F436}', dog: '\u{1F436}', gato: '\u{1F431}', cat: '\u{1F431}', conejo: '\u{1F430}', rabbit: '\u{1F430}', loro: '\u{1F99C}', bird: '\u{1F99C}', pez: '\u{1F41F}', fish: '\u{1F41F}', tortuga: '\u{1F422}', reptile: '\u{1F98E}', hamster: '\u{1F439}' }
+  return map[sl] || '\u{1F43E}'
 }
 </script>

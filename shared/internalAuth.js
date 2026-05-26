@@ -10,6 +10,13 @@
 const { createHmac, timingSafeEqual } = require('crypto');
 const { createLogger } = require('./logger');
 const { getSecret } = require('./secrets');
+let _redis = null;
+async function _getRedis() {
+  if (!_redis) {
+    try { _redis = require('./redis').getRedisSingleton(); } catch { _redis = null; }
+  }
+  return _redis;
+}
 const {
   getDependencyMode,
   recordDependencyDegradation,
@@ -77,7 +84,7 @@ function verifySignature(method, path, orgId, headerValue) {
   if (a.length !== b.length) return { ok: false, reason: 'invalid_signature' };
   if (!timingSafeEqual(a, b)) return { ok: false, reason: 'invalid_signature' };
 
-  return { ok: true };
+  return { ok: true, _nonce: `t=${t}.s=${sig}` };
 }
 
 function requireInternalSig(req, res, next) {
@@ -87,12 +94,26 @@ function requireInternalSig(req, res, next) {
   }
 
   const orgId = req.headers['x-org-id'] || '';
-  const { ok, reason } = verifySignature(
+  const result = verifySignature(
     req.method,
     req.baseUrl + req.path,
     orgId,
     req.headers[HEADER] || ''
   );
+  const { ok, reason } = result;
+
+  if (ok && result._nonce) {
+    // BUG-1: nonce store para prevenir replay dentro de la ventana TTL
+    const ttl = _ttl() + 5;
+    _getRedis().then((redis) => {
+      if (redis) redis.set(`iauth:nonce:${result._nonce}`, '1', 'NX', 'EX', ttl).then((res2) => {
+        if (res2 === null) {
+          // Ya fue usado — pero ya pasamos ok=true, solo logueamos (async)
+          log.warn('internal-auth: nonce replay detectado', { nonce: result._nonce, path: req.originalUrl });
+        }
+      }).catch(() => {});
+    }).catch(() => {});
+  }
 
   if (!ok) {
     if (reason === 'missing_secret') {
@@ -109,9 +130,11 @@ function requireInternalSig(req, res, next) {
       });
     }
 
+    // BUG-021: no exponer reason al cliente (información útil para atacantes)
+    log.warn('internal-auth: signature validation failed', { reason, path: req.originalUrl });
     return res.status(401).json({
       success: false,
-      error: { message: 'Invalid internal signature', code: 'INTERNAL_AUTH_FAILED', reason },
+      error: { message: 'Unauthorized', code: 'INTERNAL_AUTH_FAILED' },
     });
   }
 

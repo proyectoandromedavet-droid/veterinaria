@@ -2,7 +2,7 @@
 
 const { Router } = require('express');
 const { param, query } = require('express-validator');
-const { db, R, validate, parsePagination, parseJson, extractObjectRef, getPresignedUrl, ensurePatientInOrg, logDocumentsError } = require('../documents.common');
+const { db, R, validate, parsePagination, parseJson, extractObjectRef, getPresignedUrl, ensurePatientInOrg, logDocumentsError, BUCKETS } = require('../documents.common');
 
 const router = Router();
 
@@ -106,6 +106,10 @@ router.get('/:id/download-url',
       if (!row) return R.notFound(res, 'Inbox document not found');
       const ref = extractObjectRef(row.storage_path);
       if (!ref) return R.badRequest(res, 'Document has no downloadable storage reference');
+      const expectedPrefix = `documents/${req.user.orgId}/`;
+      if (ref.bucket !== BUCKETS.documents || !ref.objectName.startsWith(expectedPrefix)) {
+        return R.forbidden(res, 'Storage reference fuera del alcance de la organizacion', 'DOCUMENT_STORAGE_SCOPE');
+      }
       const url = await getPresignedUrl(ref.bucket, ref.objectName, 3600);
       return R.ok(res, { url, expiresIn: 3600 });
     } catch (err) {

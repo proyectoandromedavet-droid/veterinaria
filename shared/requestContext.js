@@ -1,5 +1,12 @@
 'use strict';
 
+// BUG-16: allowlist de roles válidos para prevenir inyección de roles arbitrarios
+const KNOWN_ROLES = new Set([
+  'superadmin', 'org_admin', 'branch_manager', 'vet', 'receptionist',
+  'assistant', 'pharmacist', 'groomer', 'accountant', 'lab_tech',
+  'radiologist', 'pathologist', 'surgeon', 'anesthesiologist',
+]);
+
 function splitCsvHeader(value) {
   return String(value || '')
     .split(',')
@@ -12,9 +19,12 @@ function getRequestContext(headers = {}) {
     userId: headers['x-user-id'] || null,
     orgId: headers['x-org-id'] || null,
     branchId: headers['x-branch-id'] || null,
-    roles: splitCsvHeader(headers['x-user-roles']),
+    // BUG-16: filtrar roles no reconocidos para prevenir privilege escalation por header injection
+    roles: splitCsvHeader(headers['x-user-roles']).filter((r) => KNOWN_ROLES.has(r)),
     email: headers['x-user-email'] || null,
     jti: headers['x-jti'] || null,
+    authType: headers['x-auth-type'] || null,
+    apiKeyScopes: splitCsvHeader(headers['x-api-key-scopes']),
     requestId: headers['x-request-id'] || null,
     traceId: headers['x-trace-id'] || null,
     spanId: headers['x-span-id'] || null,

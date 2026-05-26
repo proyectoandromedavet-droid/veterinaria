@@ -6,15 +6,50 @@ const { db, R, validate } = require('../grooming.common');
 
 const router = Router();
 
+async function ensurePatientInBranch(req, patientId) {
+  return db.queryOne(
+    `SELECT p.id
+       FROM patients p
+      WHERE p.id = :pid
+        AND p.organization_id = :orgId
+        AND EXISTS (
+          SELECT 1
+            FROM patient_owners po
+            JOIN clients c ON c.id = po.client_id
+           WHERE po.patient_id = p.id
+             AND c.branch_id = :bid
+             AND po.deleted_at IS NULL
+        )`,
+    { pid: patientId, orgId: req.user.orgId, bid: req.user.branchId }
+  );
+}
+
 router.get('/:patientId', async (req, res, next) => {
   try {
+    const patient = await ensurePatientInBranch(req, req.params.patientId);
+    if (!patient) return R.notFound(res, 'Paciente no encontrado');
+
     const profile = await db.queryOne(`SELECT * FROM patient_grooming_profile WHERE patient_id = :pid`, { pid: req.params.patientId });
     return R.ok(res, profile);
   } catch (e) { next(e); }
 });
 
-router.post('/:patientId', body('preferredGroomingStyle').optional(), validate, async (req, res, next) => {
+router.post('/:patientId',
+  body('preferredGroomingStyle').optional().isString().trim().isLength({ max: 200 }),
+  body('coatType').optional().isString().trim().isLength({ max: 100 }),
+  body('regularGroomingFrequency').optional().isString().trim().isLength({ max: 100 }),
+  body('behaviorWithGrooming').optional().isString().trim().isLength({ max: 500 }),
+  body('muzzleRequired').optional().isBoolean(),
+  body('preferredProducts').optional().isString().trim().isLength({ max: 500 }),
+  body('allergicToProducts').optional().isString().trim().isLength({ max: 500 }),
+  body('knownIssues').optional().isString().trim().isLength({ max: 1000 }),
+  body('notes').optional().isString().trim().isLength({ max: 2000 }),
+  validate,
+  async (req, res, next) => {
   try {
+    const patient = await ensurePatientInBranch(req, req.params.patientId);
+    if (!patient) return R.notFound(res, 'Paciente no encontrado');
+
     const { preferredGroomingStyle, coatType, regularGroomingFrequency, behaviorWithGrooming, muzzleRequired, sedationHistory, preferredProducts, allergicToProducts, knownIssues, notes } = req.body;
     await db.query(
       `INSERT INTO patient_grooming_profile

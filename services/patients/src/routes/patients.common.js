@@ -5,6 +5,8 @@ const multer = require('multer');
 const path = require('path');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
+const { createLogger } = require('../../../../shared/logger');
+const log = createLogger('patients');
 const { cacheMiddleware, httpCacheHeaders } = require('../../../../shared/cache');
 const { buildOrgScope, buildBranchScope, scopeParams } = require('../../../../shared/tenantScope');
 
@@ -45,7 +47,7 @@ function validate(req, res, next) {
 }
 
 function logPatientsError(route, err, meta = {}) {
-  console.error(`[patients] ${route} failed`, {
+  log.error(`${route} failed`, {
     message: err?.message,
     code: err?.code,
     errno: err?.errno,
@@ -57,37 +59,47 @@ function logPatientsError(route, err, meta = {}) {
   });
 }
 
-let _patientSchemaPromise;
+const SCHEMA_TTL_MS = parseInt(process.env.SCHEMA_CACHE_TTL_MS || '300000'); // 5 min
+let _patientSchemaPromise = null;
+let _patientSchemaExpiresAt = 0;
+
 async function getPatientSchema() {
-  if (!_patientSchemaPromise) {
-    _patientSchemaPromise = db.query(
-      `SELECT TABLE_NAME, COLUMN_NAME
-       FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME IN (
-           'patients',
-           'clients',
-           'patient_owners',
-           'appointments',
-           'medical_records',
-           'vaccinations',
-           'deworming_records',
-           'surgeries',
-           'hospitalizations',
-           'tele_sessions',
-           'grooming_appointments',
-           'patient_allergies',
-           'patient_chronic_conditions'
-         )`
-    ).then((rows) => {
-      const schema = {};
-      for (const row of rows) {
-        if (!schema[row.TABLE_NAME]) schema[row.TABLE_NAME] = new Set();
-        schema[row.TABLE_NAME].add(row.COLUMN_NAME);
-      }
-      return schema;
-    });
+  if (_patientSchemaPromise && Date.now() < _patientSchemaExpiresAt) {
+    return _patientSchemaPromise;
   }
+  _patientSchemaExpiresAt = Date.now() + SCHEMA_TTL_MS;
+  _patientSchemaPromise = db.query(
+    `SELECT TABLE_NAME, COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME IN (
+         'patients',
+         'clients',
+         'patient_owners',
+         'appointments',
+         'medical_records',
+         'vaccinations',
+         'deworming_records',
+         'surgeries',
+         'hospitalizations',
+         'tele_sessions',
+         'grooming_appointments',
+         'patient_allergies',
+         'patient_chronic_conditions'
+       )`
+  ).then((rows) => {
+    const schema = {};
+    for (const row of rows) {
+      if (!schema[row.TABLE_NAME]) schema[row.TABLE_NAME] = new Set();
+      schema[row.TABLE_NAME].add(row.COLUMN_NAME);
+    }
+    return schema;
+  }).catch((err) => {
+    // Resetear para reintentar en el próximo request
+    _patientSchemaPromise = null;
+    _patientSchemaExpiresAt = 0;
+    throw err;
+  });
   return _patientSchemaPromise;
 }
 

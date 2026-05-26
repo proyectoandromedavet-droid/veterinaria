@@ -35,6 +35,20 @@ function defaultReconnectStrategy(retries) {
   return Math.min(retries * 200, 3000);
 }
 
+/**
+ * Redact the password from a Redis URL for safe logging/inspection.
+ * e.g. "redis://:s3cr3t@host:6379/0" → "redis://:***@host:6379/0"
+ */
+function redactRedisUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    if (u.password) u.password = '***';
+    return u.toString();
+  } catch {
+    return '<unparseable-redis-url>';
+  }
+}
+
 function buildRedisOptions(overrides = {}) {
   const connectTimeout = parseInt(process.env.REDIS_CONNECT_TIMEOUT_MS || '3000', 10);
   const reconnectStrategy = overrides.reconnectStrategy ?? defaultReconnectStrategy;
@@ -44,6 +58,8 @@ function buildRedisOptions(overrides = {}) {
     const family = parseRedisFamily(url);
     return {
       url,
+      // redactedUrl is used only for safe logging — never passed to the redis client
+      _redactedUrl: redactRedisUrl(url),
       socket: {
         connectTimeout,
         ...(family !== undefined ? { family } : {}),
@@ -68,25 +84,21 @@ function buildRedisOptions(overrides = {}) {
 }
 
 function logRedisError(label, err) {
-  console.warn(`[redis][${label}]`, {
-    message: err?.message,
-    code: err?.code,
-  });
+  // Avoid logging the full error address/url that may contain credentials
+  const safeMessage = String(err?.message || '').replace(/redis:\/\/[^\s]*/gi, '<redacted-url>');
+  log.warn('Redis client error', { label, message: safeMessage, code: err?.code });
 }
 
 function logRedisConnected(label) {
   if (connectedLabels.has(label)) return;
   connectedLabels.add(label);
-  console.info(`[redis][${label}] connected`);
+  log.info('Redis connected', { label });
 }
 
 function logRedisDisabled(label, err) {
   if (disabledLabels.has(label)) return;
   disabledLabels.add(label);
-  console.warn(`[redis][${label}] disabled/fallback`, {
-    message: err?.message,
-    code: err?.code,
-  });
+  log.warn('Redis disabled/fallback', { label, message: err?.message, code: err?.code });
 }
 
 function createRedisClient(label, overrides = {}) {

@@ -39,6 +39,16 @@ paths:
       responses:
         '200':
           description: OK
+  /invoices/{id}/pay:
+    patch:
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
   /invoices/{id}/cancel:
     patch:
       parameters:
@@ -70,6 +80,10 @@ paths:
         '200':
           description: OK
   /payments:
+    get:
+      responses:
+        '200':
+          description: OK
     post:
       responses:
         '201':

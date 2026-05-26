@@ -39,6 +39,16 @@ router.post('/access',
       );
       if (!branch) return R.notFound(res, 'Sucursal no encontrada en el org');
 
+      // OT-SEC: verificar que el usuario objetivo pertenece a la misma organización
+      // para evitar conceder acceso a usuarios de otra org.
+      const targetUser = await db.queryOne(
+        `SELECT u.id FROM users u
+         JOIN branches b ON u.branch_id = b.id
+         WHERE u.id = :uid AND b.organization_id = :orgId`,
+        { uid: userId, orgId: req.user.orgId }
+      );
+      if (!targetUser) return R.notFound(res, 'Usuario no encontrado en la organización');
+
       const [r] = await db.query(
         `INSERT INTO cross_branch_access (user_id, branch_id, granted_by, valid_until, reason)
          VALUES (:uid, :bid, :gby, :until, :reason)

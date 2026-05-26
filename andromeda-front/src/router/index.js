@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
+const IS_DEV_MODE = import.meta.env.DEV || import.meta.env.MODE === 'development'
+
 const routes = [
   {
     path: '/login',
@@ -51,6 +53,11 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   await auth.bootstrap()
+
+  if (IS_DEV_MODE) {
+    if (to.path === '/login' && auth.isAuthenticated) return '/'
+    return true
+  }
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) return '/login'
   if (to.path === '/login' && auth.isAuthenticated) return '/'

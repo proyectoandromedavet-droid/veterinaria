@@ -125,13 +125,16 @@ export async function updateFeatureFlags(orgId, flags) {
 }
 
 export async function loadOverrides(orgId) {
-  const [rolesRes, overridesRes] = await Promise.all([
+  const [rolesRes, overridesRes] = await Promise.allSettled([
     adminRbacApi.listRoles(),
     adminRbacApi.listOverrides(orgId),
   ])
+  if (rolesRes.status === 'rejected' && overridesRes.status === 'rejected') {
+    throw rolesRes.reason
+  }
   return {
-    roleCatalog: rolesRes.data?.data || [],
-    overrides: overridesRes.data?.data || [],
+    roleCatalog: rolesRes.status === 'fulfilled' ? (rolesRes.value.data?.data || []) : [],
+    overrides: overridesRes.status === 'fulfilled' ? (overridesRes.value.data?.data || []) : [],
   }
 }
 

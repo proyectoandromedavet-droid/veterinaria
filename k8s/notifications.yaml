@@ -4,6 +4,11 @@ metadata:
   name: vetmanager-notifications
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: vetmanager-notifications
@@ -12,21 +17,47 @@ spec:
       labels:
         app: vetmanager-notifications
     spec:
+      serviceAccountName: vetmanager-notifications
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: notifications
-          image: ghcr.io/ajpfox10/veterinaria-notifications:latest
+          image: ghcr.io/ajpfox10/veterinaria-notifications:81c52c17
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: vetmanager-config
+            - secretRef:
+                name: vetmanager-secrets
+          env:
+            - name: PORT
+              value: "3009"
           ports:
-            - containerPort: 4059
+            - containerPort: 3009
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "768Mi"
           livenessProbe:
             httpGet:
               path: /health/live
-              port: 4059
+              port: 3009
             initialDelaySeconds: 15
             periodSeconds: 20
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: 4059
+              port: 3009
             initialDelaySeconds: 10
             periodSeconds: 15
 ---
@@ -38,5 +69,5 @@ spec:
   selector:
     app: vetmanager-notifications
   ports:
-    - port: 4059
-      targetPort: 4059
+    - port: 3009
+      targetPort: 3009

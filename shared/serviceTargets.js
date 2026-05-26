@@ -193,6 +193,24 @@ async function gatherCandidateTargets(name) {
   ]);
 }
 
+// SEC: lista de prefijos de hostnames permitidos para service discovery health probes.
+// Evita SSRF si un valor malicioso llega al registry de servicios.
+// Solo se permiten dominios de la red interna de servicios conocidos.
+const ALLOWED_SERVICE_HOSTS_RE = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|[a-zA-Z0-9-]+\.railway\.internal|[a-zA-Z0-9-]+\.internal)$/;
+
+function isAllowedServiceUrl(url) {
+  try {
+    const parsed = new URL(url);
+    // Solo http/https
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname;
+    // Permitir localhost / redes privadas / sufijos .internal de Railway
+    return ALLOWED_SERVICE_HOSTS_RE.test(host);
+  } catch {
+    return false;
+  }
+}
+
 async function probeTarget(url) {
   const cached = healthCache.get(url);
   if (cached && (Date.now() - cached.checkedAt) < HEALTH_TTL_MS) {
@@ -205,6 +223,14 @@ async function probeTarget(url) {
     checkedAt: Date.now(),
     statusCode: null,
   };
+
+  // SEC: validar que la URL de health probe sea un servicio interno conocido
+  // para evitar SSRF si un valor arbitrario llega vía DNS discovery o registry.
+  if (!isAllowedServiceUrl(url)) {
+    result.healthy = false;
+    healthCache.set(url, result);
+    return result;
+  }
 
   try {
     const response = await fetch(`${url}${HEALTH_PATH}`, {

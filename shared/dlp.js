@@ -92,12 +92,25 @@ async function createAlert(orgId, userId, alertType, severity, details) {
  * Obtiene alertas de seguridad de un org (para el panel admin).
  */
 async function getAlerts(orgId, { limit = 50, onlyUnacknowledged = false } = {}) {
-  const whereExtra = onlyUnacknowledged ? 'AND acknowledged = FALSE' : '';
+  // Validate limit to prevent large result sets and ensure it is a safe integer
+  // before embedding in the query. Named placeholder :limit is used for binding.
+  const safeLimit = Math.min(Math.max(1, parseInt(limit, 10) || 50), 500);
+
+  // Use two separate queries instead of string-concatenating the WHERE clause
+  // so there is never any user-controlled text interpolated into the SQL.
+  if (onlyUnacknowledged) {
+    return db.query(
+      `SELECT * FROM security_alerts
+       WHERE org_id = :orgId AND acknowledged = FALSE
+       ORDER BY created_at DESC LIMIT :limit`,
+      { orgId, limit: safeLimit },
+    );
+  }
   return db.query(
     `SELECT * FROM security_alerts
-     WHERE org_id = :orgId ${whereExtra}
+     WHERE org_id = :orgId
      ORDER BY created_at DESC LIMIT :limit`,
-    { orgId, limit },
+    { orgId, limit: safeLimit },
   );
 }
 

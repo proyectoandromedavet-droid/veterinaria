@@ -11,6 +11,7 @@ const {
   requirePerm,
   validate,
   getUser,
+  ensurePatientInUserScope,
   log,
 } = require('../ai.common');
 
@@ -24,6 +25,9 @@ router.get('/:patientId/risk',
     try {
       const user = getUser(req);
       const { patientId } = req.params;
+      const scoped = await ensurePatientInUserScope(patientId, user);
+      if (!scoped) return R.notFound(res, 'Paciente no encontrado');
+
       const patient = await db.queryOne(
         `SELECT p.id, p.name, p.birthdate, p.sex, p.weight_kg AS weight,
                 sp.common_name AS species, br.name AS breed
@@ -102,13 +106,19 @@ router.get('/:patientId/risk/history',
   async (req, res, next) => {
     try {
       const user = getUser(req);
+      const scoped = await ensurePatientInUserScope(req.params.patientId, user);
+      if (!scoped) return R.notFound(res, 'Paciente no encontrado');
+
       const rows = await db.query(
         `SELECT id, overall_level, risks_json, recommendations_json, computed_at
          FROM ai_risk_assessments
          WHERE patient_id = :pid AND org_id = :org
          ORDER BY computed_at DESC LIMIT 20`,
         { pid: req.params.patientId, org: user.orgId }
-      );
+      ).catch((err) => {
+        log.warn('risk history query failed', { err: err.message });
+        return [];
+      });
       return R.ok(res, rows);
     } catch (e) { next(e); }
   }

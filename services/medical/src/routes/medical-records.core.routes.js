@@ -19,10 +19,12 @@ const router = Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const { patientId, status, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const { patientId, status, page = 1 } = req.query;
+    const limit = Math.min(parseInt(req.query.limit || 20, 10) || 20, 100);
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const offset = (pageNum - 1) * limit;
     const conditions = ['a.branch_id = :bid', 'p.organization_id = :orgId'];
-    const params = { bid: req.user.branchId, orgId: req.user.orgId, limit: parseInt(limit), offset: parseInt(offset) };
+    const params = { bid: req.user.branchId, orgId: req.user.orgId, limit, offset };
 
     if (patientId) { conditions.push('mr.patient_id = :pid'); params.pid = patientId; }
     if (status) { conditions.push('mr.status = :status'); params.status = status; }
@@ -60,11 +62,14 @@ router.get('/:id', async (req, res, next) => {
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
        FROM medical_records mr
-       JOIN patients p ON mr.patient_id = p.id
-       JOIN species sp ON p.species_id  = sp.id
-       JOIN users   u  ON mr.vet_id     = u.id
-       WHERE mr.id = :id AND p.organization_id = :orgId`,
-      { id: req.params.id, orgId: req.user.orgId }
+       JOIN patients p   ON mr.patient_id = p.id
+       JOIN species sp   ON p.species_id  = sp.id
+       JOIN users   u    ON mr.vet_id     = u.id
+       LEFT JOIN appointments a ON a.id = mr.appointment_id
+       WHERE mr.id = :id
+         AND p.organization_id = :orgId
+         AND (:branchId IS NULL OR a.branch_id = :branchId)`,
+      { id: req.params.id, orgId: req.user.orgId, branchId: req.user.branchId || null }
     );
     if (!mr) return R.notFound(res);
 
@@ -90,9 +95,9 @@ router.get('/:id', async (req, res, next) => {
 
     return R.ok(res, {
       ...mr,
-      chief_complaint: decrypt(mr.chief_complaint),
-      reason_for_visit: decrypt(mr.reason_for_visit),
-      notes: decrypt(mr.notes),
+      chief_complaint: mr.chief_complaint ? decrypt(mr.chief_complaint) : null,
+      reason_for_visit: mr.reason_for_visit ? decrypt(mr.reason_for_visit) : null,
+      notes: mr.notes ? decrypt(mr.notes) : null,
       anamnesis: decryptFields(anamnesis, ANAMNESIS_FIELDS),
       physicalExam: decryptFields(physExam, PHYSICAL_EXAM_FIELDS),
       diagnoses: decryptRows(diagnoses, DIAGNOSIS_FIELDS),
@@ -106,7 +111,11 @@ router.get('/:id', async (req, res, next) => {
 });
 
 router.post('/',
-  body('chiefComplaint').notEmpty().withMessage('El motivo de consulta es requerido'),
+  body('chiefComplaint').notEmpty().withMessage('El motivo de consulta es requerido').isString().isLength({ max: 4000 }),
+  body('notes').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  body('weightKg').optional({ nullable: true }).isFloat({ min: 0, max: 1000 }),
+  body('bodyConditionScore').optional({ nullable: true }).isFloat({ min: 1, max: 9 }),
+  body('temperatureC').optional({ nullable: true }).isFloat({ min: 30, max: 45 }),
   validate,
   async (req, res, next) => {
     try {
@@ -122,6 +131,12 @@ router.post('/',
           const u = await db.queryOne('SELECT branch_id FROM users WHERE id = :uid', { uid: req.user.userId });
           branchId = u?.branch_id || null;
         }
+        const patient = await db.queryOne(
+          `SELECT id FROM patients WHERE id = :pid AND organization_id = :orgId
+             AND (:branchId IS NULL OR branch_id = :branchId)`,
+          { pid: patientId, orgId: req.user.orgId, branchId }
+        );
+        if (!patient) return R.notFound(res, 'Paciente no encontrado');
 
         const [apptResult] = await db.query(
           `INSERT INTO appointments

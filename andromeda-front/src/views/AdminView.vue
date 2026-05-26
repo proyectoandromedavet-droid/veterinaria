@@ -532,11 +532,13 @@ import {
   updateAuthPolicy as updateAuthPolicyRequest,
   updateFeatureFlags as updateFeatureFlagsRequest,
 } from '../composables/admin/useAdminDomain'
+import { useUiFeedback } from '../composables/useUiFeedback'
 import { useAuthStore } from '../stores/auth'
 import { logError } from '../utils/errors'
 
 const auth   = useAuthStore()
 const router = useRouter()
+const { confirm, success } = useUiFeedback()
 const isSuperAdmin = computed(() => auth.hasRole('superadmin'))
 
 const users = ref([])
@@ -657,6 +659,7 @@ async function handleCreate() {
 
     await createAdminUser(payload)
     createSuccess.value = true
+    success('Usuario creado correctamente.')
     await loadPage(1)
   } catch (error) {
     const message = extractAdminError(error, 'No se pudo crear el usuario.')
@@ -680,6 +683,7 @@ async function handleDeactivate() {
   try {
     await deactivateAdminUser(deactivateTarget.value.id)
     deactivateTarget.value = null
+    success('Usuario desactivado correctamente.')
     await loadPage(meta.value.page)
   } catch (error) {
     deactivateError.value = extractAdminError(error, 'No se pudo desactivar el usuario.')
@@ -695,6 +699,7 @@ async function handleRoleChange(user, role) {
   globalError.value = ''
   try {
     await updateAdminUserRole(user.id, role)
+    success('Rol actualizado correctamente.')
     await loadPage(meta.value.page)
   } catch (error) {
     globalError.value = extractAdminError(error, 'No se pudo actualizar el rol.')
@@ -730,6 +735,7 @@ async function toggleTwoFactorPolicy(enabled) {
   try {
     await updateAuthPolicyRequest(enabled)
     authPolicy.twoFactorOptionalEnabled = enabled
+    success('Politica de autenticacion actualizada.')
   } catch (error) {
     authPolicyError.value = extractAdminError(error, 'No se pudo actualizar la politica de 2FA.')
   } finally {
@@ -768,6 +774,7 @@ async function toggleFeatureFlag(key, enabled) {
   try {
     const flags = await updateFeatureFlagsRequest(auth.orgId, { [key]: enabled })
     for (const [flagKey, value] of Object.entries(flags)) featureFlags[flagKey] = Boolean(value)
+    success('Feature flag actualizado.')
   } catch (error) {
     featureFlags[key] = previous
     if (error.response?.status === 404) {
@@ -795,6 +802,7 @@ async function saveOverride() {
     overrideForm.role = ''
     overrideForm.grant = ''
     overrideForm.revoke = ''
+    success('Override guardado correctamente.')
     await loadOverrides()
   } catch (error) {
     overrideError.value = extractAdminError(error, 'No se pudo guardar el override.')
@@ -805,8 +813,16 @@ async function saveOverride() {
 
 async function removeOverride(role) {
   overrideError.value = ''
+  const ok = await confirm({
+    title: 'Eliminar override',
+    message: `Eliminar el override del rol ${formatRole(role)}?`,
+    confirmText: 'Eliminar override',
+    variant: 'danger',
+  })
+  if (!ok) return
   try {
     await deleteOverrideRequest(auth.orgId, role)
+    success('Override eliminado correctamente.')
     await loadOverrides()
   } catch (error) {
     overrideError.value = extractAdminError(error, 'No se pudo eliminar el override.')

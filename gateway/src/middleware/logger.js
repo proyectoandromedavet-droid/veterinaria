@@ -64,9 +64,18 @@ if (process.env.LOG_TO_FILE !== 'false') {
 const logger = winston.createLogger({ level, transports });
 
 // ── Morgan HTTP stream → winston ──────────────────────────────────────────────
+// Strip sensitive query-string parameters (token, api_key, secret) from logged URLs
+// to avoid credential leakage in log files (e.g. WS upgrade with ?token= in dev).
+const SENSITIVE_QS_RE = /([?&])(token|api_key|secret|password|access_token|refresh_token)=[^&]*/gi;
+function sanitizeUrlForLog(url) {
+  return (url || '').replace(SENSITIVE_QS_RE, '$1$2=[REDACTED]');
+}
+
+morgan.token('safe-url', (req) => sanitizeUrlForLog(req.originalUrl || req.url));
+
 const morganFormat = isProd
-  ? ':remote-addr :method :url :status :res[content-length] :response-time ms :req[x-request-id]'
-  : ':method :url :status :response-time ms';
+  ? ':remote-addr :method :safe-url :status :res[content-length] :response-time ms :req[x-request-id]'
+  : ':method :safe-url :status :response-time ms';
 
 const morganMiddleware = morgan(
   morganFormat,

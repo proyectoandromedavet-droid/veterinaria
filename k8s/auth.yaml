@@ -4,6 +4,11 @@ metadata:
   name: vetmanager-auth
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: vetmanager-auth
@@ -12,11 +17,34 @@ spec:
       labels:
         app: vetmanager-auth
     spec:
+      serviceAccountName: vetmanager-auth
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: auth
-          image: ghcr.io/ajpfox10/veterinaria-auth:latest
+          image: ghcr.io/ajpfox10/veterinaria-auth:81c52c17
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: vetmanager-config
+            - secretRef:
+                name: vetmanager-secrets
           ports:
             - containerPort: 3001
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "768Mi"
           livenessProbe:
             httpGet:
               path: /health/live

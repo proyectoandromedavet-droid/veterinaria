@@ -22,43 +22,77 @@ defineProps({
 
 <style scoped>
 .base-button {
-  padding: 12px 18px;
+  min-height: 38px;
+  padding: 10px 16px;
   border-radius: var(--radius);
-  border: none;
+  border: 1px solid transparent;
   cursor: pointer;
-  font-weight: 600;
-  transition: opacity var(--transition), transform var(--transition), background var(--transition);
+  font-weight: 700;
+  letter-spacing: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: background var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
 }
 
 .base-button--primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-mint) 100%);
+  background: var(--primary);
+  border-color: var(--primary);
   color: var(--white);
+  box-shadow: 0 1px 2px rgba(15, 118, 110, 0.18);
 }
 
-.base-button--secondary,
-.base-button--ghost {
+.base-button--primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.base-button--secondary {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
 }
 
+.base-button--secondary:hover:not(:disabled),
+.base-button--ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.base-button--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-2);
+}
+
 .base-button--danger {
   background: var(--danger);
+  border-color: var(--danger);
   color: var(--white);
 }
 
+.base-button--danger:hover:not(:disabled) {
+  background: #B91C1C;
+  border-color: #B91C1C;
+}
+
 .base-button--sm {
-  padding: 8px 14px;
+  min-height: 32px;
+  padding: 7px 12px;
   font-size: 0.85rem;
 }
 
 .base-button--md {
-  padding: 12px 18px;
+  min-height: 38px;
+  padding: 10px 16px;
   font-size: 0.9rem;
 }
 
 .base-button--lg {
-  padding: 14px 22px;
+  min-height: 44px;
+  padding: 12px 20px;
   font-size: 1rem;
 }
 
@@ -67,8 +101,7 @@ defineProps({
 }
 
 .base-button:hover:not(:disabled) {
-  opacity: 0.92;
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 .base-button:disabled {

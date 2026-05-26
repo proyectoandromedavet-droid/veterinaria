@@ -58,6 +58,18 @@ async function getApplied(conn) {
   return new Map(rows.map((row) => [row.filename, row.checksum]));
 }
 
+function getChecksumDrift(files, applied) {
+  return files
+    .filter((file) => applied.has(file))
+    .map((file) => {
+      const content = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+      const current = checksum(content);
+      const recorded = applied.get(file);
+      return current === recorded ? null : { file, recorded, current };
+    })
+    .filter(Boolean);
+}
+
 async function rollback(conn, files, applied, rollbackCount, isDry) {
   const rollbackFiles = getRollbackFiles();
   const appliedFiles = files.filter((file) => applied.has(file));
@@ -81,7 +93,7 @@ async function rollback(conn, files, applied, rollbackCount, isDry) {
 
     const sql = fs.readFileSync(path.join(ROLLBACKS_DIR, filename), 'utf8');
     const t0 = Date.now();
-    await conn.execute(sql);
+    await conn.query(sql);
     const ms = Date.now() - t0;
     await conn.execute('DELETE FROM migration_history WHERE filename = ?', [filename]);
     await conn.execute(
@@ -113,7 +125,7 @@ async function applyPending(conn, files, applied, isDry) {
 
     const t0 = Date.now();
     try {
-      await conn.execute(content);
+      await conn.query(content);
       const ms = Date.now() - t0;
       await conn.execute(
         'INSERT INTO migration_history (filename, checksum, duration_ms) VALUES (?, ?, ?)',
@@ -139,20 +151,32 @@ async function run() {
 
   const conn = await getConnection();
   try {
-    await conn.execute(ENSURE_TABLE);
+    await conn.query(ENSURE_TABLE);
     const files = getMigrationFiles();
     const applied = await getApplied(conn);
     const rollbackFiles = getRollbackFiles();
+    const drift = getChecksumDrift(files, applied);
 
     if (isStatus) {
       console.log('\nMigration status:');
       for (const file of files) {
-        const status = applied.has(file) ? 'applied' : 'pending';
+        const hasDrift = drift.some((item) => item.file === file);
+        const status = applied.has(file) ? (hasDrift ? 'drift' : 'applied') : 'pending';
         const canRollback = rollbackFiles.has(file) ? 'rollback:yes' : 'rollback:no';
         console.log(`  ${status}  ${file}  (${canRollback})`);
       }
+      if (drift.length) {
+        console.log('\nChecksum drift detected:');
+        for (const item of drift) {
+          console.log(`  ${item.file}`);
+        }
+      }
       console.log(`\n${applied.size} applied, ${files.filter((f) => !applied.has(f)).length} pending\n`);
       return;
+    }
+
+    if (drift.length) {
+      throw new Error(`Applied migration checksum drift detected: ${drift.map((item) => item.file).join(', ')}`);
     }
 
     if (rollbackCount > 0) {

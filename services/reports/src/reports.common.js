@@ -39,10 +39,20 @@ function calcNextRun(frequency, dayOfWeek, dayOfMonth) {
   return next.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-function dateRange(query) {
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_DATE_RANGE_DAYS = parseInt(process.env.REPORTS_MAX_DATE_RANGE_DAYS || '366', 10);
+
+function dateRange(query, maxDays = MAX_DATE_RANGE_DAYS) {
   const now = new Date();
-  const from = query.from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const to = query.to || now.toISOString().slice(0, 10);
+  const from = (query.from && ISO_DATE_RE.test(query.from)) ? query.from : new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const to   = (query.to   && ISO_DATE_RE.test(query.to))   ? query.to   : now.toISOString().slice(0, 10);
+
+  // SECURITY: limitar el rango máximo de fechas para evitar queries sin límite temporal
+  const diffDays = (new Date(to) - new Date(from)) / 86_400_000;
+  if (diffDays < 0 || diffDays > maxDays) {
+    const clamped = new Date(new Date(from).getTime() + maxDays * 86_400_000).toISOString().slice(0, 10);
+    return { from, to: clamped };
+  }
   return { from, to };
 }
 
@@ -95,7 +105,7 @@ async function getBranchDashboard(branchId, from, to) {
   const [patients, appointments, revenue, payments] = await Promise.all([
     db.queryRead(
       `SELECT COUNT(DISTINCT p.id) AS total_patients,
-              COUNT(DISTINCT CASE WHEN DATE(p.created_at) BETWEEN :from AND :to THEN p.id END) AS new_patients
+              COUNT(DISTINCT CASE WHEN p.created_at >= :from AND p.created_at < DATE_ADD(:to, INTERVAL 1 DAY) THEN p.id END) AS new_patients
        FROM patients p
        JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
        JOIN clients cl ON cl.id = po.client_id AND cl.branch_id = :bid`,
@@ -108,7 +118,9 @@ async function getBranchDashboard(branchId, from, to) {
               SUM(status = 'no_show') AS no_show_appointments,
               ROUND(AVG(duration_minutes), 1) AS avg_duration_minutes
        FROM appointments
-       WHERE branch_id = :bid AND DATE(scheduled_date) BETWEEN :from AND :to`,
+       WHERE branch_id = :bid
+         AND scheduled_date >= :from
+         AND scheduled_date < DATE_ADD(:to, INTERVAL 1 DAY)`,
       { bid: branchId, from, to }
     ),
     db.queryRead(
@@ -127,7 +139,8 @@ async function getBranchDashboard(branchId, from, to) {
               ROUND(COALESCE(SUM(amount), 0), 2) AS paid_amount
        FROM payments
        WHERE branch_id = :bid
-         AND DATE(payment_date) BETWEEN :from AND :to
+         AND payment_date >= :from
+         AND payment_date < DATE_ADD(:to, INTERVAL 1 DAY)
          AND COALESCE(payment_status, 'completed') != 'cancelled'`,
       { bid: branchId, from, to },
       [{ total_payments: 0, paid_amount: 0 }]
@@ -159,9 +172,18 @@ async function fetchReportData(type, branchId, orgId, params = {}) {
   const f = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const t = to || now.toISOString().slice(0, 10);
 
+  // SECURITY: whitelist de tipos de reporte para evitar error-message injection
+  const VALID_TYPES = new Set(['revenue', 'appointments', 'diagnoses']);
+  if (!VALID_TYPES.has(type)) {
+    throw Object.assign(new Error('Tipo de reporte no valido'), { code: 'UNKNOWN_REPORT' });
+  }
+
   switch (type) {
     case 'revenue': {
-      const fmt = groupBy === 'day' ? '%Y-%m-%d' : groupBy === 'week' ? '%x-W%v' : '%Y-%m';
+      // SECURITY: whitelist de groupBy para evitar valor libre en DATE_FORMAT
+      const VALID_GROUP_BY = new Set(['day', 'week', 'month']);
+      const safeGroupBy = VALID_GROUP_BY.has(groupBy) ? groupBy : 'month';
+      const fmt = safeGroupBy === 'day' ? '%Y-%m-%d' : safeGroupBy === 'week' ? '%x-W%v' : '%Y-%m';
       return db.query(
         `SELECT DATE_FORMAT(i.issued_date,:fmt) AS period,
                 COUNT(DISTINCT i.id) AS invoices,
@@ -183,13 +205,18 @@ async function fetchReportData(type, branchId, orgId, params = {}) {
                   SUM(status='no_show') AS no_show,
                   ROUND(SUM(status='completed')*100.0/COUNT(*),2) AS completion_rate,
                   ROUND(SUM(status='no_show')*100.0/COUNT(*),2) AS no_show_rate
-           FROM appointments WHERE branch_id=:bid AND DATE(scheduled_date) BETWEEN :from AND :to`,
+           FROM appointments
+           WHERE branch_id=:bid
+             AND scheduled_date >= :from
+             AND scheduled_date < DATE_ADD(:to, INTERVAL 1 DAY)`,
           { bid: branchId, from: f, to: t }
         ),
         db.query(
           `SELECT at2.name AS type, COUNT(*) AS count, ROUND(COUNT(*)*100.0/SUM(COUNT(*)) OVER(),2) AS pct
            FROM appointments a LEFT JOIN appointment_types at2 ON a.appointment_type_id=at2.id
-           WHERE a.branch_id=:bid AND DATE(a.scheduled_date) BETWEEN :from AND :to
+           WHERE a.branch_id=:bid
+             AND a.scheduled_date >= :from
+             AND a.scheduled_date < DATE_ADD(:to, INTERVAL 1 DAY)
            GROUP BY at2.name ORDER BY count DESC`,
           { bid: branchId, from: f, to: t }
         ),
@@ -197,6 +224,7 @@ async function fetchReportData(type, branchId, orgId, params = {}) {
       return { summary: summary[0], byType, _meta: { from: f, to: t } };
     }
     case 'diagnoses':
+      // SECURITY: LIMIT en SQL para evitar cargar toda la tabla en memoria antes de agregar
       return aggregateDiagnoses(await db.query(
         `SELECT d.diagnosis_name, d.diagnosis_code, sp.common_name AS species
          FROM diagnoses d
@@ -204,12 +232,15 @@ async function fetchReportData(type, branchId, orgId, params = {}) {
          JOIN appointments a ON mr.appointment_id=a.id AND a.branch_id=:bid
          JOIN patients p ON mr.patient_id=p.id
          JOIN species sp ON p.species_id=sp.id
-         WHERE DATE(d.created_at) BETWEEN :from AND :to AND d.is_primary=TRUE
-         ORDER BY d.created_at DESC`,
+         WHERE d.created_at >= :from
+           AND d.created_at < DATE_ADD(:to, INTERVAL 1 DAY)
+           AND d.is_primary=TRUE
+         ORDER BY d.created_at DESC
+         LIMIT 5000`,
         { bid: branchId, from: f, to: t }
       ), parseInt(limit, 10));
     default:
-      throw Object.assign(new Error(`Tipo de reporte desconocido: ${type}`), { code: 'UNKNOWN_REPORT' });
+      throw Object.assign(new Error('Tipo de reporte no valido'), { code: 'UNKNOWN_REPORT' });
   }
 }
 

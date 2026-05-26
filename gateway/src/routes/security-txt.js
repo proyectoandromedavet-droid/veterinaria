@@ -6,13 +6,6 @@
  * Estándar: https://securitytxt.org / RFC 9116
  */
 
-const SECURITY_TXT = `Contact: mailto:alejandrojavierpeveri@gmail.com
-Preferred-Languages: es, en
-Policy: Si encontrás una vulnerabilidad en esta aplicación, por favor reportala de forma responsable al contacto indicado antes de divulgarla públicamente. Agradecemos el reporte responsable.
-Scope: *.vetmanager.io
-Expires: ${_nextYear()}
-`;
-
 function _nextYear() {
   const d = new Date();
   d.setFullYear(d.getFullYear() + 1);
@@ -20,6 +13,14 @@ function _nextYear() {
 }
 
 function securityTxtHandler(_req, res) {
+  // Expires se calcula en cada request para que nunca quede un valor caducado
+  // si el proceso lleva mucho tiempo activo.
+  const SECURITY_TXT = `Contact: mailto:alejandrojavierpeveri@gmail.com
+Preferred-Languages: es, en
+Policy: Si encontrás una vulnerabilidad en esta aplicación, por favor reportala de forma responsable al contacto indicado antes de divulgarla públicamente. Agradecemos el reporte responsable.
+Scope: *.vetmanager.io
+Expires: ${_nextYear()}
+`;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.send(SECURITY_TXT);
 }

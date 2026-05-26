@@ -4,6 +4,15 @@
  * AFIP — Factura Electrónica Argentina (WSFE).
  * Usa @afipsdk/afip.js que encapsula WSAA + WSFE via SOAP.
  *
+ * OT-089 — RIESGO DE SUPPLY CHAIN:
+ *   @afipsdk/afip.js no tiene auditoría pública de seguridad y es mantenida por
+ *   un único contribuidor sin proceso de revisión formal. Mitigaciones aplicadas:
+ *   - El SDK solo se instancia una vez por org (cache con TTL de 11h).
+ *   - Todas las llamadas están envueltas en circuit breaker + timeout.
+ *   - Las credenciales (cert/key/CUIT) vienen de secrets vault, no del SDK.
+ *   Alternativa a evaluar: implementar el handshake WSAA/WSFE directamente
+ *   con node-soap + xmlsec1 para eliminar la dependencia.
+ *
  * Variables de entorno por organización (o globales de entorno):
  *   AFIP_CUIT          — CUIT de la organización (sin guiones, ej: 20123456789)
  *   AFIP_CERT          — Contenido del certificado .pem (o ruta con AFIP_CERT_PATH)
@@ -25,9 +34,48 @@ const Afip = require('@afipsdk/afip.js');
 const fs   = require('fs');
 const db   = require('./db');
 const { getSecret } = require('./secrets');
+const { CircuitBreaker } = require('./circuitBreaker');
+const { getRedisSingleton } = require('./redis');
+const { createLogger } = require('./logger');
+
+const log = createLogger('afip');
+const afipBreaker = new CircuitBreaker('afip', { threshold: 3, timeout: 120000 });
+
+// OT-050: timeout configurable para llamadas AFIP (SOAP puede tardar)
+const AFIP_CALL_TIMEOUT_MS = parseInt(process.env.AFIP_CALL_TIMEOUT_MS || '45000', 10);
+// OT-050: retry con backoff exponencial
+const AFIP_MAX_RETRIES = parseInt(process.env.AFIP_MAX_RETRIES || '2', 10);
+
+// OT-051: TTL de cache de instancias (11h — tokens WSAA expiran a las 12h)
+const INSTANCE_CACHE_TTL_MS = parseInt(process.env.AFIP_INSTANCE_CACHE_TTL_MS || String(11 * 60 * 60 * 1000), 10);
 
 // ── Cache de instancias por CUIT ──────────────────────────────────────────────
 const _instances = new Map();
+
+async function callWithTimeout(fn) {
+  return Promise.race([
+    fn(),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(Object.assign(new Error('AFIP call timeout'), { code: 'AFIP_TIMEOUT' })), AFIP_CALL_TIMEOUT_MS)
+    ),
+  ]);
+}
+
+async function callWithRetry(fn) {
+  let lastErr;
+  for (let attempt = 0; attempt <= AFIP_MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+    }
+    try {
+      return await callWithTimeout(fn);
+    } catch (err) {
+      lastErr = err;
+      if (err.code === 'AFIP_TIMEOUT' || err.code === 'AFIP_CIRCUIT_OPEN') throw err;
+    }
+  }
+  throw lastErr;
+}
 
 /**
  * Obtener instancia AFIP para una org.
@@ -35,7 +83,12 @@ const _instances = new Map();
  * @param {number} orgId
  */
 async function getInstance(orgId) {
-  if (_instances.has(orgId)) return _instances.get(orgId);
+  // OT-051: invalidar cache después de TTL (tokens WSAA expiran en 12h)
+  if (_instances.has(orgId)) {
+    const cached = _instances.get(orgId);
+    if (Date.now() - cached.cachedAt < INSTANCE_CACHE_TTL_MS) return cached;
+    _instances.delete(orgId);
+  }
 
   // Intentar cargar credenciales desde DB
   let cuit, cert, key, production, puntoVenta;
@@ -71,7 +124,9 @@ async function getInstance(orgId) {
   }
 
   const instance = new Afip({ CUIT: cuit, cert, key, production, res_folder: '/tmp/afip_tokens' });
-  _instances.set(orgId, { client: instance, puntoVenta, cuit });
+  // SEC: no almacenar el CUIT en el cache en memoria — reduce la superficie de exposición
+  // en heap dumps o errores que serialicen el estado del proceso.
+  _instances.set(orgId, { client: instance, puntoVenta, cachedAt: Date.now() });
   return _instances.get(orgId);
 }
 
@@ -81,8 +136,16 @@ async function getInstance(orgId) {
  * @param {number} tipoComprobante  (1=FA, 6=FB, 11=FC, etc.)
  */
 async function getLastVoucherNumber(orgId, tipoComprobante) {
+  if (!afipBreaker.canRequest()) throw Object.assign(new Error('AFIP circuit open'), { code: 'AFIP_CIRCUIT_OPEN' });
   const { client, puntoVenta } = await getInstance(orgId);
-  return client.ElectronicBilling.getLastVoucher(puntoVenta, tipoComprobante);
+  try {
+    const result = await callWithRetry(() => client.ElectronicBilling.getLastVoucher(puntoVenta, tipoComprobante));
+    afipBreaker.onSuccess();
+    return result;
+  } catch (err) {
+    afipBreaker.onFailure();
+    throw err;
+  }
 }
 
 // ── Autorizar comprobante (obtener CAE) ───────────────────────────────────────
@@ -109,52 +172,125 @@ async function authorizeVoucher(opts) {
     importeTotal, importeNeto = 0, importeIVA = 0,
     importeNoGravado = 0, importeExento = 0,
     iva = [], concepto = '3',
+    invoiceId = null,
   } = opts;
+
+  if (!afipBreaker.canRequest()) throw Object.assign(new Error('AFIP circuit open'), { code: 'AFIP_CIRCUIT_OPEN' });
 
   const { client, puntoVenta } = await getInstance(orgId);
 
-  // Obtener próximo número
-  const lastNumber  = await client.ElectronicBilling.getLastVoucher(puntoVenta, tipoComprobante);
-  const nroComp     = lastNumber + 1;
+  // OT-046: lock Redis por org + tipoComprobante + puntoVenta para evitar numeración duplicada
+  const lockKey = `afip:lock:${orgId}:${tipoComprobante}:${puntoVenta}`;
+  const recoveryKey = invoiceId ? `afip:pending-cae:${invoiceId}` : null;
+  let redis = null;
+  let lockAcquired = false;
 
-  const today = new Date();
-  const fecha = today.toISOString().slice(0, 10).replace(/-/g, '');  // YYYYMMDD
-  // Vencimiento CAE: +10 días
-  const vto   = new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000)
-    .toISOString().slice(0, 10).replace(/-/g, '');
+  try {
+    redis = await getRedisSingleton('afip-lock', 'afip').catch(() => null);
+  } catch {}
 
-  const data = {
-    'CantReg':       1,
-    'PtoVta':        puntoVenta,
-    'CbteTipo':      tipoComprobante,
-    'Concepto':      parseInt(concepto),
-    'DocTipo':       tipoDocReceptor,
-    'DocNro':        nroDocReceptor,
-    'CbteDesde':     nroComp,
-    'CbteHasta':     nroComp,
-    'CbteFch':       fecha,
-    'ImpTotal':      importeTotal,
-    'ImpTotConc':    importeNoGravado,
-    'ImpNeto':       importeNeto,
-    'ImpOpEx':       importeExento,
-    'ImpIVA':        importeIVA,
-    'ImpTrib':       0,
-    'FchServDesde':  concepto !== '1' ? fecha : null,
-    'FchServHasta':  concepto !== '1' ? fecha : null,
-    'FchVtoPago':    concepto !== '1' ? vto   : null,
-    'MonId':         'PES',
-    'MonCotiz':      1,
-    'Iva':           iva.length ? iva : [{ 'Id': 5, 'BaseImp': importeNeto, 'Importe': importeIVA }],
-  };
+  if (redis?.isReady) {
+    // OT-047: check si hay un CAE pendiente de una autorización anterior (DB update falló)
+    if (recoveryKey) {
+      try {
+        const pending = await redis.get(recoveryKey);
+        if (pending) {
+          const recovered = JSON.parse(pending);
+          log.warn('AFIP: recovering pending CAE from previous failed attempt', { invoiceId, cae: recovered.cae });
+          return recovered;
+        }
+      } catch {}
+    }
 
-  const result = await client.ElectronicBilling.createVoucher(data);
+    const lockHolder = `${process.env.HOSTNAME || process.pid}:${Date.now()}`;
+    const lockTtlMs = AFIP_CALL_TIMEOUT_MS * (AFIP_MAX_RETRIES + 1) + 5000;
+    try {
+      const acquired = await redis.set(lockKey, lockHolder, { NX: true, PX: lockTtlMs });
+      lockAcquired = acquired === 'OK';
+      if (!lockAcquired) {
+        throw Object.assign(new Error('AFIP: otra instancia está autorizando comprobante para este punto de venta'), { code: 'AFIP_LOCK_BUSY' });
+      }
+    } catch (err) {
+      if (err.code === 'AFIP_LOCK_BUSY') throw err;
+      // Redis falla → continuar sin lock (fail open, mejor que bloquear)
+    }
+  }
 
-  return {
-    cae:                result.CAE,
-    caeFechaVencimiento: result.CAEFchVto,
-    nroComprobante:     nroComp,
-    puntoVenta,
-  };
+  let result;
+  try {
+    const lastNumber = await callWithRetry(() =>
+      client.ElectronicBilling.getLastVoucher(puntoVenta, tipoComprobante)
+    );
+    const nroComp = lastNumber + 1;
+
+    const today = new Date();
+    const fecha = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const vto = new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 10).replace(/-/g, '');
+
+    const data = {
+      'CantReg':      1,
+      'PtoVta':       puntoVenta,
+      'CbteTipo':     tipoComprobante,
+      'Concepto':     parseInt(concepto),
+      'DocTipo':      tipoDocReceptor,
+      'DocNro':       nroDocReceptor,
+      'CbteDesde':    nroComp,
+      'CbteHasta':    nroComp,
+      'CbteFch':      fecha,
+      'ImpTotal':     importeTotal,
+      'ImpTotConc':   importeNoGravado,
+      'ImpNeto':      importeNeto,
+      'ImpOpEx':      importeExento,
+      'ImpIVA':       importeIVA,
+      'ImpTrib':      0,
+      'FchServDesde': concepto !== '1' ? fecha : null,
+      'FchServHasta': concepto !== '1' ? fecha : null,
+      'FchVtoPago':   concepto !== '1' ? vto   : null,
+      'MonId':        'PES',
+      'MonCotiz':     1,
+      'Iva':          iva.length ? iva : [{ 'Id': 5, 'BaseImp': importeNeto, 'Importe': importeIVA }],
+    };
+
+    result = await callWithRetry(() => client.ElectronicBilling.createVoucher(data));
+    afipBreaker.onSuccess();
+
+    const returnValue = {
+      cae:                result.CAE,
+      caeFechaVencimiento: result.CAEFchVto,
+      nroComprobante:     nroComp,
+      puntoVenta,
+    };
+
+    // OT-047: guardar CAE en Redis como recovery antes de que el caller actualice la DB
+    // El caller debe eliminar esta clave después del UPDATE exitoso
+    if (recoveryKey && redis?.isReady) {
+      try {
+        await redis.set(recoveryKey, JSON.stringify(returnValue), { EX: 86400 }); // 24h TTL
+      } catch {}
+    }
+
+    return returnValue;
+  } catch (err) {
+    afipBreaker.onFailure();
+    throw err;
+  } finally {
+    if (lockAcquired && redis?.isReady) {
+      redis.del(lockKey).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Eliminar la clave de recovery de Redis después de confirmar el UPDATE en DB.
+ * Llamar desde la ruta, justo después del db.query exitoso.
+ */
+async function clearCaeRecovery(invoiceId) {
+  if (!invoiceId) return;
+  try {
+    const redis = await getRedisSingleton('afip-lock', 'afip').catch(() => null);
+    if (redis?.isReady) await redis.del(`afip:pending-cae:${invoiceId}`);
+  } catch {}
 }
 
 // ── Tipos de comprobante ──────────────────────────────────────────────────────
@@ -189,6 +325,7 @@ module.exports = {
   getInstance,
   getLastVoucherNumber,
   authorizeVoucher,
+  clearCaeRecovery,
   TIPOS_COMPROBANTE,
   TIPO_DOC,
   getTipoComprobante,

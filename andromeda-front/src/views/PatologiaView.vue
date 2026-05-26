@@ -3,7 +3,7 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">🔬</span>
+        <span class="page-emoji">&#x1F43E;</span>
         <div>
           <h2 class="page-title">{{ t('pathology.title') }}</h2>
           <p class="page-sub">{{ t('pathology.subtitle') }}</p>
@@ -15,13 +15,13 @@
     <!-- KPIs -->
     <div class="kpi-row">
       <div class="kpi" style="--c:#FFF3CC;--ct:#8A6200">
-        <span>⏳</span><div><strong>{{ kpis.pending }}</strong><span>{{ t('pathology.pending') }}</span></div>
+        <span>&#x2713;</span><div><strong>{{ kpis.pending }}</strong><span>{{ t('pathology.pending') }}</span></div>
       </div>
       <div class="kpi" style="--c:#E8D6FF;--ct:#6A1AAA">
-        <span>🔬</span><div><strong>{{ kpis.processing }}</strong><span>{{ t('pathology.processing') }}</span></div>
+        <span>&#x1F43E;</span><div><strong>{{ kpis.processing }}</strong><span>{{ t('pathology.processing') }}</span></div>
       </div>
       <div class="kpi" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span>📄</span><div><strong>{{ kpis.reported }}</strong><span>{{ t('pathology.reported') }}</span></div>
+        <span>&#x1F43E;</span><div><strong>{{ kpis.reported }}</strong><span>{{ t('pathology.reported') }}</span></div>
       </div>
     </div>
 
@@ -41,7 +41,7 @@
     <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> {{ t('pathology.loading') }}</div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">🔬</span>
+      <span class="empty-state__emoji">&#x1F43E;</span>
       <p>{{ t('pathology.empty') }}</p>
     </div>
 
@@ -88,7 +88,7 @@
         <div class="modal modal--lg">
           <div class="modal__header">
             <h3>{{ t('pathology.newModalTitle') }}</h3>
-            <button type="button" class="modal__close" @click="closeOrderModal()">✕</button>
+            <button type="button" class="modal__close" @click="closeOrderModal()">&times;</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-body">
@@ -98,11 +98,11 @@
                   <input id="path-m-patient" name="path-m-patient" v-model.trim="patientSearch" type="search" :placeholder="t('pathology.patientPlaceholder')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                   <div v-if="patientResults.length" class="autocomplete">
                     <div v-for="pt in patientResults" :key="pt.id" class="autocomplete__item" @click="selectPatient(pt)">
-                      🐾 <b>{{ pt.name }}</b>
+                      &#x1F43E; <b>{{ pt.name }}</b>
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </div>
                   </div>
-                  <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                  <div v-if="orderForm.patientId" class="selected-patient">&#x2713; {{ selectedPatientLabel }}</div>
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
@@ -127,7 +127,7 @@
                   <div v-for="(s, i) in orderForm.samples" :key="i" class="sample-row">
                     <div class="sample-row__header">
                       <span class="sample-num">{{ t('pathology.samplesLabel') }} {{ i + 1 }}</span>
-                      <button type="button" class="btn-xs btn-xs--red" @click="removeSample(i)" :disabled="saving">✕</button>
+                      <button type="button" class="btn-xs btn-xs--red" @click="removeSample(i)" :disabled="saving">&times;</button>
                     </div>
                     <div class="sample-grid">
                       <div class="field">
@@ -187,8 +187,8 @@
       <div v-if="showDetailModal && detailOrder" class="modal-backdrop" @click.self="showDetailModal = false">
         <div class="modal modal--lg">
           <div class="modal__header">
-            <h3>🔬 {{ detailOrder.order_number }} — {{ detailOrder.patient_name }}</h3>
-            <button type="button" class="modal__close" @click="showDetailModal = false">✕</button>
+            <h3>&#x1F43E; {{ detailOrder.order_number }} — {{ detailOrder.patient_name }}</h3>
+            <button type="button" class="modal__close" @click="showDetailModal = false">&times;</button>
           </div>
           <div class="form-body detail-body">
             <div class="detail-section">
@@ -222,7 +222,7 @@
             </div>
 
             <div v-if="detailOrder.result" class="detail-section result-section">
-              <h4>📄 {{ t('pathology.resultTitle') }}</h4>
+              <h4>&#x1F43E; {{ t('pathology.resultTitle') }}</h4>
               <div class="detail-grid">
                 <div><span class="detail-label">{{ t('pathology.detailPathologist') }}</span><span>{{ detailOrder.result.pathologist_name }}</span></div>
                 <div><span class="detail-label">{{ t('pathology.reportDate') }}</span><span>{{ formatDate(detailOrder.result.reported_at) }}</span></div>
@@ -244,7 +244,7 @@
           </div>
           <div class="modal__actions">
             <button type="button" class="btn-ghost" @click="showDetailModal = false">{{ t('common.close') }}</button>
-            <button v-if="detailOrder.status !== 'reported'" type="button" class="btn-primary" @click="showDetailModal = false; openResultModal(detailOrder)">📄 {{ t('pathology.loadReport') }}</button>
+            <button v-if="detailOrder.status !== 'reported'" type="button" class="btn-primary" @click="showDetailModal = false; openResultModal(detailOrder)">&#x1F43E; {{ t('pathology.loadReport') }}</button>
           </div>
         </div>
       </div>
@@ -255,8 +255,8 @@
       <div v-if="showResultModal" class="modal-backdrop" @click.self="closeResultModal()">
         <div class="modal modal--lg">
           <div class="modal__header">
-            <h3>📄 {{ t('pathology.resultTitle') }} — {{ resultOrderNum }}</h3>
-            <button type="button" class="modal__close" @click="closeResultModal()">✕</button>
+            <h3>&#x1F43E; {{ t('pathology.resultTitle') }} — {{ resultOrderNum }}</h3>
+            <button type="button" class="modal__close" @click="closeResultModal()">&times;</button>
           </div>
           <form @submit.prevent="handleResult" novalidate>
             <div class="form-body">
@@ -338,9 +338,12 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import http from '../api/client'
+import { labApi, patientsApi } from '../api'
 import { t } from '../i18n'
-import { logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
+
+const { notifyError } = useUiFeedback()
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -414,7 +417,7 @@ async function load() {
   try {
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await http.get('/pathology/orders', { params })
+    const { data } = await labApi.pathology.list(params)
     const rows = asArray(data?.data || data).map(normalizePathologyOrder).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     items.value = needle
@@ -426,7 +429,8 @@ async function load() {
     kpis.value.processing = items.value.filter(o => o.status === 'processing').length
     kpis.value.reported   = items.value.filter(o => o.status === 'reported').length
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las órdenes'
+    logError('patologia.load', e)
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las ordenes', { context: 'Carga de ordenes de patologia' })
   } finally { loading.value = false }
 }
 
@@ -437,7 +441,7 @@ function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 const pathologyTypes = ref([])
 async function loadTypes() {
   try {
-    const { data } = await http.get('/pathology/types')
+    const { data } = await labApi.pathology.types()
     pathologyTypes.value = asArray(data?.data || data).map(normalizePathologyType).filter(Boolean)
   } catch (error) { logError('patologia.loadTypes', error); pathologyTypes.value = [] }
 }
@@ -454,7 +458,7 @@ async function searchPatients() {
   if (patientSearch.value.length < 2) { patientResults.value = []; return }
   patientTimer = setTimeout(async () => {
     try {
-      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
+      const { data } = await patientsApi.list({ search: patientSearch.value, limit: 8 })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch (error) { logError('patologia.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
@@ -500,15 +504,15 @@ async function handleCreate() {
   if (!validateOrder()) return
   saving.value = true; saveError.value = ''
   try {
-    await http.post('/pathology/orders', {
-      patientId:       parseInt(orderForm.patientId),
-      pathologyTypeId: parseInt(orderForm.pathologyTypeId),
+    await labApi.pathology.create({
+      patientId:       parseInt(orderForm.patientId, 10),
+      pathologyTypeId: parseInt(orderForm.pathologyTypeId, 10),
       clinicalHistory: orderForm.clinicalHistory || undefined,
       samples:         orderForm.samples.length ? orderForm.samples : undefined,
     })
     closeOrderModal(); await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || 'No se pudo crear la orden'
+    saveError.value = extractDetailedErrorMessage(e, 'No se pudo crear la orden', { context: 'Creacion de orden de patologia' })
   } finally { saving.value = false }
 }
 
@@ -517,11 +521,11 @@ const showDetailModal = ref(false)
 const detailOrder     = ref(null)
 async function viewOrder(o) {
   try {
-    const { data } = await http.get(`/pathology/orders/${o.id}`)
+    const { data } = await labApi.pathology.get(o.id)
     detailOrder.value = data.data || data
     showDetailModal.value = true
   } catch (e) {
-    alert(e.response?.data?.message || 'No se pudo cargar el detalle')
+    notifyError('patologia.viewOrder', e, 'No se pudo cargar el detalle', { context: 'Detalle de patologia' })
   }
 }
 
@@ -575,10 +579,10 @@ async function handleResult() {
     if (resultForm.ihcResults)            payload.ihcResults            = resultForm.ihcResults
     if (resultForm.specialStains)         payload.specialStains         = resultForm.specialStains
     if (resultForm.recommendations)       payload.recommendations       = resultForm.recommendations
-    await http.post(`/pathology/orders/${resultOrderId.value}/result`, payload)
+    await labApi.pathology.result(resultOrderId.value, payload)
     closeResultModal(); await load()
   } catch (e) {
-    resultError.value = e.response?.data?.message || 'No se pudo guardar el informe'
+    resultError.value = extractDetailedErrorMessage(e, 'No se pudo guardar el informe', { context: 'Informe de patologia' })
   } finally { resultSaving.value = false }
 }
 
@@ -679,7 +683,7 @@ onMounted(() => { load(); loadTypes() })
 @keyframes spin { to { transform: rotate(360deg); } }
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
-@media (max-width: 600px) { .form-grid { grid-column: 1fr; } .sample-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } .sample-grid { grid-template-columns: 1fr; } }
 
 .autocomplete { position: absolute; z-index: 100; background: var(--white); border: 1.5px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 100%; max-height: 200px; overflow-y: auto; top: calc(100% + 2px); }
 .autocomplete__item { padding: 9px 13px; cursor: pointer; font-size: 0.88rem; }
@@ -701,4 +705,3 @@ onMounted(() => { load(); loadTypes() })
 .result-section { background: #F0FFF8; border-radius: var(--radius); padding: 14px; border: 1px solid #b2e4d0; }
 .no-result-note { font-size: 0.85rem; color: var(--text-3); padding: 12px 0; font-style: italic; }
 </style>
-

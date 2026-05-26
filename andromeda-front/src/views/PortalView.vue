@@ -2,10 +2,10 @@
   <div class="portal-shell">
     <section class="portal-hero">
       <div class="portal-hero__copy">
-        <p class="eyebrow">Portal de duenos</p>
-        <h1>Gestiona mascotas, turnos y pagos desde una sola sesion</h1>
+        <p class="eyebrow">Portal de dueños</p>
+        <h1>Gestioná mascotas, turnos y pagos desde una sola sesión</h1>
         <p class="hero-copy">
-          Interfaz operativa del duenio de mascota con login propio, historial de animales,
+          Interfaz operativa del dueño de mascota con login propio, historial de animales,
           turnos, facturas, notificaciones y telemedicina.
         </p>
         <div class="hero-chips">
@@ -46,7 +46,7 @@
         </template>
 
         <template v-else>
-          <div class="status-pill">Acceso del duenio</div>
+          <div class="status-pill">Acceso del dueño</div>
           <h2>Ingresa o crea tu cuenta</h2>
           <p>Usa este portal para gestionar la experiencia del cliente sin depender del panel interno.</p>
           <div class="status-grid">
@@ -97,7 +97,7 @@
             <input id="portal-login-email" name="portal-login-email" v-model.trim="loginForm.email" type="email" autocomplete="email" required />
           </label>
           <label for="portal-login-password">
-            <span>Contrasena</span>
+            <span>Contraseña</span>
             <input id="portal-login-password" name="portal-login-password" v-model="loginForm.password" type="password" autocomplete="current-password" required />
           </label>
           <button class="primary-button" type="submit" :disabled="authBusy">
@@ -125,7 +125,7 @@
             <input id="portal-register-phone" name="portal-register-phone" v-model.trim="registerForm.phone" type="tel" autocomplete="tel" />
           </label>
           <label for="portal-register-password">
-            <span>Contrasena</span>
+            <span>Contraseña</span>
             <input id="portal-register-password" name="portal-register-password" v-model="registerForm.password" type="password" autocomplete="new-password" required />
           </label>
           <button class="primary-button" type="submit" :disabled="authBusy">
@@ -145,10 +145,10 @@
       </div>
 
       <div class="card info-card">
-        <h3>Que puede hacer el duenio</h3>
+        <h3>Qué puede hacer el dueño</h3>
         <ul class="bullet-list">
           <li>Ver mascotas, fichas resumidas e historial medico firmado.</li>
-          <li>Solicitar, cancelar y seguir turnos desde la misma sesion.</li>
+          <li>Solicitar, cancelar y seguir turnos desde la misma sesión.</li>
           <li>Revisar facturas y generar pagos con MercadoPago.</li>
           <li>Ver notificaciones y sesiones de telemedicina.</li>
           <li>Registrar FCM para recibir push en el dispositivo.</li>
@@ -169,7 +169,7 @@
           <button class="ghost-button" @click="refreshAll" :disabled="loading">
             {{ loading ? 'Actualizando...' : 'Sincronizar portal' }}
           </button>
-          <button class="danger-button" @click="handleLogout">Cerrar sesion</button>
+          <button class="danger-button" @click="handleLogout">Cerrar sesión</button>
         </div>
       </div>
 
@@ -381,7 +381,7 @@
         <section class="card">
           <div class="section-head">
             <h3>Notificaciones</h3>
-            <span class="section-hint">Marca como leidas las que ya revisaste.</span>
+            <span class="section-hint">Marcá como leídas las que ya revisaste.</span>
           </div>
 
           <div class="list-block">
@@ -396,7 +396,7 @@
                 class="ghost-button"
                 @click="markNotification(note)"
               >
-                Marcar leida
+                Marcar leída
               </button>
               <span v-else class="status-pill">Leida</span>
             </article>
@@ -464,17 +464,17 @@
           </form>
 
           <form class="form-grid form-grid--spaced" @submit.prevent="changePassword">
-            <h4>Cambiar contrasena</h4>
+            <h4>Cambiar contraseña</h4>
             <label for="portal-password-current">
-              <span>Contrasena actual</span>
+              <span>Contraseña actual</span>
               <input id="portal-password-current" name="portal-password-current" v-model="passwordForm.currentPassword" type="password" required />
             </label>
             <label for="portal-password-new">
-              <span>Nueva contrasena</span>
+              <span>Nueva contraseña</span>
               <input id="portal-password-new" name="portal-password-new" v-model="passwordForm.newPassword" type="password" required />
             </label>
             <button class="primary-button primary-button--soft" type="submit" :disabled="portalBusy === 'password'">
-              {{ portalBusy === 'password' ? 'Actualizando...' : 'Actualizar contrasena' }}
+              {{ portalBusy === 'password' ? 'Actualizando...' : 'Actualizar contraseña' }}
             </button>
           </form>
         </section>
@@ -610,28 +610,10 @@ const fcmForm = reactive({
 })
 
 const isAuthenticated = computed(() => portalApi.hasSession())
-const ownerLabel = computed(() => {
-  const current = profile.value || owner.value || session.value.owner || {}
-  const fullName = [current.first_name || current.firstName, current.last_name || current.lastName].filter(Boolean).join(' ').trim()
-  return fullName || current.name || current.email || 'Dueño'
-})
-const sessionSummary = computed(() => {
-  const current = profile.value || owner.value || session.value.owner || {}
-  return [current.email, current.organization_id ? `Org ${current.organization_id}` : null].filter(Boolean).join(' · ')
-})
-const profileSummary = computed(() => {
-  if (!profile.value) return 'Mantiene contacto, turnos, facturas y notificaciones sincronizadas.'
-  const pieces = []
-  if (profile.value.phone) pieces.push(profile.value.phone)
-  if (profile.value.address) pieces.push(profile.value.address)
-  if (profile.value.city) pieces.push(profile.value.city)
-  return pieces.length ? pieces.join(' · ') : 'Mantiene contacto, turnos, facturas y notificaciones sincronizadas.'
-})
+const ownerLabel = computed(() => ownerLabelFrom(profile.value, owner.value, session.value.owner))
+const sessionSummary = computed(() => sessionSummaryFrom(profile.value, owner.value, session.value.owner))
+const profileSummary = computed(() => profileSummaryFrom(profile.value))
 const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read_at).length)
-
-function unwrapResult(result) {
-  return result?.data?.data ?? result?.data ?? result
-}
 
 function resetMessage() {
   notice.value = ''
@@ -649,6 +631,11 @@ function showError(error, fallback) {
   logPortalViewError('portal.view', error)
 }
 
+function showValidation(message) {
+  errorMessage.value = message
+  notice.value = ''
+}
+
 function isSafeUrl(url) {
   try {
     const parsed = new URL(url)
@@ -659,41 +646,19 @@ function isSafeUrl(url) {
 }
 
 function formatDate(value) {
-  if (!value) return 'Sin fecha'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(date)
+  return formatPortalDate(value)
 }
 
 function formatDateTime(value) {
-  if (!value) return 'Sin fecha'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat('es-AR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
+  return formatPortalDateTime(value)
 }
 
 function formatMoney(amount, currency = 'ARS') {
-  const numeric = Number(amount || 0)
-  try {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: currency || 'ARS',
-      maximumFractionDigits: 2,
-    }).format(numeric)
-  } catch {
-    return `${currency || 'ARS'} ${numeric.toFixed(2)}`
-  }
+  return formatPortalMoney(amount, currency)
 }
 
 function statusClass(status) {
-  const value = String(status || '').toLowerCase()
-  if (['confirmed', 'paid', 'completed', 'sent', 'read'].includes(value)) return 'status-pill--ok'
-  if (['requested', 'pending', 'scheduled'].includes(value)) return 'status-pill--warn'
-  if (['cancelled', 'rejected', 'failed', 'overdue'].includes(value)) return 'status-pill--bad'
-  return ''
+  return portalStatusClass(status)
 }
 
 function syncSession(nextSession) {
@@ -706,22 +671,15 @@ async function loadDashboard() {
   loading.value = true
   resetMessage()
   try {
-    const [meRes, petsRes, appointmentsRes, invoicesRes, notificationsRes, telemedicineRes] = await Promise.all([
-      portalApi.me(),
-      portalApi.pets.list(),
-      portalApi.appointments.list({ upcoming: true, limit: 8 }),
-      portalApi.invoices.list({ limit: 8 }),
-      portalApi.notifications.list({ limit: 12 }),
-      portalApi.telemedicine.list(),
-    ])
+    const payload = await loadPortalDashboard()
 
-    profile.value = unwrapResult(meRes)
+    profile.value = payload.profile
     owner.value = { ...owner.value, ...profile.value }
-    pets.value = Array.isArray(unwrapResult(petsRes)) ? unwrapResult(petsRes) : []
-    appointments.value = Array.isArray(unwrapResult(appointmentsRes)) ? unwrapResult(appointmentsRes) : []
-    invoices.value = Array.isArray(unwrapResult(invoicesRes)) ? unwrapResult(invoicesRes) : []
-    notifications.value = Array.isArray(unwrapResult(notificationsRes)) ? unwrapResult(notificationsRes) : []
-    telemedicine.value = Array.isArray(unwrapResult(telemedicineRes)) ? unwrapResult(telemedicineRes) : []
+    pets.value = payload.pets
+    appointments.value = payload.appointments
+    invoices.value = payload.invoices
+    notifications.value = payload.notifications
+    telemedicine.value = payload.telemedicine
 
     if (pets.value.length) {
       await selectPet(pets.value[0], { quiet: true })
@@ -757,17 +715,11 @@ async function selectPet(pet, { quiet = false } = {}) {
   if (!quiet) resetMessage()
   portalBusy.value = 'pet'
   try {
-    const [detail, history, vaccinations, prescriptions] = await Promise.all([
-      portalApi.pets.get(candidate.id),
-      portalApi.pets.medicalHistory(candidate.id),
-      portalApi.pets.vaccinations(candidate.id),
-      portalApi.pets.prescriptions(candidate.id),
-    ])
-    const petDetail = unwrapResult(detail)
-    selectedPet.value = petDetail || candidate
-    petHistory.value = Array.isArray(unwrapResult(history)) ? unwrapResult(history) : []
-    petVaccinations.value = Array.isArray(unwrapResult(vaccinations)) ? unwrapResult(vaccinations) : []
-    petPrescriptions.value = Array.isArray(unwrapResult(prescriptions)) ? unwrapResult(prescriptions) : []
+    const bundle = await loadPortalPetBundle(candidate.id)
+    selectedPet.value = bundle.pet || candidate
+    petHistory.value = bundle.history
+    petVaccinations.value = bundle.vaccinations
+    petPrescriptions.value = bundle.prescriptions
   } catch (error) {
     if (!quiet) showError(error, 'No se pudo cargar la mascota')
   } finally {
@@ -776,13 +728,14 @@ async function selectPet(pet, { quiet = false } = {}) {
 }
 
 async function handleLogin() {
+  if (!loginForm.email || !loginForm.password) {
+    showValidation('Ingresá email y contraseña para acceder.')
+    return
+  }
   authBusy.value = true
   resetMessage()
   try {
-    const payload = unwrapResult(await portalApi.login({
-      email: loginForm.email,
-      password: loginForm.password,
-    }))
+    const payload = await loginPortalOwner(loginForm)
     syncSession({
       accessToken: payload.accessToken,
       refreshToken: payload.refreshToken,
@@ -791,30 +744,28 @@ async function handleLogin() {
     await loadDashboard()
     showSuccess('Sesion iniciada correctamente')
   } catch (error) {
-    showError(error, 'No se pudo iniciar sesion')
+    showError(error, 'No se pudo iniciar sesión')
   } finally {
     authBusy.value = false
   }
 }
 
 async function handleRegister() {
+  if (!registerForm.firstName || !registerForm.lastName || !registerForm.email || !registerForm.password) {
+    showValidation('Completá nombre, apellido, email y contraseña.')
+    return
+  }
   authBusy.value = true
   resetMessage()
   try {
-    const payload = unwrapResult(await portalApi.register({
-      firstName: registerForm.firstName,
-      lastName: registerForm.lastName,
-      email: registerForm.email,
-      phone: registerForm.phone,
-      password: registerForm.password,
-    }))
+    const payload = await registerPortalOwner(registerForm)
     syncSession({
       accessToken: payload.accessToken,
       refreshToken: payload.refreshToken,
       owner: { firstName: registerForm.firstName, lastName: registerForm.lastName, email: registerForm.email },
     })
     await loadDashboard()
-    showSuccess('Cuenta creada y sesion iniciada')
+    showSuccess('Cuenta creada y sesión iniciada')
   } catch (error) {
     showError(error, 'No se pudo crear la cuenta')
   } finally {
@@ -823,10 +774,14 @@ async function handleRegister() {
 }
 
 async function handleForgotPassword() {
+  if (!forgotForm.email) {
+    showValidation('Ingresá el email de la cuenta.')
+    return
+  }
   authBusy.value = true
   resetMessage()
   try {
-    const payload = unwrapResult(await portalApi.forgotPassword({ email: forgotForm.email }))
+    const payload = await requestPortalPasswordReset(forgotForm.email)
     showSuccess(payload?.message || 'Si el email existe, recibira un enlace de recuperacion')
   } catch (error) {
     showError(error, 'No se pudo enviar la recuperacion')
@@ -837,20 +792,18 @@ async function handleForgotPassword() {
 
 async function createAppointment() {
   if (!appointmentForm.patientId) {
-    errorMessage.value = 'Selecciona una mascota antes de solicitar un turno'
+    showValidation('Seleccioná una mascota antes de solicitar un turno.')
+    return
+  }
+  if (!appointmentForm.appointmentDate || !appointmentForm.reason) {
+    showValidation('Completá fecha, hora y motivo del turno.')
     return
   }
 
   portalBusy.value = 'appointment'
   resetMessage()
   try {
-    const payload = unwrapResult(await portalApi.appointments.create({
-      patientId: Number(appointmentForm.patientId),
-      appointmentDate: appointmentForm.appointmentDate,
-      reason: appointmentForm.reason,
-      notes: appointmentForm.notes,
-      branchId: appointmentForm.branchId || null,
-    }))
+    const payload = await createPortalAppointment(appointmentForm)
     showSuccess(payload?.message || 'Solicitud de turno enviada')
     appointmentForm.reason = ''
     appointmentForm.notes = ''
@@ -866,7 +819,7 @@ async function cancelAppointment(item) {
   portalBusy.value = `cancel-${item.id}`
   resetMessage()
   try {
-    await portalApi.appointments.cancel(item.id, 'Cancelado desde el portal del duenio')
+    await cancelPortalAppointment(item.id)
     showSuccess('Turno cancelado')
     await loadDashboard()
   } catch (error) {
@@ -880,7 +833,7 @@ async function payInvoice(invoice) {
   portalBusy.value = `invoice-${invoice.id}`
   resetMessage()
   try {
-    const payload = unwrapResult(await portalApi.invoices.pay(invoice.id))
+    const payload = await createPortalPayment(invoice.id)
     const link = payload?.init_point || payload?.sandbox_init_point || payload?.url || null
     if (link) {
       invoicePaymentLinks[invoice.id] = link
@@ -899,27 +852,25 @@ async function markNotification(note) {
   portalBusy.value = `notification-${note.id}`
   resetMessage()
   try {
-    await portalApi.notifications.markRead(note.id)
-    showSuccess('Notificacion marcada como leida')
+    await markPortalNotificationAsRead(note.id)
+    showSuccess('Notificación marcada como leída')
     await loadDashboard()
   } catch (error) {
-    showError(error, 'No se pudo actualizar la notificacion')
+    showError(error, 'No se pudo actualizar la notificación')
   } finally {
     portalBusy.value = ''
   }
 }
 
 async function saveProfile() {
+  if (!profileForm.firstName || !profileForm.lastName) {
+    showValidation('Completá nombre y apellido del perfil.')
+    return
+  }
   portalBusy.value = 'profile'
   resetMessage()
   try {
-    await portalApi.updateMe({
-      firstName: profileForm.firstName,
-      lastName: profileForm.lastName,
-      phone: profileForm.phone,
-      address: profileForm.address,
-      city: profileForm.city,
-    })
+    await savePortalProfile(profileForm)
     showSuccess('Perfil actualizado')
     await loadDashboard()
   } catch (error) {
@@ -930,32 +881,33 @@ async function saveProfile() {
 }
 
 async function changePassword() {
+  if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+    showValidation('Completá la contraseña actual y la nueva.')
+    return
+  }
   portalBusy.value = 'password'
   resetMessage()
   try {
-    await portalApi.changePassword({
-      currentPassword: passwordForm.currentPassword,
-      newPassword: passwordForm.newPassword,
-    })
+    await updatePortalPassword(passwordForm)
     passwordForm.currentPassword = ''
     passwordForm.newPassword = ''
-    showSuccess('Contrasena actualizada')
+    showSuccess('Contraseña actualizada')
   } catch (error) {
-    showError(error, 'No se pudo actualizar la contrasena')
+    showError(error, 'No se pudo actualizar la contraseña')
   } finally {
     portalBusy.value = ''
   }
 }
 
 async function registerFcm() {
+  if (!fcmForm.token) {
+    showValidation('Ingresá el token del dispositivo.')
+    return
+  }
   portalBusy.value = 'fcm'
   resetMessage()
   try {
-    await portalApi.fcm.register({
-      token: fcmForm.token,
-      platform: fcmForm.platform,
-      deviceName: fcmForm.deviceName,
-    })
+    await registerPortalFcmDevice(fcmForm)
     fcmForm.token = ''
     fcmForm.deviceName = ''
     showSuccess('Dispositivo registrado para push')
@@ -967,21 +919,22 @@ async function registerFcm() {
 }
 
 function handleLogout() {
-  portalApi.clearSession()
-  session.value = portalApi.getSession()
-  owner.value = null
-  profile.value = null
-  pets.value = []
-  appointments.value = []
-  invoices.value = []
-  notifications.value = []
-  telemedicine.value = []
-  selectedPet.value = null
-  petHistory.value = []
-  petVaccinations.value = []
-  petPrescriptions.value = []
-  notice.value = ''
-  errorMessage.value = ''
+  clearPortalViewSessionState({
+    session,
+    owner,
+    profile,
+    pets,
+    appointments,
+    invoices,
+    notifications,
+    telemedicine,
+    selectedPet,
+    petHistory,
+    petVaccinations,
+    petPrescriptions,
+    notice,
+    errorMessage,
+  })
 }
 
 async function refreshAll() {
@@ -993,7 +946,7 @@ async function refreshAll() {
     await loadDashboard()
     showSuccess('Portal sincronizado')
   } catch (error) {
-    showError(error, 'No se pudo refrescar la sesion')
+    showError(error, 'No se pudo refrescar la sesión')
   } finally {
     loading.value = false
   }

@@ -24,11 +24,11 @@ const app = buildApp('portal', (app) => {
   app.use('/portal/telemedicine', telemedicineRoutes);
 }, {
   specPath: path.join(__dirname, 'openapi.yaml'),
-  jsonLimit: '5mb',
+  jsonLimit: '100kb',  // BUG-018: reducido de 5mb
   urlencoded: true,
 });
 
-const PORT = parseInt(process.env.PORT || '4060', 10);
+const PORT = parseInt(process.env.PORT || '3010', 10);
 if (process.env.NODE_ENV !== 'test') {
   startService(app, 'portal', PORT, { drainMs: 10_000 });
 }

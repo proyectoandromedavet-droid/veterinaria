@@ -28,18 +28,18 @@ router.post('/generate', async (req, res, next) => {
                 COALESCE(a.client_id, po.client_id),
                 'appointment',
                 a.id,
-                a.appointment_date,
+                a.scheduled_date,
                 'pending',
                 'whatsapp',
                 CONCAT('Recordatorio de turno para ', p.name, ' el ',
-                       DATE_FORMAT(a.appointment_date, '%d/%m/%Y %H:%i')),
+                       DATE_FORMAT(a.scheduled_date, '%d/%m/%Y %H:%i')),
                 NOW()
          FROM appointments a
          JOIN patients p ON p.id = a.patient_id
          LEFT JOIN patient_owners po
            ON po.patient_id = p.id AND po.ownership_type = 'primary'
          WHERE a.branch_id = :bid
-           AND a.appointment_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL :days DAY)
+           AND a.scheduled_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL :days DAY)
            AND a.status IN ('scheduled', 'confirmed')
            AND NOT EXISTS (
              SELECT 1
@@ -128,18 +128,28 @@ router.post('/generate', async (req, res, next) => {
   }
 });
 
+const ALLOWED_REMINDER_STATUSES = new Set(['pending', 'sent', 'failed', 'cancelled']);
+const ALLOWED_REMINDER_TYPES    = new Set(['appointment', 'vaccination', 'deworming']);
+
 router.get('/', async (req, res, next) => {
   try {
     if (!requireUserContext(req, res)) return;
-    const { status, type, page = 1, limit = 30 } = req.query;
+
+    // Cap en paginación
+    const page  = Math.min(Math.max(parseInt(`${req.query.page  || '1'}`,  10) || 1,  1), 10000);
+    const limit = Math.min(Math.max(parseInt(`${req.query.limit || '30'}`, 10) || 30, 1), 100);
     const offset = (page - 1) * limit;
+
+    const { status, type } = req.query;
     const conds = ['r.branch_id = :bid'];
-    const p = { bid: req.user.branchId, limit: parseInt(limit, 10), offset: parseInt(offset, 10) };
+    const p = { bid: req.user.branchId, limit, offset };
     if (status) {
+      if (!ALLOWED_REMINDER_STATUSES.has(status)) return R.badRequest(res, 'status inválido');
       conds.push('r.status = :status');
       p.status = status;
     }
     if (type) {
+      if (!ALLOWED_REMINDER_TYPES.has(type)) return R.badRequest(res, 'type inválido');
       conds.push('r.reminder_type = :type');
       p.type = type;
     }

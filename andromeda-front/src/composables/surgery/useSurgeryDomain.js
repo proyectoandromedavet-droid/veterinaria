@@ -1,4 +1,4 @@
-import http from '../../api/client'
+import { labApi, patientsApi } from '../../api'
 
 export function asArray(value) {
   if (Array.isArray(value)) return value
@@ -74,34 +74,34 @@ export function buildAnesthesiaPayload(form) {
 export async function loadSurgeries(params = {}) {
   const query = {}
   if (params.status) query.status = params.status
-  const { data } = await http.get('/surgeries', { params: query })
+  const { data } = await labApi.surgeries.list(query)
   return asArray(data?.data || data?.surgeries || data).map(normalizeSurgery).filter(Boolean)
 }
 
 export async function loadSurgeryTypes() {
-  const { data } = await http.get('/surgeries/types/all')
+  const { data } = await labApi.surgeries.types()
   return asArray(data?.data || data?.types || data).map(normalizeSurgeryType).filter(Boolean)
 }
 
 export async function searchPatients(query) {
-  const { data } = await http.get('/patients', { params: { search: query, limit: 8 } })
+  const { data } = await patientsApi.list({ search: query, limit: 8 })
   return asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
 }
 
 export async function createSurgery(form) {
-  return http.post('/surgeries', buildNewSurgeryPayload(form))
+  return labApi.surgeries.create(buildNewSurgeryPayload(form))
 }
 
 export async function addAnesthesiaRecord(surgeryId, form) {
-  return http.post(`/surgeries/${surgeryId}/anesthesia`, buildAnesthesiaPayload(form))
+  return labApi.surgeries.anesthesia(surgeryId, buildAnesthesiaPayload(form))
 }
 
 export async function updateSurgeryStatus(surgeryId, status) {
-  return http.patch(`/surgeries/${surgeryId}/status`, { status })
+  return labApi.surgeries.status(surgeryId, { status })
 }
 
 export async function getSurgeryDetail(surgeryId) {
-  const { data } = await http.get(`/surgeries/${surgeryId}`)
+  const { data } = await labApi.surgeries.get(surgeryId)
   return data?.data || data
 }
 

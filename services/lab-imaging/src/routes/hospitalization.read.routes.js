@@ -7,17 +7,19 @@ const router = Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const { status = 'active', page = 1, limit = 30 } = req.query;
+    const { status = 'active' } = req.query;
+    const limit  = Math.min(Math.max(parseInt(req.query.limit || '30', 10) || 30, 1), 100); // BUG-9
+    const page   = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
     const offset = (page - 1) * limit;
     const conds = ['h.branch_id = :bid'];
-    const p = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p = { bid: req.user.branchId, limit, offset };
 
     if (status === 'active') conds.push('h.discharge_date IS NULL');
     else if (status === 'discharged') conds.push('h.discharge_date IS NOT NULL');
 
     const rows = await db.query(
       `SELECT h.id, h.medical_record_id, h.admission_date, h.discharge_date, h.estimated_discharge_date,
-              h.hospitalization_reason, h.hospitalization_status,
+              h.hospitalization_reason, h.hospitalization_status, h.hospitalization_status AS status,
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS responsible_vet,
               k.kennel_number, w.name AS ward_name,

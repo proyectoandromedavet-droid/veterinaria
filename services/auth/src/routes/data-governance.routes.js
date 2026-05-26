@@ -14,6 +14,8 @@ const { body, validationResult } = require('express-validator');
 const db     = require('../../../../shared/db');
 const logger = require('../../../../shared/logger');
 const R = require('../../../../shared/response');
+const { requireInternalSig } = require('../../../../shared/internalAuth');   // BUG-003
+const { fromHeaders } = require('../../../../shared/requestContext');         // BUG-003
 
 const router = Router();
 
@@ -34,7 +36,8 @@ const DEFAULT_RETENTION = {
 };
 
 function adminOnly(req, res, next) {
-  const roles = (req.headers['x-user-roles'] || '').split(',').map(r => r.trim());
+  // BUG-003: roles ya poblados por fromHeaders (que viene después de requireInternalSig)
+  const roles = req.user?.roles || [];
   if (roles.includes('superadmin') || roles.includes('org_admin')) return next();
   return R.error(res, 403, 'Admin access required', null, 'RBAC_001');
 }
@@ -66,12 +69,13 @@ function activePredicate(columns, alias = '') {
   return '1 = 1';
 }
 
-router.use(adminOnly);
+// BUG-003: verificar firma de servicio interno antes de procesar roles/claims
+router.use(requireInternalSig, fromHeaders, adminOnly);
 
 // GET /admin/data-governance/policies
 router.get('/policies', async (req, res, next) => {
   try {
-    const orgId = req.headers['x-org-id'];
+    const orgId = req.user.orgId;
     const saved = await db.query(
       'SELECT * FROM data_retention_policies WHERE org_id = :orgId',
       { orgId },
@@ -100,8 +104,8 @@ router.post('/policies',
   validate,
   async (req, res, next) => {
     try {
-      const orgId    = req.headers['x-org-id'];
-      const userId   = req.headers['x-user-id'];
+      const orgId    = req.user.orgId;
+      const userId   = req.user.userId;
       const { data_type, retention_days, action } = req.body;
 
       await db.query(
@@ -143,7 +147,7 @@ router.get('/classification', async (req, res, next) => {
 // POST /admin/data-governance/enforce — enforcement manual por org
 router.post('/enforce', async (req, res, next) => {
   try {
-    const orgId    = req.headers['x-org-id'];
+    const orgId    = req.user.orgId;
     const { data_type } = req.body; // opcional: tipo específico o todos
 
     const saved = await db.query(
@@ -280,7 +284,7 @@ router.post('/enforce', async (req, res, next) => {
 // GET /admin/data-governance/report
 router.get('/report', async (req, res, next) => {
   try {
-    const orgId = req.headers['x-org-id'];
+    const orgId = req.user.orgId;
 
     const [policies, classification] = await Promise.all([
       db.query('SELECT * FROM data_retention_policies WHERE org_id = :orgId', { orgId }),

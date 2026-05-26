@@ -10,15 +10,25 @@ const router = Router();
 router.post('/orders',
   body('patientId').isInt(),
   body('tests').isArray({ min: 1 }),
+  body('priority').optional().isIn(['routine', 'urgent', 'stat']),
+  body('clinicalNotes').optional().isString().trim().isLength({ max: 2000 }),
   validate,
   async (req, res, next) => {
     try {
       const { patientId, medicalRecordId, tests, priority = 'routine', clinicalNotes } = req.body;
       const patient = await db.queryOne(
-        `SELECT id FROM patients
-         WHERE id = :patientId
-           AND organization_id = :orgId
-           AND branch_id = :branchId`,
+        `SELECT p.id
+           FROM patients p
+          WHERE p.id = :patientId
+            AND p.organization_id = :orgId
+            AND EXISTS (
+              SELECT 1
+                FROM patient_owners po
+                JOIN clients c ON c.id = po.client_id
+               WHERE po.patient_id = p.id
+                 AND c.branch_id = :branchId
+                 AND po.deleted_at IS NULL
+            )`,
         { patientId, orgId: req.user.orgId, branchId: req.user.branchId }
       );
       if (!patient) return R.notFound(res, 'Paciente no encontrado');
@@ -82,6 +92,9 @@ router.post('/orders',
 
 router.post('/orders/:id/results',
   body('results').isArray({ min: 1 }),
+  body('results.*.valueText').optional().isString().trim().isLength({ max: 1000 }),
+  body('results.*.interpretation').optional().isString().trim().isLength({ max: 1000 }),
+  body('results.*.unit').optional().isString().trim().isLength({ max: 50 }),
   validate,
   async (req, res, next) => {
     try {

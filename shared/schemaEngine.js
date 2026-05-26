@@ -10,15 +10,18 @@ const logger = require('./logger');
 
 const SCHEMA_CACHE_TTL = 3600; // 1 hora
 
-// Tablas PERMITIDAS para exposición via API (excluye tablas de auth/seguridad)
+// Tablas PERMITIDAS para exposición via API (excluye tablas de auth/seguridad/auditoría).
+// SEC: se eliminaron las siguientes tablas que contenían información sensible:
+//   - security_alerts: expone incidentes de seguridad que podrían usarse para enumerar vectores
+//   - business_rules:  puede revelar reglas de negocio internas (condiciones de bypass, horarios, etc.)
+//   - data_retention_policies: revela ventanas de tiempo de retención útiles para timing attacks
 const ALLOWED_TABLES = new Set([
   'patients', 'clients', 'patient_owners', 'species', 'breeds',
   'appointments', 'medical_records', 'diagnoses', 'prescriptions',
   'prescription_items', 'lab_orders', 'lab_order_items', 'lab_results',
   'imaging_studies', 'surgeries', 'hospitalizations', 'vaccinations',
   'invoices', 'invoice_items', 'payments', 'products', 'stock_movements',
-  'branches', 'business_rules', 'org_plugins', 'data_retention_policies',
-  'security_alerts',
+  'branches', 'org_plugins',
 ]);
 
 // Mapeo MySQL type → TypeScript type
@@ -79,8 +82,14 @@ const MYSQL_TO_ZOD = {
 
 /**
  * Lee las columnas de una tabla desde INFORMATION_SCHEMA.
+ * SEC: solo se permiten tablas de la lista ALLOWED_TABLES para evitar exposición
+ * de tablas sensibles (sessions, users, security_alerts, etc.) via llamadas directas.
  */
 async function getTableColumns(tableName, dbName) {
+  // SEC: validar contra la lista blanca incluso en llamadas directas a esta función
+  if (!ALLOWED_TABLES.has(tableName)) {
+    throw Object.assign(new Error(`Table '${tableName}' is not available`), { http: 404 });
+  }
   const dbSchema = dbName || process.env.DB_NAME || 'vetmanager';
   return db.query(
     `SELECT

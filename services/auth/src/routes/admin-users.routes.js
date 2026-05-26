@@ -21,6 +21,19 @@ const { enqueueJob }         = require('../../../../shared/notificationRetry');
 
 const router = Router();
 
+function isSuperAdmin(req) {
+  return Array.isArray(req.user?.roles) && req.user.roles.includes('superadmin');
+}
+
+function canAssignRole(req, roleName) {
+  if (roleName !== 'superadmin') return true;
+  return isSuperAdmin(req);
+}
+
+function forbiddenRoleAssignment(res, roleName) {
+  return R.forbidden(res, `No tiene permisos para asignar el rol '${roleName}'`);
+}
+
 function validate(req, res, next) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return R.badRequest(res, 'Validation failed', errors.array());
@@ -34,11 +47,15 @@ function fromHeaders(req, _res, next) {
     branchId: req.headers['x-branch-id'],
     roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
     email:    req.headers['x-user-email'],
+    authType: req.headers['x-auth-type'] || null,
   };
   next();
 }
 
 function requireAdmin(req, res, next) {
+  if (req.user.authType === 'api_key') {
+    return R.forbidden(res, 'Admin endpoints require an interactive user session');
+  }
   if (!req.user.roles.some(r => ['superadmin', 'org_admin'].includes(r))) {
     return R.forbidden(res, 'Se requiere rol org_admin o superadmin');
   }
@@ -111,6 +128,7 @@ router.post('/users',
         `SELECT id FROM roles WHERE name = :name`, { name: role }
       );
       if (!roleRow) return R.badRequest(res, `Rol '${role}' no existe`);
+      if (!canAssignRole(req, role)) return forbiddenRoleAssignment(res, role);
 
       // Generar contraseña temporal segura (12 chars base64url)
       const tempPassword = crypto.randomBytes(9).toString('base64url');
@@ -173,10 +191,16 @@ router.get('/users',
   requireAdmin,
   async (req, res, next) => {
     try {
-      const { page = 1, limit = 50, isActive } = req.query;
-      const offset = (parseInt(page) - 1) * parseInt(limit);
+      // BUG-FIX: cap en limit para evitar dump masivo de registros (DoS/exfiltración).
+      const MAX_LIMIT = 200;
+      const rawPage  = Math.max(1, parseInt(req.query.page, 10)  || 1);
+      const rawLimit = Math.min(MAX_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || 50));
+      const { isActive } = req.query;
+      const offset = (rawPage - 1) * rawLimit;
       const conds  = ['b.organization_id = :orgId', 'u.deleted_at IS NULL'];
-      const params = { orgId: req.user.orgId, limit: parseInt(limit), offset };
+      const params = { orgId: req.user.orgId, limit: rawLimit, offset };
+      const page   = rawPage;
+      const limit  = rawLimit;
 
       if (isActive !== undefined) {
         conds.push('u.is_active = :isActive');
@@ -286,6 +310,10 @@ router.patch('/users/:id/role',
         { userId: targetUserId }
       );
       const previousRoles = activeRoles.map(r => r.name);
+      if (!isSuperAdmin(req) && previousRoles.includes('superadmin')) {
+        return R.forbidden(res, 'No tiene permisos para modificar usuarios superadmin');
+      }
+      if (!canAssignRole(req, role)) return forbiddenRoleAssignment(res, role);
 
       await db.transaction(async (conn) => {
         await conn.query(

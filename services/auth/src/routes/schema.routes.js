@@ -16,17 +16,20 @@ const {
   generateZodSchema,
 } = require('../../../../shared/schemaEngine');
 const R = require('../../../../shared/response');
+const { requireInternalSig } = require('../../../../shared/internalAuth');   // BUG-003
+const { fromHeaders } = require('../../../../shared/requestContext');         // BUG-003
 
 const router = Router();
 
 // Guard: solo superadmin u org_admin
 function adminOnly(req, res, next) {
-  const roles = (req.headers['x-user-roles'] || '').split(',').map(r => r.trim());
+  const roles = req.user?.roles || [];
   if (roles.includes('superadmin') || roles.includes('org_admin')) return next();
   return R.error(res, 403, 'Admin access required', null, 'RBAC_001');
 }
 
-router.use(adminOnly);
+// BUG-003: verificar firma de servicio interno antes de procesar roles/claims
+router.use(requireInternalSig, fromHeaders, adminOnly);
 
 // GET /schema — lista tablas disponibles
 router.get('/', async (req, res, next) => {

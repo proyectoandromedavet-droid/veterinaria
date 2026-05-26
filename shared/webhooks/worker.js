@@ -15,7 +15,10 @@ const eventBus = require('../eventBus');
 const { getRedisSingleton } = require('../redis');
 const { createLogger } = require('../logger');
 
-const INTERVAL_MS = parseInt(process.env.WEBHOOK_POLL_MS || '15000');
+const INTERVAL_MS   = parseInt(process.env.WEBHOOK_POLL_MS     || '15000');
+// Timeout máximo para processPending(). Si supera este tiempo, se considera colgado
+// y se libera running para que el próximo tick pueda ejecutarse.
+const PROCESS_TIMEOUT_MS = parseInt(process.env.WEBHOOK_PROCESS_TIMEOUT_MS || '60000');
 const LOCK_TTL_MS = INTERVAL_MS + 5000;
 const LOCK_KEY = `webhook-worker:poll-lock:${process.env.NODE_ENV || 'dev'}`;
 const log = createLogger('webhook-worker');
@@ -61,7 +64,14 @@ async function tick() {
   if (!acquired) return; // another instance is already processing
   running = true;
   try {
-    await processPending();
+    // Envolver processPending en un timeout para evitar que un bloqueo indefinido
+    // deje running=true para siempre, paralizando el worker.
+    await Promise.race([
+      processPending(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`processPending timeout after ${PROCESS_TIMEOUT_MS}ms`)), PROCESS_TIMEOUT_MS)
+      ),
+    ]);
   } catch (err) {
     log.warn('Webhook worker tick failed', { error: err.message });
   } finally {

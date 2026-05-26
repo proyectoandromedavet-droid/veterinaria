@@ -14,6 +14,7 @@ function buildApp() {
   app.get('/csrf-token', csrfToken);
   app.use('/api/v1', csrfProtect);
   app.post('/api/v1/ping', (_req, res) => res.json({ ok: true }));
+  app.post('/api/v1/auth/login', (_req, res) => res.json({ ok: true }));
   return app;
 }
 
@@ -44,6 +45,13 @@ describe('CSRF middleware', () => {
     const res = await agent
       .post('/api/v1/ping')
       .set('X-CSRF-Token', token);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  test('skips excluded routes even when middleware is mounted below /api/v1', async () => {
+    const res = await request(buildApp()).post('/api/v1/auth/login');
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);

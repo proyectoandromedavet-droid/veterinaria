@@ -7,6 +7,8 @@
 *.p12
 *.pfx
 secrets/
+k8s/secrets.yaml
+k8s/*.secret.yaml
 
 # Dependencies
 node_modules/

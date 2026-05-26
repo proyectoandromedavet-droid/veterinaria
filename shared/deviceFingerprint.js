@@ -17,6 +17,10 @@ const ENABLED = () => {
   return process.env.NODE_ENV === 'production';
 };
 
+// Si DEVICE_FINGERPRINT_BLOCK=false, solo loguea al detectar cambio de dispositivo.
+// Por defecto bloquea (fail-closed). Setear DEVICE_FINGERPRINT_BLOCK=false para modo observación.
+const BLOCK_ON_CHANGE = () => process.env.DEVICE_FINGERPRINT_BLOCK !== 'false';
+
 /**
  * Normaliza el fingerprint del header (trunca a 64 chars, lowercase hex).
  */
@@ -75,16 +79,15 @@ async function checkDeviceFingerprint(req, _res, next) {
     if (!row || !row.device_fingerprint) return next();
 
     if (row.device_fingerprint !== fp) {
-      // Fingerprint cambió — loguear evento de seguridad
       logger.warn('[deviceFingerprint] Device change detected', {
         userId:    row.user_id,
         orgId:     row.org_id,
         sessionId,
         stored:    row.device_fingerprint.slice(0, 8) + '...',
         incoming:  fp.slice(0, 8) + '...',
+        blocking:  BLOCK_ON_CHANGE(),
       });
 
-      // Registrar en security_events si la tabla existe
       try {
         await db.query(
           `INSERT INTO security_events (user_id, org_id, event_type, details, ip_address)
@@ -97,12 +100,19 @@ async function checkDeviceFingerprint(req, _res, next) {
           },
         );
       } catch { /* tabla puede no existir aún */ }
+
+      if (BLOCK_ON_CHANGE()) {
+        return _res.status(401).json({
+          success: false,
+          error: { message: 'Device changed — please re-authenticate', code: 'AUTH_014' },
+        });
+      }
     }
   } catch (err) {
     logger.warn('[deviceFingerprint] Check failed', { err: err.message });
   }
 
-  next(); // siempre continúa — no bloquea
+  next();
 }
 
 module.exports = { captureFingerprint: recordDeviceFingerprint, checkDeviceFingerprint, normalizeFingerprint };

@@ -512,6 +512,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { t } from '../i18n'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
 import {
   cancelPurchaseOrder as cancelPurchaseOrderRequest,
   createInventoryItem as createInventoryItemRequest,
@@ -525,6 +527,8 @@ import {
   saveSupplier as saveSupplierRequest,
   sendPurchaseOrder as sendPurchaseOrderRequest,
 } from '../composables/inventory/useInventoryDomain'
+
+const { confirm, success, notifyError } = useUiFeedback()
 
 // ---------------------------------------------------------------
 // TABS
@@ -621,7 +625,8 @@ async function load(page = 1) {
     items.value = payload.rows
     pagination.value = payload.meta
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudo cargar el inventario'
+    logError('inventario.load', e)
+    error.value = extractDetailedErrorMessage(e, 'No se pudo cargar el inventario', { context: 'Carga de inventario' })
   } finally { loading.value = false }
 }
 
@@ -664,7 +669,7 @@ async function handleCreate() {
     await createInventoryItemRequest(form)
     closeModal(); await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || 'No se pudo agregar el producto'
+    saveError.value = extractDetailedErrorMessage(e, 'No se pudo agregar el producto', { context: 'Guardado de producto' })
   } finally { saving.value = false }
 }
 
@@ -696,7 +701,8 @@ async function loadAlerts() {
   try {
     alerts.value = await loadInventoryAlertsRequest()
   } catch (e) {
-    alertsError.value = e.response?.data?.message || 'No se pudieron cargar las alertas'
+    logError('inventario.loadAlerts', e)
+    alertsError.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las alertas', { context: 'Carga de alertas de stock' })
   } finally { alertsLoading.value = false }
 }
 
@@ -706,7 +712,7 @@ async function resolveAlert(id) {
     await resolveInventoryAlertRequest(id)
     alerts.value = alerts.value.filter(a => String(a.id) !== String(id))
   } catch (e) {
-    alertsError.value = e.response?.data?.message || 'No se pudo resolver la alerta'
+    alertsError.value = extractDetailedErrorMessage(e, 'No se pudo resolver la alerta', { context: 'Resolucion de alerta de stock' })
   } finally { resolvingAlert.value = null }
 }
 
@@ -730,7 +736,8 @@ async function loadSuppliers() {
   try {
     suppliers.value = await loadSuppliersRequest()
   } catch (e) {
-    suppliersError.value = e.response?.data?.message || 'No se pudieron cargar los proveedores'
+    logError('inventario.loadSuppliers', e)
+    suppliersError.value = extractDetailedErrorMessage(e, 'No se pudieron cargar los proveedores', { context: 'Carga de proveedores' })
   } finally { suppliersLoading.value = false }
 }
 
@@ -780,18 +787,26 @@ async function handleSupplierSave() {
     closeSupplierModal()
     await loadSuppliers()
   } catch (e) {
-    supplierSaveError.value = e.response?.data?.message || 'No se pudo guardar el proveedor'
+    supplierSaveError.value = extractDetailedErrorMessage(e, 'No se pudo guardar el proveedor', { context: 'Guardado de proveedor' })
   } finally { supplierSaving.value = false }
 }
 
 async function deleteSupplier(id) {
-  if (!confirm(t('inventory.deleteSupplierConfirm') || '¿Eliminar este proveedor?')) return
+  const ok = await confirm({
+    title: 'Eliminar proveedor',
+    message: t('inventory.deleteSupplierConfirm') || 'Eliminar este proveedor?',
+    confirmText: 'Eliminar',
+    variant: 'danger',
+  })
+  if (!ok) return
   deletingSupplier.value = id
   try {
     await deleteSupplierRequest(id)
     suppliers.value = suppliers.value.filter(s => String(s.id) !== String(id))
+    success('Proveedor eliminado correctamente.')
   } catch (e) {
-    suppliersError.value = e.response?.data?.message || 'No se pudo eliminar el proveedor'
+    notifyError('inventario.deleteSupplier', e, 'No se pudo eliminar el proveedor', { context: 'Eliminacion de proveedor' })
+    suppliersError.value = extractDetailedErrorMessage(e, 'No se pudo eliminar el proveedor', { context: 'Eliminacion de proveedor' })
   } finally { deletingSupplier.value = null }
 }
 
@@ -834,7 +849,8 @@ async function loadOrders() {
   try {
     orders.value = await loadPurchaseOrdersRequest()
   } catch (e) {
-    ordersError.value = e.response?.data?.message || 'No se pudieron cargar las órdenes de compra'
+    logError('inventario.loadOrders', e)
+    ordersError.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las ordenes de compra', { context: 'Carga de ordenes de compra' })
   } finally { ordersLoading.value = false }
 }
 
@@ -873,7 +889,7 @@ async function handleOrderCreate() {
     closeOrderModal()
     await loadOrders()
   } catch (e) {
-    orderSaveError.value = e.response?.data?.message || 'No se pudo crear la orden de compra'
+    orderSaveError.value = extractDetailedErrorMessage(e, 'No se pudo crear la orden de compra', { context: 'Creacion de orden de compra' })
   } finally { orderSaving.value = false }
 }
 
@@ -883,18 +899,26 @@ async function sendOrder(id) {
     await sendPurchaseOrderRequest(id)
     await loadOrders()
   } catch (e) {
-    ordersError.value = e.response?.data?.message || 'No se pudo enviar la orden'
+    ordersError.value = extractDetailedErrorMessage(e, 'No se pudo enviar la orden', { context: 'Envio de orden de compra' })
   } finally { actioningOrder.value = null }
 }
 
 async function cancelOrder(id) {
-  if (!confirm(t('inventory.cancelOrderPrompt'))) return
+  const ok = await confirm({
+    title: 'Cancelar orden de compra',
+    message: t('inventory.cancelOrderPrompt') || 'Cancelar esta orden de compra?',
+    confirmText: 'Cancelar orden',
+    variant: 'danger',
+  })
+  if (!ok) return
   actioningOrder.value = id
   try {
     await cancelPurchaseOrderRequest(id)
     await loadOrders()
+    success('Orden cancelada correctamente.')
   } catch (e) {
-    ordersError.value = e.response?.data?.message || 'No se pudo cancelar la orden'
+    notifyError('inventario.cancelOrder', e, 'No se pudo cancelar la orden', { context: 'Cancelación de orden de compra' })
+    ordersError.value = extractDetailedErrorMessage(e, 'No se pudo cancelar la orden', { context: 'Cancelación de orden de compra' })
   } finally { actioningOrder.value = null }
 }
 
@@ -1058,4 +1082,3 @@ onMounted(load)
   .field--narrow { width: 100%; }
 }
 </style>
-

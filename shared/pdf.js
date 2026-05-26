@@ -12,6 +12,7 @@
  */
 
 const PDFDocument = require('pdfkit');
+const { formatDate, formatDateTime, formatNumber } = require('./locale');
 
 // ── Paleta de colores ─────────────────────────────────────────────────────────
 const C = {
@@ -93,12 +94,12 @@ async function generateInvoicePdf({ invoice, items = [], payments = [], clinic =
     .text(`N° ${invoice.afip_punto_venta || '0001'}-${String(invoice.afip_nro_comprobante || invoice.invoice_number || '').padStart(8, '0')}`, 300, 103);
 
   doc.fillColor(C.dark).fontSize(10)
-    .text(`Fecha: ${new Date(invoice.issued_date).toLocaleDateString('es-AR')}`, 400, 100, { align: 'right', width: 155 });
+    .text(`Fecha: ${formatDate(invoice.issued_date)}`, 400, 100, { align: 'right', width: 155 });
 
   if (invoice.afip_cae) {
     doc.fontSize(9).fillColor(C.gray)
       .text(`CAE: ${invoice.afip_cae}`, 40, 125)
-      .text(`Vto. CAE: ${invoice.afip_cae_vto ? new Date(invoice.afip_cae_vto).toLocaleDateString('es-AR') : '-'}`, 200, 125);
+      .text(`Vto. CAE: ${invoice.afip_cae_vto ? formatDate(invoice.afip_cae_vto) : '-'}`, 200, 125);
   }
 
   // ── Datos del cliente ─────────────────────────────────────────────────────
@@ -215,7 +216,7 @@ async function generateMedicalRecordPdf({ record, patient, clinic = {} }) {
   doc.fontSize(10).font('Helvetica')
     .text(`Paciente: ${patient.name}`, 40, 125)
     .text(`Especie: ${patient.species || '-'}  |  Raza: ${patient.breed || '-'}`, 40, 140)
-    .text(`Fecha de visita: ${new Date(record.visit_date).toLocaleDateString('es-AR')}`, 40, 155)
+    .text(`Fecha de visita: ${formatDate(record.visit_date)}`, 40, 155)
     .text(`Veterinario: ${record.vet_name || '-'}`, 300, 155);
 
   drawHRule(doc, 175);
@@ -396,7 +397,7 @@ async function generateDiagnosesReportPdf ({ rows, meta = {}, clinic = {} }) {
 // ─── Helpers de PDF ───────────────────────────────────────────────────────────
 
 function fmtNum (n) {
-  return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatNumber(n);
 }
 
 /**
@@ -448,7 +449,7 @@ function _pdfFooter (doc, generatedBy) {
   const pages = doc.bufferedPageRange ? doc.bufferedPageRange() : null;
   doc.fontSize(8).fillColor(C.gray)
     .text(
-      `Generado por: ${generatedBy || 'VetManager'} — ${new Date().toLocaleString('es-AR')}`,
+      `Generado por: ${generatedBy || 'VetManager'} — ${formatDateTime(new Date())}`,
       40, 800, { align: 'center', width: 515 }
     );
 }

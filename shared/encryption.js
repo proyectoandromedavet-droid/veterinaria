@@ -36,9 +36,15 @@ const TAG_LENGTH   = 16;   // 128 bits auth tag
 let _masterKey = null;
 function getMasterKey () {
   if (_masterKey) return _masterKey;
-  const secret = getAnySecret(['FIELD_ENCRYPTION_SECRET', 'JWT_SECRET']);
-  if (!secret) throw new Error('FIELD_ENCRYPTION_SECRET no configurado');
-  const salt = Buffer.from(getSecret('FIELD_ENCRYPTION_SALT', { defaultValue: 'vetmanager_enc_salt_v1' }) || 'vetmanager_enc_salt_v1');
+  const secret = getSecret('FIELD_ENCRYPTION_SECRET');
+  if (!secret) throw new Error('FIELD_ENCRYPTION_SECRET no configurado — no se permite fallback a JWT_SECRET');
+  // BUG-24: salt hardcodeado elimina la protección de PBKDF2 — loguear en producción
+  const configuredSalt = getSecret('FIELD_ENCRYPTION_SALT', { defaultValue: '' });
+  if (!configuredSalt && process.env.NODE_ENV === 'production') {
+    const log = require('./logger').createLogger('encryption');
+    log.error('FIELD_ENCRYPTION_SALT no configurado — usando salt por defecto. Configurar FIELD_ENCRYPTION_SALT en producción.');
+  }
+  const salt = Buffer.from(configuredSalt || 'vetmanager_enc_salt_v1');
   _masterKey = crypto.pbkdf2Sync(secret, salt, 100_000, KEY_LENGTH, 'sha256');
   return _masterKey;
 }
@@ -90,8 +96,9 @@ function decrypt (ciphertext) {
 
     return decipher.update(data) + decipher.final('utf8');
   } catch (err) {
-    log.warn('Decrypt fallback used', { error: err.message });
-    return ciphertext;  // no se pudo descifrar → devolver original
+    // No devolver el ciphertext crudo — el caller debe manejar null explícitamente.
+    log.error('Decrypt failed — returning null', { error: err.message });
+    return null;
   }
 }
 
@@ -155,7 +162,8 @@ function decryptRows (rows, fields) {
  */
 function hashForSearch (value) {
   if (!value) return null;
-  const secret = getSecret('FIELD_ENCRYPTION_SECRET', { defaultValue: 'default' }) || 'default';
+  const secret = getSecret('FIELD_ENCRYPTION_SECRET');
+  if (!secret) throw new Error('FIELD_ENCRYPTION_SECRET no configurado');
   return crypto.createHmac('sha256', secret).update(String(value).toLowerCase().trim()).digest('hex');
 }
 

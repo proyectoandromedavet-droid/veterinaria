@@ -60,15 +60,26 @@ async function getRules(ruleType, orgId, branchId = null) {
   return rules;
 }
 
+// SEC: lista de segmentos de campo prohibidos para prevenir acceso a propiedades
+// del prototipo (__proto__, constructor, prototype) via dot-notation.
+const FORBIDDEN_FIELD_PARTS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /**
  * Resuelve el valor de un campo en el contexto usando dot-notation.
  * Ej: 'appointment.day_of_week' → context.appointment.day_of_week
+ * SEC: rechaza segmentos de prototipo para prevenir prototype pollution.
  */
 function resolveField(context, field) {
   const parts = field.split('.');
+  // SEC: validar cada segmento antes de la traversal
+  for (const part of parts) {
+    if (FORBIDDEN_FIELD_PARTS.has(part)) return undefined;
+  }
   let val = context;
   for (const part of parts) {
-    if (val == null) return undefined;
+    if (val == null || typeof val !== 'object') return undefined;
+    // SEC: solo acceder a propiedades propias, no heredadas
+    if (!Object.prototype.hasOwnProperty.call(val, part)) return undefined;
     val = val[part];
   }
   return val;
@@ -102,7 +113,7 @@ function evaluateCondition(condition, context) {
     }
     default:
       logger.warn('[rulesEngine] Unknown operator', { operator });
-      return true; // operador desconocido → pass-through
+      return false; // operador desconocido → fail-safe (no disparar la regla)
   }
 }
 

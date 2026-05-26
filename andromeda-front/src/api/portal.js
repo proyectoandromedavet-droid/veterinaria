@@ -54,7 +54,7 @@ function getPortalOrgId() {
   if (queryOrgId) {
     const parsed = parseInt(queryOrgId, 10)
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      console.warn('portal: ignoring invalid orgId from URL')
+      logError('portal.invalidOrgId', new Error('Invalid orgId from URL'), { orgId: queryOrgId })
     } else {
       window.localStorage.setItem(ORG_STORAGE_KEY, String(parsed))
       return String(parsed)

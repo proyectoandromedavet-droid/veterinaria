@@ -3,8 +3,14 @@
 const { Router } = require('express');
 const db = require('../../../../shared/db');
 const R  = require('../../../../shared/response');
+const { requireInternalSig } = require('../../../../shared/internalAuth');   // BUG-003
 const { fromHeaders, requireOrgContext } = require('../../../../shared/requestContext');
-const { requireAdminRole } = require('../../../../shared/adminAuth');
+
+function requireSuperAdmin(req, res, next) {
+  const roles = req.user?.roles || [];
+  if (roles.includes('superadmin')) return next();
+  return R.forbidden(res, 'Se requiere rol superadmin', 'FORBIDDEN');
+}
 
 const router = Router();
 
@@ -35,12 +41,12 @@ const TABLES = [
 const TABLE_MAP = Object.fromEntries(TABLES.map(t => [t.key, t]));
 
 // GET /admin/preview — lista de tablas
-router.get('/', fromHeaders, requireOrgContext, requireAdminRole, (_req, res) => {
+router.get('/', requireInternalSig, fromHeaders, requireOrgContext, requireSuperAdmin, (_req, res) => {
   return R.ok(res, { tables: TABLES.map(({ key, label, description }) => ({ key, label, description })) });
 });
 
 // GET /admin/preview/:tableName — columnas reales (DESCRIBE) + 10 registros
-router.get('/:tableName', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
+router.get('/:tableName', requireInternalSig, fromHeaders, requireOrgContext, requireSuperAdmin, async (req, res, next) => {
   try {
     const def = TABLE_MAP[req.params.tableName];
     if (!def) {
@@ -71,8 +77,22 @@ router.get('/:tableName', fromHeaders, requireOrgContext, requireAdminRole, asyn
       params = { orgId };
     }
 
+    // OT-071: build explicit column list — exclude encrypted BLOBs and binary hashes
+    const EXCLUDED_COLUMNS = new Set([
+      'password_hash', 'password', 'hashed_password',
+      'encrypted_value', 'field_iv', 'encryption_iv',
+      'private_key', 'secret', 'token_hash', 'refresh_token_hash',
+      'session_token', 'api_key_hash',
+    ]);
+    const EXCLUDED_TYPES = /^(blob|mediumblob|longblob|tinyblob|varbinary|binary)/i;
+
+    const safeColumns = rawCols
+      .filter((c) => !EXCLUDED_COLUMNS.has(c.Field) && !EXCLUDED_TYPES.test(c.Type))
+      .map((c) => `\`${c.Field}\``)
+      .join(', ');
+
     const rows = await db.query(
-      `SELECT * FROM \`${def.key}\` ${where} ORDER BY id DESC LIMIT 10`,
+      `SELECT ${safeColumns} FROM \`${def.key}\` ${where} ORDER BY id DESC LIMIT 10`,
       params,
     );
 

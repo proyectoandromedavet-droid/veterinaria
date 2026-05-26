@@ -1,8 +1,26 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '../api/auth'
 import { clearCsrfToken, ensureCsrfToken } from '../api/client'
 import { extractErrorMessage, logError } from '../utils/errors'
+
+const PREVIEW_AUTH_KEY = 'vet_preview_auth'
+const IS_DEV_MODE = import.meta.env.DEV || import.meta.env.MODE === 'development'
+
+const PREVIEW_USER = {
+  id: 'preview-user',
+  name: 'Preview Andromeda',
+  email: 'preview@andromeda.local',
+  org_id: 1,
+  branch_id: 1,
+  roles: ['superadmin', 'org_admin'],
+  permissions: ['*'],
+}
+
+function isPreviewAuthEnabled() {
+  if (!IS_DEV_MODE) return false
+  return import.meta.env.VITE_PREVIEW_AUTH !== 'false' || localStorage.getItem(PREVIEW_AUTH_KEY) === '1'
+}
 
 function decodeBase64Url(value) {
   const normalized = String(value || '')
@@ -92,6 +110,12 @@ export const useAuthStore = defineStore('auth', () => {
     hydrating.value = true
     hydratePromise = (async () => {
       try {
+        if (isPreviewAuthEnabled()) {
+          accessToken.value = 'preview-token'
+          user.value = normalizeUser(PREVIEW_USER)
+          hydrated.value = true
+          return
+        }
         const hadSession = localStorage.getItem('vet_session') === '1'
         if (!accessToken.value && hadSession) {
           try {
@@ -164,6 +188,7 @@ export const useAuthStore = defineStore('auth', () => {
       logError('auth.logout', error)
     }
     localStorage.removeItem('vet_session')
+    localStorage.removeItem(PREVIEW_AUTH_KEY)
     accessToken.value = null
     user.value = null
     hydrated.value = false
@@ -177,6 +202,29 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const allowedMenu = computed(() => {
+    if (isPreviewAuthEnabled()) {
+      return [
+        { key: 'dashboard', label: 'Inicio', icon: '\u{1F3E0}', to: '/' },
+        { key: 'appointments', label: 'Turnos', icon: '\u{1F4C5}', to: '/turnos' },
+        { key: 'patients', label: 'Pacientes', icon: '\u{1F43E}', to: '/pacientes' },
+        { key: 'medical', label: 'Evoluciones', icon: '\u{1F4CB}', to: '/evoluciones' },
+        { key: 'vaccinations', label: 'Vacunas', icon: '\u{1F489}', to: '/vacunas' },
+        { key: 'laboratorio', label: 'Laboratorio', icon: '\u{1F9EA}', to: '/laboratorio' },
+        { key: 'imagenes', label: 'Imagenes', icon: '\u{1FA7B}', to: '/imagenes' },
+        { key: 'patologia', label: 'Patologia', icon: '\u{1F52C}', to: '/patologia' },
+        { key: 'cirugias', label: 'Cirugias', icon: '\u{1F52A}', to: '/cirugias' },
+        { key: 'hospitalizaciones', label: 'Internados', icon: '\u{1F3E5}', to: '/hospitalizaciones' },
+        { key: 'inventory', label: 'Inventario', icon: '\u{1F4E6}', to: '/inventario' },
+        { key: 'grooming', label: 'Grooming', icon: '\u2702\uFE0F', to: '/grooming' },
+        { key: 'telemedicine', label: 'Telemedicina', icon: '\u{1F4BB}', to: '/telemedicina' },
+        { key: 'billing', label: 'Facturacion', icon: '\u{1F4B0}', to: '/facturacion' },
+        { key: 'reports', label: 'Reportes', icon: '\u{1F4CA}', to: '/reportes' },
+        { key: 'admin', label: 'Administrar', icon: '\u2699\uFE0F', to: '/admin' },
+        { key: 'notifications', label: 'Notificaciones', icon: '\u{1F514}', to: '/notificaciones' },
+        { key: 'documents', label: 'Documentos', icon: '\u{1F4E8}', to: '/documentos' },
+        { key: 'ai', label: 'IA', icon: '\u{1F9E0}', to: '/ai' },
+      ]
+    }
     const r = roles.value
     const all = r.includes('superadmin') || r.includes('org_admin')
 
@@ -184,67 +232,67 @@ export const useAuthStore = defineStore('auth', () => {
 
     // OT-107: imaging_tech and api_user added to relevant menu items
     if (all || r.some((x) => ['branch_manager', 'veterinarian', 'vet_technician', 'receptionist', 'tele_vet', 'read_only', 'imaging_tech', 'api_user'].includes(x))) {
-      items.push({ key: 'dashboard', label: 'Inicio', icon: '🏠', to: '/' })
+      items.push({ key: 'dashboard', label: 'Inicio', icon: '\u{1F3E0}', to: '/' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'vet_technician', 'receptionist', 'branch_manager', 'tele_vet', 'read_only'].includes(x))) {
-      items.push({ key: 'appointments', label: 'Turnos', icon: '📅', to: '/turnos' })
+      items.push({ key: 'appointments', label: 'Turnos', icon: '\u{1F4C5}', to: '/turnos' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'vet_technician', 'branch_manager', 'read_only', 'imaging_tech'].includes(x))) {
-      items.push({ key: 'patients', label: 'Pacientes', icon: '🐾', to: '/pacientes' })
+      items.push({ key: 'patients', label: 'Pacientes', icon: '\u{1F43E}', to: '/pacientes' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'vet_technician', 'surgeon', 'tele_vet', 'imaging_tech'].includes(x))) {
-      items.push({ key: 'medical', label: 'Evoluciones', icon: '📋', to: '/evoluciones' })
+      items.push({ key: 'medical', label: 'Evoluciones', icon: '\u{1F4CB}', to: '/evoluciones' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'vet_technician', 'surgeon', 'lab_technician'].includes(x))) {
-      items.push({ key: 'vaccinations', label: 'Vacunas', icon: '💉', to: '/vacunas' })
+      items.push({ key: 'vaccinations', label: 'Vacunas', icon: '\u{1F489}', to: '/vacunas' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician'].includes(x))) {
-      items.push({ key: 'laboratorio', label: 'Laboratorio', icon: '🧪', to: '/laboratorio' })
+      items.push({ key: 'laboratorio', label: 'Laboratorio', icon: '\u{1F9EA}', to: '/laboratorio' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician', 'imaging_tech'].includes(x))) {
-      items.push({ key: 'imagenes', label: 'Imágenes', icon: '🩻', to: '/imagenes' })
+      items.push({ key: 'imagenes', label: 'Imagenes', icon: '\u{1FA7B}', to: '/imagenes' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'vet_technician', 'lab_technician', 'imaging_tech'].includes(x))) {
-      items.push({ key: 'patologia', label: 'Patología', icon: '🔬', to: '/patologia' })
+      items.push({ key: 'patologia', label: 'Patologia', icon: '\u{1F52C}', to: '/patologia' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'surgeon'].includes(x))) {
-      items.push({ key: 'cirugias', label: 'Cirugías', icon: '🔪', to: '/cirugias' })
+      items.push({ key: 'cirugias', label: 'Cirugias', icon: '\u{1F52A}', to: '/cirugias' })
     }
 
     if (all || r.some((x) => ['veterinarian', 'vet_technician', 'branch_manager'].includes(x))) {
-      items.push({ key: 'hospitalizaciones', label: 'Internados', icon: '🏥', to: '/hospitalizaciones' })
+      items.push({ key: 'hospitalizaciones', label: 'Internados', icon: '\u{1F3E5}', to: '/hospitalizaciones' })
     }
 
     if (all || r.some((x) => ['pharmacist', 'accountant', 'branch_manager', 'org_admin'].includes(x))) {
-      items.push({ key: 'inventory', label: 'Inventario', icon: '📦', to: '/inventario' })
+      items.push({ key: 'inventory', label: 'Inventario', icon: '\u{1F4E6}', to: '/inventario' })
     }
 
     if (all || r.some((x) => ['groomer', 'grooming_manager'].includes(x))) {
-      items.push({ key: 'grooming', label: 'Grooming', icon: '✂️', to: '/grooming' })
+      items.push({ key: 'grooming', label: 'Grooming', icon: '\u2702\uFE0F', to: '/grooming' })
     }
 
     if (all || r.some((x) => ['tele_vet', 'veterinarian'].includes(x))) {
-      items.push({ key: 'telemedicine', label: 'Telemedicina', icon: '💻', to: '/telemedicina' })
+      items.push({ key: 'telemedicine', label: 'Telemedicina', icon: '\u{1F4BB}', to: '/telemedicina' })
     }
 
     if (all || r.some((x) => ['accountant', 'branch_manager', 'org_admin'].includes(x))) {
-      items.push({ key: 'billing', label: 'Facturación', icon: '💰', to: '/facturacion' })
+      items.push({ key: 'billing', label: 'Facturacion', icon: '\u{1F4B0}', to: '/facturacion' })
     }
 
     if (all || r.some((x) => ['branch_manager', 'org_admin', 'accountant'].includes(x))) {
-      items.push({ key: 'reports', label: 'Reportes', icon: '📊', to: '/reportes' })
+      items.push({ key: 'reports', label: 'Reportes', icon: '\u{1F4CA}', to: '/reportes' })
     }
 
     if (all) {
-      items.push({ key: 'admin', label: 'Administrar', icon: '⚙️', to: '/admin' })
+      items.push({ key: 'admin', label: 'Administrar', icon: '\u2699\uFE0F', to: '/admin' })
     }
 
     if (all) {
@@ -252,15 +300,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     if (all || r.length) {
-      items.push({ key: 'notifications', label: 'Notificaciones', icon: '🔔', to: '/notificaciones' })
+      items.push({ key: 'notifications', label: 'Notificaciones', icon: '\u{1F514}', to: '/notificaciones' })
     }
 
     if (all || r.some((x) => ['branch_manager', 'veterinarian', 'vet_technician', 'surgeon', 'lab_technician', 'read_only', 'imaging_tech'].includes(x))) {
-      items.push({ key: 'documents', label: 'Documentos', icon: '📨', to: '/documentos' })
+      items.push({ key: 'documents', label: 'Documentos', icon: '\u{1F4E8}', to: '/documentos' })
     }
 
     if (can('ai:use')) {
-      items.push({ key: 'ai', label: 'IA', icon: '🧠', to: '/ai' })
+      items.push({ key: 'ai', label: 'IA', icon: '\u{1F9E0}', to: '/ai' })
     }
 
     return items

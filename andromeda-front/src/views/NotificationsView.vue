@@ -7,13 +7,13 @@
       </div>
       <div class="header-actions">
         <BaseButton variant="ghost" @click="loadAll" :disabled="loading">Actualizar</BaseButton>
-        <BaseButton @click="markAllRead" :disabled="loading || !unreadCount">Marcar todo como leido</BaseButton>
+        <BaseButton @click="markAllRead" :disabled="loading || !unreadCount">Marcar todo como leído</BaseButton>
       </div>
     </div>
 
     <div class="kpi-grid">
       <div class="kpi-card">
-        <span class="kpi-label">No leidas</span>
+        <span class="kpi-label">No leídas</span>
         <strong>{{ unreadCount }}</strong>
       </div>
       <div class="kpi-card">
@@ -38,7 +38,7 @@
       </div>
       <label class="toggle">
         <input id="notifications-unread-only" name="notifications-unread-only" v-model="unreadOnly" type="checkbox" @change="loadInbox" />
-        <span>Solo no leidas</span>
+        <span>Solo no leídas</span>
       </label>
     </div>
 
@@ -51,7 +51,7 @@
         <article v-for="item in notifications" :key="item.id" class="notification-card" :class="{ 'notification-card--unread': !item.read_at }">
           <div class="notification-head">
             <div>
-              <strong>{{ item.title || 'Sin titulo' }}</strong>
+              <strong>{{ item.title || 'Sin título' }}</strong>
               <span class="badge" :class="`badge--${item.severity || 'info'}`">{{ item.severity || 'info' }}</span>
             </div>
             <span class="date">{{ formatDate(item.sent_at) }}</span>
@@ -59,11 +59,11 @@
           <p class="message">{{ item.message || 'Sin contenido' }}</p>
           <div class="notification-meta">
             <span>{{ item.notification_type || 'general' }}</span>
-            <a v-if="item.action_url && isSafeUrl(item.action_url)" :href="item.action_url" target="_blank" rel="noreferrer noopener">Abrir accion</a>
+            <a v-if="item.action_url && isSafeUrl(item.action_url)" :href="item.action_url" target="_blank" rel="noreferrer noopener">Abrir acción</a>
           </div>
           <div class="notification-actions">
-            <BaseButton v-if="!item.read_at" size="sm" variant="ghost" @click="markRead(item.id)">Marcar leida</BaseButton>
-            <span v-else class="read-ok">Leida</span>
+            <BaseButton v-if="!item.read_at" size="sm" variant="ghost" @click="markRead(item.id)">Marcar leída</BaseButton>
+            <span v-else class="read-ok">Leída</span>
           </div>
         </article>
       </div>
@@ -130,7 +130,7 @@
               <th>Canal</th>
               <th>Estado</th>
               <th>Intentos</th>
-              <th>Proximo intento</th>
+              <th>Próximo intento</th>
               <th>Error</th>
             </tr>
           </thead>
@@ -153,7 +153,10 @@
 import { onMounted, ref } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import { notificationsApi } from '../api'
-import { extractErrorMessage } from '../utils/errors'
+import { extractDetailedErrorMessage } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
+
+const { success } = useUiFeedback()
 
 const tabs = [
   { id: 'inbox', label: 'Bandeja' },
@@ -182,6 +185,7 @@ function formatDate(value) {
 }
 
 function isSafeUrl(url) {
+  if (typeof url === 'string' && url.startsWith('/')) return true
   try {
     const parsed = new URL(url)
     return parsed.protocol === 'https:'
@@ -214,21 +218,31 @@ async function loadRetries() {
 async function loadAll() {
   loading.value = true
   error.value = ''
-  try {
-    await Promise.all([loadInbox(), loadReminders(), loadMessages(), loadRetries()])
-  } catch (e) {
-    error.value = extractErrorMessage(e, 'No se pudieron cargar las notificaciones.', { includeRequestId: true })
-  } finally {
-    loading.value = false
+  const sections = [
+    ['bandeja', loadInbox],
+    ['recordatorios', loadReminders],
+    ['mensajes', loadMessages],
+    ['reintentos', loadRetries],
+  ]
+  const results = await Promise.allSettled(sections.map(([, fn]) => fn()))
+  const failed = results
+    .map((result, index) => result.status === 'rejected'
+      ? `${sections[index][0]}: ${extractDetailedErrorMessage(result.reason, 'falló la carga', { context: `Carga de ${sections[index][0]}` })}`
+      : null)
+    .filter(Boolean)
+  if (failed.length) {
+    error.value = `No se pudieron cargar todas las secciones. ${failed.join(' ')}`
   }
+  loading.value = false
 }
 
 async function markRead(id) {
   try {
     await notificationsApi.markRead(id)
     await loadInbox()
+    success('Notificación marcada como leída.')
   } catch (e) {
-    error.value = extractErrorMessage(e, 'No se pudo marcar la notificacion.', { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, 'No se pudo marcar la notificación.', { context: 'Marcar notificación como leída' })
   }
 }
 
@@ -236,8 +250,9 @@ async function markAllRead() {
   try {
     await notificationsApi.markAll()
     await loadInbox()
+    success('Bandeja actualizada.')
   } catch (e) {
-    error.value = extractErrorMessage(e, 'No se pudo actualizar la bandeja.', { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, 'No se pudo actualizar la bandeja.', { context: 'Marcar todas las notificaciones como leídas' })
   }
 }
 

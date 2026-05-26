@@ -12,21 +12,25 @@ const { body, param, validationResult } = require('express-validator');
 const db       = require('../../../../shared/db');
 const registry = require('../../../../shared/pluginRegistry');
 const R = require('../../../../shared/response');
+const { requireInternalSig } = require('../../../../shared/internalAuth');   // BUG-003
+const { fromHeaders } = require('../../../../shared/requestContext');         // BUG-003
 
 const router = Router();
 
 function adminOnly(req, res, next) {
-  const roles = (req.headers['x-user-roles'] || '').split(',').map(r => r.trim());
+  // BUG-003: roles ya poblados por fromHeaders (que viene después de requireInternalSig)
+  const roles = req.user?.roles || [];
   if (roles.includes('superadmin') || roles.includes('org_admin')) return next();
   return R.error(res, 403, 'Admin access required', null, 'RBAC_001');
 }
 
-router.use(adminOnly);
+// BUG-003: verificar firma de servicio interno antes de procesar roles/claims
+router.use(requireInternalSig, fromHeaders, adminOnly);
 
 // GET /admin/plugins
 router.get('/', async (req, res, next) => {
   try {
-    const orgId  = req.headers['x-org-id'];
+    const orgId  = req.user.orgId;
     const available = registry.listPlugins();
     const enabled = await db.query(
       'SELECT plugin_id, is_active, config FROM org_plugins WHERE org_id = :orgId',
@@ -47,8 +51,8 @@ router.get('/', async (req, res, next) => {
 // POST /admin/plugins/:id/enable
 router.post('/:id/enable', param('id').isString(), async (req, res, next) => {
   try {
-    const orgId    = req.headers['x-org-id'];
-    const userId   = req.headers['x-user-id'];
+    const orgId    = req.user.orgId;
+    const userId   = req.user.userId;
     const pluginId = req.params.id;
 
     await db.query(
@@ -66,7 +70,7 @@ router.post('/:id/enable', param('id').isString(), async (req, res, next) => {
 // POST /admin/plugins/:id/disable
 router.post('/:id/disable', param('id').isString(), async (req, res, next) => {
   try {
-    const orgId    = req.headers['x-org-id'];
+    const orgId    = req.user.orgId;
     const pluginId = req.params.id;
 
     await db.query(
@@ -84,7 +88,7 @@ router.put('/:id/config',
   body('config').isObject(),
   async (req, res, next) => {
     try {
-      const orgId    = req.headers['x-org-id'];
+      const orgId    = req.user.orgId;
       const pluginId = req.params.id;
       const { config } = req.body;
 

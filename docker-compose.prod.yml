@@ -7,7 +7,7 @@ version: '3.9'
 networks:
   vetmanager-internal:
     driver: bridge
-    internal: true   # No expuesto a internet — solo servicios internos
+    # Needs outbound access for RDS/S3/Stripe/OpenAI/SMTP. Edge exposure is controlled by published ports.
   vetmanager-public:
     driver: bridge    # Solo gateway tiene acceso
 
@@ -42,11 +42,11 @@ services:
       dockerfile: gateway/Dockerfile
     restart: unless-stopped
     ports:
-      - "80:3000"
-      - "443:3000"   # con reverse proxy nginx/traefik delante
+      - "80:4050"
+      - "443:4050"   # con reverse proxy nginx/traefik delante
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: 4050
       TRACING_ENABLED: "true"
       TRACING_EXPORTER_URL: http://tempo:9411/api/v2/spans
       SERVICE_DISCOVERY_MODE: hybrid
@@ -63,9 +63,17 @@ services:
       SERVICE_AI: http://ai:3011
       SERVICE_DOCUMENTS: http://documents:3012
       INTERNAL_SECRET: ${INTERNAL_SECRET}
+      INTERNAL_SIG_TTL_S: ${INTERNAL_SIG_TTL_S:-60}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      JWT_PUBLIC_KEY_OLD: ${JWT_PUBLIC_KEY_OLD:-}
+      JWT_KEYRING_JSON: ${JWT_KEYRING_JSON:-}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      CSRF_SECRET: ${CSRF_SECRET}
+      CSRF_EXCLUDE_PATHS: ${CSRF_EXCLUDE_PATHS}
+      DEPENDENCY_MODE_AUTH_REVOCATION: ${DEPENDENCY_MODE_AUTH_REVOCATION:-strict}
       API_VERSION: ${API_VERSION:-v1}
       APP_VERSION: ${APP_VERSION:-1.0.0}
       APP_DOMAIN: ${APP_DOMAIN}
@@ -87,7 +95,7 @@ services:
         limits:
           memory: 256M
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:4050/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -521,7 +529,7 @@ services:
 
   # ── Observabilidad ────────────────────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.0
     restart: unless-stopped
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -534,24 +542,39 @@ services:
       - ./docker/prometheus/synthetics.yml:/etc/prometheus/synthetics.yml:ro
       - prometheus-data:/prometheus
     networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.27.0
     restart: unless-stopped
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
     volumes:
       - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
 
   blackbox-exporter:
-    image: prom/blackbox-exporter:latest
+    image: prom/blackbox-exporter:v0.25.0
     restart: unless-stopped
     command:
       - '--config.file=/etc/blackbox/blackbox.yml'
     volumes:
       - ./docker/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
     networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
 
   tempo:
     image: grafana/tempo:2.5.0
@@ -561,12 +584,22 @@ services:
     volumes:
       - ./docker/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
     networks: [vetmanager-internal]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3200/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.1.0
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set in .env}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
@@ -576,3 +609,8 @@ services:
       - prometheus
       - tempo
     networks: [vetmanager-internal]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M

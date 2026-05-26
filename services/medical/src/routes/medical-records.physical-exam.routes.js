@@ -1,11 +1,49 @@
 'use strict';
 
-const { Router, db, R, logMedicalError, encryptFields } = require('./medical-records.sections.common');
+const {
+  Router,
+  body,
+  db,
+  R,
+  validate,
+  logMedicalError,
+  encryptFields,
+  ensureMedicalRecordInScope,
+} = require('./medical-records.sections.common');
+
+// Longitud máxima para campos de texto libre del examen físico
+const PE_TEXT_MAX = 1000;
 
 const router = Router();
 
-router.post('/:id/physical-exam', async (req, res, next) => {
+router.post('/:id/physical-exam',
+  body('temperatureCelsius').optional({ nullable: true }).isFloat({ min: 30, max: 45 }),
+  body('heartRate').optional({ nullable: true }).isInt({ min: 0, max: 400 }),
+  body('respiratoryRate').optional({ nullable: true }).isInt({ min: 0, max: 200 }),
+  body('weightKg').optional({ nullable: true }).isFloat({ min: 0, max: 1000 }),
+  body('bodyConditionScore').optional({ nullable: true }).isFloat({ min: 1, max: 9 }),
+  body('mucousMembranes').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('hydrationStatus').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('lymphNodes').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('skinCoat').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('eyes').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('ears').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('noseThroat').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('oralCavity').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('cardiovascular').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('respiratory').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('abdomen').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('musculoskeletal').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('neurological').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('urogenital').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('painAssessment').optional({ nullable: true }).isString().isLength({ max: PE_TEXT_MAX }),
+  body('generalObservations').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  validate,
+  async (req, res, next) => {
   try {
+    const scopedRecord = await ensureMedicalRecordInScope(req, req.params.id);
+    if (!scopedRecord) return R.notFound(res, 'Historia clinica no encontrada');
+
     const fields = req.body;
     const encryptedTextFields = encryptFields(fields, [
       'mucousMembranes',
@@ -40,6 +78,7 @@ router.post('/:id/physical-exam', async (req, res, next) => {
     const colNames = cols.map((c) => c.col).join(', ');
     const vals = cols.map(() => '?').join(', ');
     const values = cols.map((c) => c.v);
+    if (!cols.length) return R.badRequest(res, 'Sin campos validos para actualizar');
 
     await db.query(
       `INSERT INTO physical_examinations (medical_record_id, ${colNames})

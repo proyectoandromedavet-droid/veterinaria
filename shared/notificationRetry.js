@@ -6,7 +6,10 @@ const fcm = require('./fcm');
 const email = require('./email');
 
 const MAX_ATTEMPTS = parseInt(process.env.NOTIFICATION_RETRY_MAX_ATTEMPTS || '5');
+const PROCESSING_TTL_SEC = parseInt(process.env.NOTIFICATION_PROCESSING_TTL_SEC || String(10 * 60), 10);
 const BACKOFF_MS = [60_000, 300_000, 1_800_000, 7_200_000, 28_800_000];
+// BUG-34: timeout máximo por ejecución de un job (30 s por defecto)
+const JOB_TIMEOUT_MS = parseInt(process.env.NOTIFICATION_JOB_TIMEOUT_MS || '30000', 10);
 
 function nextAttemptDate(attempt) {
   return new Date(Date.now() + (BACKOFF_MS[attempt - 1] || BACKOFF_MS[BACKOFF_MS.length - 1]));
@@ -78,15 +81,25 @@ async function processPendingJobs(limit = 25) {
       : row.payload_json;
     const attempt = (row.attempt_count || 0) + 1;
 
-    await db.query(
+    const [claim] = await db.query(
       `UPDATE notification_retry_jobs
-       SET status = 'processing', attempt_count = :attempt, last_attempt_at = NOW()
-       WHERE id = :id`,
-      { id: row.id, attempt }
+       SET status = 'processing', attempt_count = :attempt, last_attempt_at = NOW(), updated_at = NOW()
+       WHERE id = :id
+         AND status = 'pending'
+         AND next_attempt_at <= NOW()
+         AND attempt_count = :previousAttempt`,
+      { id: row.id, attempt, previousAttempt: row.attempt_count || 0 }
     );
+    if (!claim?.affectedRows) continue;
 
     try {
-      await executeJob(row.channel, payload);
+      // BUG-34: envolver ejecución con timeout para evitar que un canal colgado bloquee el worker
+      await Promise.race([
+        executeJob(row.channel, payload),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Job timeout after ${JOB_TIMEOUT_MS}ms`)), JOB_TIMEOUT_MS)
+        ),
+      ]);
       await db.query(
         `UPDATE notification_retry_jobs
          SET status = 'sent', updated_at = NOW(), last_error = NULL
@@ -115,4 +128,35 @@ async function processPendingJobs(limit = 25) {
   return rows.length;
 }
 
-module.exports = { enqueueJob, processPendingJobs };
+async function resetStaleProcessingJobs() {
+  const [result] = await db.query(
+    `UPDATE notification_retry_jobs
+     SET status = 'pending',
+         next_attempt_at = NOW(),
+         updated_at = NOW()
+     WHERE status = 'processing'
+       AND last_attempt_at < DATE_SUB(NOW(), INTERVAL :ttlSec SECOND)
+       AND attempt_count < max_attempts`,
+    { ttlSec: PROCESSING_TTL_SEC }
+  );
+  const reset = result?.affectedRows || 0;
+  if (reset > 0) {
+    const { createLogger } = require('./logger');
+    createLogger('notification-retry').warn('Reset stale processing jobs', { count: reset });
+  }
+  return reset;
+}
+
+async function getQueueStats() {
+  const rows = await db.query(
+    `SELECT status, COUNT(*) AS cnt
+     FROM notification_retry_jobs
+     WHERE status IN ('pending','processing','failed')
+     GROUP BY status`
+  );
+  const stats = { pending: 0, processing: 0, failed: 0 };
+  for (const r of rows) stats[r.status] = Number(r.cnt);
+  return stats;
+}
+
+module.exports = { enqueueJob, processPendingJobs, resetStaleProcessingJobs, getQueueStats };

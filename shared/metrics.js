@@ -176,13 +176,78 @@ function httpMetrics(serviceName = 'unknown') {
   };
 }
 
-/** Replace numeric path segments (/123) with :id to reduce cardinality. */
+/** Normalise dynamic path segments to reduce Prometheus cardinality. */
 function normaliseRoute(path) {
-  return path.replace(/\/\d+/g, '/:id');
+  return path
+    .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '/:uuid') // UUIDs
+    .replace(/\/\d+/g, '/:id')                   // numeric IDs
+    .replace(/\/[A-Z0-9]{10,}/gi, '/:token');     // long tokens/hashes in path
 }
 
 // ── /metrics endpoint handler ─────────────────────────────────────────────────
-async function metricsHandler(_req, res) {
+/**
+ * Expone las métricas de Prometheus.
+ *
+ * Seguridad:
+ *   - METRICS_BEARER_TOKEN configurado → requiere Bearer token (preferido en producción).
+ *   - METRICS_INTERNAL_ONLY=true       → solo permite IPs RFC-1918 + loopback.
+ *   - Sin ninguna configuración en producción → bloquea con 403 y loguea advertencia.
+ *   - En desarrollo sin configuración → permite acceso con advertencia en log.
+ */
+const METRICS_INTERNAL_RANGES = [
+  /^127\./,
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^::1$/,
+];
+
+function isInternalIp(ip) {
+  const clean = (ip || '').replace('::ffff:', '');
+  return METRICS_INTERNAL_RANGES.some((re) => re.test(clean));
+}
+
+async function metricsHandler(req, res) {
+  const metricsToken = process.env.METRICS_BEARER_TOKEN;
+  const internalOnly = process.env.METRICS_INTERNAL_ONLY === 'true';
+
+  // Autenticación por Bearer token (máxima prioridad)
+  if (metricsToken) {
+    const auth = req.headers.authorization || '';
+    if (!auth.startsWith('Bearer ')) {
+      res.status(401).set('WWW-Authenticate', 'Bearer').end('Unauthorized');
+      return;
+    }
+    // Comparación timing-safe para evitar timing attack en el token
+    const provided = Buffer.from(auth.slice(7));
+    const expected = Buffer.from(metricsToken);
+    const valid = provided.length === expected.length &&
+      require('crypto').timingSafeEqual(provided, expected);
+    if (!valid) {
+      res.status(401).set('WWW-Authenticate', 'Bearer').end('Unauthorized');
+      return;
+    }
+  } else if (internalOnly) {
+    // Solo IPs internas (Prometheus scraper en la misma red)
+    const ip = req.ip || req.socket?.remoteAddress || '';
+    if (!isInternalIp(ip)) {
+      res.status(403).end('Forbidden');
+      return;
+    }
+  } else {
+    // Sin ninguna protección configurada
+    if (process.env.NODE_ENV === 'production') {
+      // En producción: bloquear para evitar fuga de datos operacionales
+      const log = require('./logger').createLogger('metrics');
+      log.error('METRICS_BEARER_TOKEN o METRICS_INTERNAL_ONLY no configurados — endpoint /metrics bloqueado en producción');
+      res.status(403).end('Forbidden: configure METRICS_BEARER_TOKEN or METRICS_INTERNAL_ONLY');
+      return;
+    }
+    // En desarrollo: advertir pero permitir
+    const log = require('./logger').createLogger('metrics');
+    log.warn('ADVERTENCIA: /metrics expuesto sin autenticación. Configurá METRICS_BEARER_TOKEN en producción.');
+  }
+
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());
 }

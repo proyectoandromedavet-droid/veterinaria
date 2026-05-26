@@ -7,7 +7,7 @@
       </div>
       <div class="hero__actions">
         <BaseButton variant="ghost" :disabled="loading" @click="loadAll">Actualizar</BaseButton>
-        <BaseButton :disabled="savingAccount" @click="openAccountModal">Nueva cuenta</BaseButton>
+        <BaseButton :disabled="savingAccount || Boolean(providersError)" @click="openAccountModal">Nueva cuenta</BaseButton>
         <BaseButton :disabled="savingImport" @click="openImportModal">Importación manual</BaseButton>
       </div>
     </section>
@@ -32,6 +32,7 @@
     </div>
 
     <div v-if="globalError" class="alert alert--error" role="alert">{{ globalError }}</div>
+    <div v-if="providersError" class="alert alert--warning" role="alert">{{ providersError }}</div>
 
     <section class="panel panel--filters">
       <div class="filter-grid">
@@ -221,7 +222,7 @@
           <textarea
             v-model="accountForm.settingsJson"
             rows="8"
-            placeholder='{"host":"imap.gmail.com","username":"lab@clinic.com","password":"app-password"}'
+            placeholder='{"host":"imap.gmail.com","username":"lab@clinic.com"}'
           />
         </label>
 
@@ -397,6 +398,7 @@ const loadingAccounts = ref(false)
 const loadingInbox = ref(false)
 const accountsError = ref('')
 const inboxError = ref('')
+const providersError = ref('')
 
 const syncingAccountId = ref(null)
 const savingAccount = ref(false)
@@ -459,10 +461,6 @@ const selectedFilesLabel = computed(() =>
     : 'Seleccionar uno o más PDFs'
 )
 
-function getPayloadData(payload) {
-  return payload?.data || payload
-}
-
 function formatDate(value) {
   return formatDocumentsDate(value)
 }
@@ -484,11 +482,12 @@ function apiErrorMessage(error, fallback) {
 }
 
 async function loadProviders() {
+  providersError.value = ''
   try {
     providers.value = await loadDocumentProviders()
   } catch (error) {
     providers.value = []
-    throw new Error(`Providers: ${apiErrorMessage(error, 'No se pudieron cargar los proveedores.')}`)
+    providersError.value = apiErrorMessage(error, 'No se pudieron cargar los proveedores. No se pueden crear cuentas hasta resolverlo.')
   }
 }
 
@@ -537,12 +536,7 @@ async function loadAll() {
   loading.value = true
   globalError.value = ''
   try {
-    await Promise.all([
-      loadProviders(),
-      loadAccounts(),
-      loadInbox(),
-      searchPatients('', patientOptions),
-    ])
+    await Promise.allSettled([loadProviders(), loadAccounts(), loadInbox(), searchPatients('', patientOptions)])
   } catch (error) {
     globalError.value = error.message || 'No se pudieron cargar los documentos.'
   } finally {
@@ -562,8 +556,24 @@ function resetAccountForm() {
 }
 
 function openAccountModal() {
+  if (providersError.value) {
+    globalError.value = providersError.value
+    return
+  }
   resetAccountForm()
   showAccountModal.value = true
+}
+
+function validateAccountForm() {
+  if (!accountForm.provider) return 'Seleccioná un proveedor.'
+  if (!accountForm.emailAddress) return 'Ingresá el email de la cuenta.'
+  if (!accountForm.folderName) return 'Ingresá la carpeta de lectura.'
+  try {
+    JSON.parse(accountForm.settingsJson.trim() || '{}')
+  } catch {
+    return 'Settings JSON inválido.'
+  }
+  return ''
 }
 
 function editAccount(account) {
@@ -580,6 +590,11 @@ function editAccount(account) {
 
 async function submitAccount() {
   accountModalError.value = ''
+  const validationError = validateAccountForm()
+  if (validationError) {
+    accountModalError.value = validationError
+    return
+  }
   savingAccount.value = true
   try {
     try {
@@ -619,7 +634,16 @@ function openImportModal() {
 }
 
 function handleFilesSelected(event) {
-  selectedFiles.value = Array.from(event.target.files || [])
+  importModalError.value = ''
+  const files = Array.from(event.target.files || [])
+  const invalid = files.filter((file) => file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf'))
+  if (invalid.length) {
+    selectedFiles.value = []
+    if (fileInput.value) fileInput.value.value = ''
+    importModalError.value = 'Solo se permiten archivos PDF.'
+    return
+  }
+  selectedFiles.value = files
 }
 
 async function submitImport() {
@@ -657,6 +681,10 @@ function openAssociateModal(row) {
 async function submitAssociation() {
   if (!selectedRow.value) return
   associateModalError.value = ''
+  if (!associateForm.patientId) {
+    associateModalError.value = 'Seleccioná un paciente para asociar el documento.'
+    return
+  }
   savingAssociation.value = true
   try {
     await associateDocument(selectedRow.value.id, associateForm)
@@ -696,7 +724,11 @@ async function viewRow(row) {
 async function downloadRow(row) {
   try {
     const url = await getDocumentDownloadUrl(row.id)
-    if (url) window.open(url, '_blank', 'noopener')
+    if (url) {
+      window.open(url, '_blank', 'noopener')
+      return
+    }
+    inboxError.value = 'El backend no devolvió un enlace de descarga.'
   } catch (error) {
     inboxError.value = extractDocumentsError(error, 'No se pudo generar el enlace de descarga.')
   }
@@ -867,6 +899,12 @@ onMounted(loadAll)
 .alert--error {
   background: #fff4f4;
   color: #b94034;
+}
+
+.alert--warning {
+  background: #fff8e6;
+  color: #8a6200;
+  border: 1px solid #f2d58d;
 }
 
 .empty-state {

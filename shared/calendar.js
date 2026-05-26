@@ -9,6 +9,8 @@
 const { google } = require('googleapis');
 const db         = require('./db');
 const { createLogger } = require('./logger');
+// SEC: los tokens OAuth se cifran en reposo para protegerlos si la BD es comprometida
+const { encrypt, decrypt } = require('./encryption');
 
 const log = createLogger('calendar');
 
@@ -186,13 +188,27 @@ async function _buildCalendar (userId) {
 }
 
 async function _loadTokens (userId) {
-  return db.queryOne(
+  const row = await db.queryOne(
     'SELECT * FROM google_calendar_tokens WHERE user_id = :uid',
     { uid: userId }
   );
+  if (!row) return null;
+  // SEC: descifrar tokens OAuth antes de usarlos
+  try {
+    if (row.access_token)  row.access_token  = decrypt(row.access_token);
+    if (row.refresh_token) row.refresh_token = decrypt(row.refresh_token);
+  } catch (err) {
+    log.warn('Calendar token decrypt failed', { userId, error: err.message });
+    return null;
+  }
+  return row;
 }
 
 async function _saveTokens (userId, tokens) {
+  // SEC: cifrar tokens OAuth antes de persistir en BD
+  const encAt = tokens.access_token  ? encrypt(tokens.access_token)  : null;
+  const encRt = tokens.refresh_token ? encrypt(tokens.refresh_token) : null;
+
   await db.query(
     `INSERT INTO google_calendar_tokens
        (user_id, access_token, refresh_token, expiry_date, scope)
@@ -204,8 +220,8 @@ async function _saveTokens (userId, tokens) {
        updated_at    = NOW()`,
     {
       uid   : userId,
-      at    : tokens.access_token,
-      rt    : tokens.refresh_token || null,
+      at    : encAt,
+      rt    : encRt,
       exp   : tokens.expiry_date   || null,
       scope : tokens.scope         || null,
     }

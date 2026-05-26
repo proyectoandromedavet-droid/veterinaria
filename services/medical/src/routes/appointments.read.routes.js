@@ -32,12 +32,17 @@ const getAppointmentTypes = [async (req, res, next) => {
 
 router.get('/', async (req, res, next) => {
   try {
-    const { date, vetId, status, patientId, page = 1, limit = 50 } = req.query;
-    const offset = (page - 1) * limit;
+    const { date, vetId, status, patientId, page = 1 } = req.query;
+    const limit = Math.min(parseInt(req.query.limit || 50, 10) || 50, 100);
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const offset = (pageNum - 1) * limit;
     const conditions = [buildBranchScope('a'), buildOrgScope('p')];
-    const params = scopeParams(req, { limit: parseInt(limit), offset: parseInt(offset) });
+    const params = scopeParams(req, { limit, offset });
 
-    if (date) { conditions.push('DATE(a.scheduled_date) = :date'); params.date = date; }
+    if (date) {
+      conditions.push('a.scheduled_date >= :date AND a.scheduled_date < DATE_ADD(:date, INTERVAL 1 DAY)');
+      params.date = date;
+    }
     if (vetId) { conditions.push('a.vet_id = :vetId'); params.vetId = vetId; }
     if (status) { conditions.push('a.status = :status'); params.status = status; }
     if (patientId) { conditions.push('a.patient_id = :patientId'); params.patientId = patientId; }

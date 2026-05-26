@@ -83,7 +83,8 @@ router.get('/revenue-by-service', async (req, res, next) => {
 router.get('/top-clients', async (req, res, next) => {
   try {
     const { from, to } = dateRange(req.query);
-    const limit = parseInt(req.query.limit || '20', 10);
+    // SECURITY: cap de limit para evitar dumps masivos de datos de clientes
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10) || 20, 1), 100);
     const rows = await db.query(
       `SELECT CONCAT(cl.first_name,' ',cl.last_name) AS client_name,
               cl.email, cl.phone,
@@ -169,7 +170,8 @@ router.get('/new-patients', async (req, res, next) => {
 router.get('/diagnoses', async (req, res, next) => {
   try {
     const { from, to } = dateRange(req.query);
-    const limit = parseInt(req.query.limit || '20', 10);
+    // SECURITY: cap de limit; cap de filas en SQL para evitar carga masiva en memoria
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10) || 20, 1), 100);
     const rows = await db.query(
       `SELECT d.diagnosis_name, d.diagnosis_code, sp.common_name AS species
        FROM diagnoses d
@@ -180,7 +182,8 @@ router.get('/diagnoses', async (req, res, next) => {
        WHERE d.created_at >= :from
          AND d.created_at < DATE_ADD(:to, INTERVAL 1 DAY)
          AND d.is_primary = TRUE
-       ORDER BY d.created_at DESC`,
+       ORDER BY d.created_at DESC
+       LIMIT 5000`,
       { bid: req.user.branchId, from, to }
     );
     return R.ok(res, aggregateDiagnoses(rows, limit), { from, to });

@@ -3,33 +3,41 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">🧪</span>
+        <span class="page-emoji">&#x1F43E;</span>
         <div>
-          <h2 class="page-title">{{ t('laboratory.title') }}</h2>
-          <p class="page-sub">{{ t('laboratory.subtitle') }}</p>
+          <h2 class="page-title">Bandeja de laboratorio</h2>
+          <p class="page-sub">Órdenes generadas desde evoluciones clínicas y seguimiento de resultados.</p>
         </div>
       </div>
-      <BaseButton type="button" @click="openNewOrder()">+ {{ t('laboratory.newOrder') }}</BaseButton>
+      <RouterLink class="btn-primary route-action" to="/evoluciones">Crear desde evolución</RouterLink>
     </div>
+
+    <section class="workflow-banner" aria-label="Flujo clínico de laboratorio">
+      <div>
+        <strong>Flujo clínico</strong>
+        <span>Evolución → Orden de laboratorio → Resultados → Revisión clínica</span>
+      </div>
+      <p>Las órdenes nuevas deben nacer desde una evolución para conservar motivo, paciente, profesional y trazabilidad de ficha.</p>
+    </section>
 
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-        <span class="stat-card__icon">⏳</span>
+        <span class="stat-card__icon">&#x2713;</span>
         <div>
           <strong>{{ stats.pending }}</strong>
           <span>{{ t('laboratory.pending') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span class="stat-card__icon">🔬</span>
+        <span class="stat-card__icon">&#x1F43E;</span>
         <div>
           <strong>{{ stats.inProgress }}</strong>
           <span>{{ t('laboratory.inProgress') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span class="stat-card__icon">✅</span>
+        <span class="stat-card__icon">&#x2713;</span>
         <div>
           <strong>{{ stats.completedToday }}</strong>
           <span>{{ t('laboratory.completedToday') }}</span>
@@ -64,7 +72,7 @@
     </div>
     <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">🧪</span>
+      <span class="empty-state__emoji">&#x1F43E;</span>
       <p>{{ t('laboratory.empty') }}</p>
     </div>
 
@@ -73,6 +81,7 @@
         <thead>
           <tr>
             <th>{{ t('laboratory.tablePatient') }}</th>
+            <th>Evolución</th>
             <th>{{ t('laboratory.tableTests') }}</th>
             <th>{{ t('laboratory.tablePriority') }}</th>
             <th>{{ t('laboratory.tableStatus') }}</th>
@@ -93,6 +102,10 @@
               </div>
             </td>
             <td>
+              <span v-if="order.medical_record_id" class="record-link">Ficha #{{ order.medical_record_id }}</span>
+              <span v-else class="badge badge--yellow">Sin ficha</span>
+            </td>
+            <td>
               <span class="test-count">{{ order.test_count || 0 }} {{ t('laboratory.testsTitle') }}</span>
             </td>
             <td>
@@ -102,7 +115,7 @@
               <span class="badge" :class="statusClass(order.status)">{{ statusLabel(order.status) }}</span>
             </td>
             <td class="sub">{{ formatDate(order.requested_at) }}</td>
-            <td class="sub"><span v-if="order.reported_at">{{ formatDate(order.reported_at) }}</span><span v-else>â€”</span><span v-if="order.results_count != null"> · {{ order.results_count }} res.</span></td>
+            <td class="sub"><span v-if="order.reported_at">{{ formatDate(order.reported_at) }}</span><span v-else>-</span><span v-if="order.results_count != null"> · {{ order.results_count }} res.</span></td>
             <td>
               <div class="action-btns">
                   <BaseButton
@@ -133,132 +146,13 @@
       <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('common.next') }}</button>
     </div>
 
-    <!-- Modal nueva orden -->
-    <Transition name="modal">
-      <div v-if="showNewOrder" class="modal-backdrop" @click.self="showNewOrder = false">
-        <div class="modal">
-          <div class="modal__header">
-            <h3>{{ t('laboratory.newModalTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" :aria-label="t('common.close')" @click="showNewOrder = false">×</BaseButton>
-          </div>
-
-          <form @submit.prevent="handleCreateOrder" novalidate>
-            <div class="form-body">
-
-              <!-- Paciente autocomplete -->
-              <div class="field field--full" style="position:relative">
-                <label for="lab-m-patient">{{ t('laboratory.patientLabel') }} <span class="req">*</span></label>
-                <input
-                  id="lab-m-patient"
-                  name="lab-m-patient"
-                  v-model.trim="patientSearch"
-                  type="search"
-                  :placeholder="t('laboratory.patientPlaceholder')"
-                  :disabled="saving"
-                  @input="searchPatients"
-                  autocomplete="off"
-                />
-                <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
-                  <button
-                    v-for="pt in patientResults"
-                    :key="pt.id"
-                    type="button"
-                    class="autocomplete__item"
-                    role="option"
-                    :aria-label="`${t('common.selectPatient')} ${pt.name}`"
-                    @click="selectPatient(pt)"
-                  >
-                    {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                    <span v-if="pt.hc_number" class="autocomplete__owner"> · HC {{ pt.hc_number }}</span>
-                    <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
-                  </button>
-                </div>
-                <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
-                <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
-              </div>
-
-              <div class="form-grid">
-                <div class="field">
-                  <label for="lab-m-priority">{{ t('laboratory.priorityLabel') }}</label>
-                  <select id="lab-m-priority" name="lab-m-priority" v-model="orderForm.priority" :disabled="saving">
-                    <option value="routine">{{ t('laboratory.priorityRoutine') }}</option>
-                    <option value="urgent">{{ t('laboratory.priorityUrgent') }}</option>
-                    <option value="emergency">{{ t('laboratory.priorityEmergency') }}</option>
-                  </select>
-                </div>
-                <div class="field field--full">
-                  <label for="lab-m-notes">{{ t('laboratory.notesLabel') }}</label>
-                  <textarea
-                    id="lab-m-notes"
-                    name="lab-m-notes"
-                    v-model.trim="orderForm.clinicalNotes"
-                    rows="3"
-                    :placeholder="t('laboratory.notesPlaceholder')"
-                    :disabled="saving"
-                  />
-                </div>
-              </div>
-
-              <!-- Catálogo de pruebas -->
-              <div class="section-title" style="margin-top:16px">{{ t('laboratory.testsTitle') }} <span class="req">*</span></div>
-              <div v-if="testsLoading" class="loading-state-sm">
-                <span class="spin spin--dark spin--sm" /> {{ t('laboratory.testsLoading') }}
-              </div>
-                <div v-else-if="Object.keys(groupedTests).length === 0" class="sub" style="padding:8px">
-                {{ t('laboratory.testsEmpty') }}
-              </div>
-              <div v-else class="tests-catalog">
-                <div
-                  v-for="(tests, category) in groupedTests"
-                  :key="category"
-                  class="test-category"
-                >
-                  <div class="test-category__title">{{ category }}</div>
-                  <div class="test-category__items">
-                    <label
-                      v-for="test in tests"
-                      :key="test.id"
-                      class="test-checkbox-label"
-                    >
-                      <input
-                        type="checkbox"
-                        :value="test.id"
-                        v-model="selectedTestIds"
-                        :disabled="saving"
-                      />
-                      <div class="test-info">
-                        <span class="test-name">{{ test.name }}</span>
-                        <span class="test-meta sub">{{ test.units || '' }}{{ test.normal_range ? ' · ' + test.normal_range : '' }}{{ test.turnaround_hours ? ' · ' + test.turnaround_hours + 'h' : '' }}</span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <span v-if="fe.tests" class="field-error">{{ fe.tests }}</span>
-
-            </div>
-
-              <div v-if="saveError" class="alert alert--error mx" role="alert">{{ saveError }}</div>
-
-            <div class="modal__actions">
-              <BaseButton type="button" variant="ghost" @click="showNewOrder = false" :disabled="saving">{{ t('common.cancel') }}</BaseButton>
-              <BaseButton type="submit" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" />
-                <span v-else>{{ t('laboratory.createOrder') }}</span>
-              </BaseButton>
-            </div>
-          </form>
-        </div>
-      </div>
-    </Transition>
-
     <!-- Modal ingresar resultados -->
     <Transition name="modal">
       <div v-if="showResults" class="modal-backdrop" @click.self="showResults = false">
         <div class="modal modal--wide">
           <div class="modal__header">
             <h3>{{ t('laboratory.resultsTitle') }} — {{ selectedOrder?.patient_name }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showResults = false">✕</BaseButton>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showResults = false">&times;</BaseButton>
           </div>
 
           <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
@@ -347,11 +241,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
-import http from '../api/client'
+import { labApi } from '../api'
 import { t } from '../i18n'
-import { extractErrorMessage, logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
+
+const { success } = useUiFeedback()
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -364,6 +261,7 @@ function normalizeOrder(row) {
   return {
     ...row,
     id: row.id ?? row.order_id ?? row.orderId ?? null,
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
     patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
     vet_name: row.vet_name ?? row.vet?.name ?? row.vetName ?? '',
     species: row.species ?? row.species_name ?? row.speciesName ?? '',
@@ -379,32 +277,7 @@ function normalizeOrder(row) {
   }
 }
 
-function normalizePatient(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.patient_id ?? row.patientId ?? null,
-    name: row.name ?? row.full_name ?? row.fullName ?? '',
-    species: row.species ?? row.species_name ?? row.speciesName ?? '',
-    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
-    hc_number: row.hc_number ?? row.hcNumber ?? '',
-  }
-}
-
-function normalizeTest(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.test_id ?? row.testId ?? null,
-    name: row.name ?? row.test_name ?? row.testName ?? '',
-    category: row.category ?? row.group ?? 'General',
-    units: row.units ?? '',
-    normal_range: row.normal_range ?? row.normalRange ?? '',
-    turnaround_hours: row.turnaround_hours ?? row.turnaroundHours ?? null,
-  }
-}
-
-// ── Lista de órdenes ────────────────────────────────────────────────────────
+// -- Lista de órdenes --------------------------------------------------------
 const items       = ref([])
 const loading     = ref(false)
 const error       = ref('')
@@ -420,7 +293,7 @@ async function load(page = 1) {
     const pageSize = 15
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await http.get('/lab/orders', { params })
+    const { data } = await labApi.orders.list(params)
     const rows = asArray(data?.data || data?.orders || data).map(normalizeOrder).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     const filtered = needle
@@ -434,13 +307,13 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     await loadStats()
   } catch (e) {
-    error.value = extractErrorMessage(e, 'No se pudieron cargar las órdenes.', { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las órdenes.', { context: 'Carga de órdenes de laboratorio' })
   } finally { loading.value = false }
 }
 
 async function loadStats() {
   try {
-    const { data } = await http.get('/lab/orders/pending')
+    const { data } = await labApi.orders.pending()
     const pending = asArray(data?.data || data?.orders || data).map(normalizeOrder).filter(Boolean)
     stats.pending = pending.length
   } catch (error) { logError('laboratorio.loadPendingStats', error) }
@@ -459,11 +332,11 @@ async function loadStats() {
 let loadTimer = null
 function debouncedLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(load, 350) }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// -- Helpers -----------------------------------------------------------------
 function petEmoji(s) {
-  if (!s) return '🐾'
-  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
-  return m[s.toLowerCase()] || '🐾'
+  if (!s) return '\u{1F43E}'
+  const m = { perro:'\u{1F43E}', dog:'\u{1F43E}', gato:'\u{1F43E}', cat:'\u{1F43E}', conejo:'\u{1F43E}', rabbit:'\u{1F43E}', loro:'\u{1F43E}', bird:'\u{1F43E}', pez:'\u{1F43E}', fish:'\u{1F43E}', tortuga:'\u{1F43E}', reptile:'\u{1F43E}', hamster:'\u{1F43E}' }
+  return m[s.toLowerCase()] || '\u{1F43E}'
 }
 
 function formatDate(iso) {
@@ -487,111 +360,14 @@ function statusLabel(s) {
   return { pending: 'Pendiente', in_progress: 'En proceso', completed: 'Completada', cancelled: 'Cancelada' }[s] || s || '—'
 }
 
-// ── Detalle (solo para ver) ──────────────────────────────────────────────────
+// -- Detalle (solo para ver) --------------------------------------------------
 function viewDetail(order) {
   // Abrir modal de resultados en modo lectura o simplemente abrir
   // Por simplicidad, redirigimos a ingresar resultados si está pendiente
-  if (order.status === 'pending' || order.status === 'in_progress') {
-    openResults(order)
-  }
+  openResults(order)
 }
 
-// ── Modal nueva orden ────────────────────────────────────────────────────────
-const showNewOrder = ref(false)
-const saving       = ref(false)
-const saveError    = ref('')
-const fe           = reactive({})
-
-const orderForm = reactive({ patientId: '', priority: 'routine', clinicalNotes: '' })
-const selectedTestIds = ref([])
-
-// Autocomplete paciente
-const patientSearch        = ref('')
-const patientResults       = ref([])
-const selectedPatientLabel = ref('')
-let patientTimer = null
-
-async function searchPatients() {
-  clearTimeout(patientTimer)
-  orderForm.patientId = ''
-  selectedPatientLabel.value = ''
-  if (patientSearch.value.length < 2) { patientResults.value = []; return }
-  patientTimer = setTimeout(async () => {
-    try {
-      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch (error) { logError('laboratorio.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
-  }, 300)
-}
-
-function selectPatient(pt) {
-  orderForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.hc_number ? ' · HC ' + pt.hc_number : ''}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
-  patientSearch.value = pt.name
-  patientResults.value = []
-}
-
-// Catálogo de pruebas
-const allTests     = ref([])
-const testsLoading = ref(false)
-
-const groupedTests = computed(() => {
-  const groups = {}
-  allTests.value.forEach(t => {
-    const cat = t.category || 'General'
-    if (!groups[cat]) groups[cat] = []
-    groups[cat].push(t)
-  })
-  return groups
-})
-
-async function loadTests() {
-  testsLoading.value = true
-  try {
-    const { data } = await http.get('/lab/tests')
-    allTests.value = asArray(data?.data || data?.tests || data).map(normalizeTest).filter(Boolean)
-  } catch (error) { logError('laboratorio.loadTests', error); allTests.value = [] }
-  finally { testsLoading.value = false }
-}
-
-function openNewOrder() {
-  Object.assign(orderForm, { patientId: '', priority: 'routine', clinicalNotes: '' })
-  patientSearch.value = ''
-  patientResults.value = []
-  selectedPatientLabel.value = ''
-  selectedTestIds.value = []
-  saveError.value = ''
-  Object.keys(fe).forEach(k => delete fe[k])
-  showNewOrder.value = true
-  if (allTests.value.length === 0) loadTests()
-}
-
-function validateOrder() {
-  Object.keys(fe).forEach(k => delete fe[k])
-  if (!orderForm.patientId)         fe.patientId = t('laboratory.selectPatient')
-  if (selectedTestIds.value.length === 0) fe.tests = t('laboratory.testsRequired')
-  return Object.keys(fe).length === 0
-}
-
-async function handleCreateOrder() {
-  if (!validateOrder()) return
-  saving.value = true; saveError.value = ''
-  try {
-    const payload = {
-      patientId: parseInt(orderForm.patientId),
-      priority:  orderForm.priority,
-      tests:     selectedTestIds.value.map(id => ({ testId: id })),
-    }
-    if (orderForm.clinicalNotes) payload.clinicalNotes = orderForm.clinicalNotes
-    await http.post('/lab/orders', payload)
-    showNewOrder.value = false
-    await load()
-  } catch (e) {
-    saveError.value = extractErrorMessage(e, 'No se pudo crear la orden.', { includeRequestId: true })
-  } finally { saving.value = false }
-}
-
-// ── Modal ingresar resultados ────────────────────────────────────────────────
+// -- Modal ingresar resultados ------------------------------------------------
 const showResults    = ref(false)
 const selectedOrder  = ref(null)
 const orderDetail    = ref(null)
@@ -608,7 +384,7 @@ async function openResults(order) {
   orderDetail.value   = null
   Object.keys(resultInputs).forEach(k => delete resultInputs[k])
   try {
-    const { data } = await http.get(`/lab/orders/${order.id}`)
+    const { data } = await labApi.orders.get(order.id)
     const detail = data.data || data
     orderDetail.value = detail
     const items = detail.items || []
@@ -616,7 +392,7 @@ async function openResults(order) {
       resultInputs[item.id] = { value: '', interpretation: '', notes: '' }
     })
   } catch (e) {
-    resultsError.value = extractErrorMessage(e, 'No se pudo cargar el detalle.', { includeRequestId: true })
+    resultsError.value = extractDetailedErrorMessage(e, 'No se pudo cargar el detalle.', { context: 'Detalle de orden de laboratorio' })
   } finally { detailLoading.value = false }
 }
 
@@ -626,7 +402,7 @@ async function handleSubmitResults() {
     const results = Object.entries(resultInputs)
       .filter(([, r]) => r.value !== '')
       .map(([itemId, r]) => {
-        const entry = { itemId: parseInt(itemId), value: r.value }
+        const entry = { itemId: parseInt(itemId, 10), value: r.value }
         if (r.interpretation) entry.interpretation = r.interpretation
         if (r.notes)          entry.notes          = r.notes
         return entry
@@ -635,11 +411,12 @@ async function handleSubmitResults() {
       resultsError.value = t('laboratory.atLeastOneResult')
       return
     }
-    await http.post(`/lab/orders/${selectedOrder.value.id}/results`, { results })
+    await labApi.orders.result(selectedOrder.value.id, { results })
+    success('Resultados de laboratorio guardados.')
     showResults.value = false
     await load()
   } catch (e) {
-    resultsError.value = extractErrorMessage(e, 'No se pudieron guardar los resultados.', { includeRequestId: true })
+    resultsError.value = extractDetailedErrorMessage(e, 'No se pudieron guardar los resultados.', { context: 'Guardado de resultados de laboratorio' })
   } finally { savingResults.value = false }
 }
 
@@ -654,6 +431,21 @@ onMounted(load)
 .page-emoji { font-size: 2rem; }
 .page-title { font-size: 1.35rem; font-weight: 700; color: var(--text); }
 .page-sub   { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
+.route-action { white-space: nowrap; }
+.workflow-banner {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) 1.4fr;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.workflow-banner div { display: flex; flex-direction: column; gap: 4px; }
+.workflow-banner strong { color: var(--primary-hover); font-size: 0.86rem; }
+.workflow-banner span { color: var(--text); font-weight: 800; font-size: 0.9rem; }
+.workflow-banner p { color: var(--text-2); font-size: 0.86rem; line-height: 1.45; }
 
 /* Stats */
 .stats-row { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -683,6 +475,7 @@ onMounted(load)
 .pet-cell div { display: flex; flex-direction: column; gap: 1px; }
 .pet-cell strong { font-size: 0.88rem; color: var(--text); }
 .sub { font-size: 0.75rem; color: var(--text-3); }
+.record-link { font-size: 0.78rem; font-weight: 800; color: #1d4ed8; white-space: nowrap; }
 .test-count { font-size: 0.82rem; color: var(--text-2); }
 
 /* Badges */
@@ -782,6 +575,7 @@ onMounted(load)
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
 @media (max-width: 700px) {
+  .workflow-banner { grid-template-columns: 1fr; }
   .stats-row { gap: 10px; }
   .stat-card { min-width: 130px; }
   .form-grid { grid-template-columns: 1fr; }

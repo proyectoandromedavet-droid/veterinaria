@@ -45,6 +45,9 @@ router.post('/subscriptions',
       const orgId   = req.user?.orgId;
       const { plan, email, orgName } = req.body;
 
+      // OT-100: Stripe requires a real email to create a Customer (used for receipts/invoices).
+      // Hashed/tokenized emails are rejected by their API. Mitigación: email transmitido solo
+      // vía HTTPS, nunca devuelto en la respuesta de este endpoint.
       const subscription = await stripe.createSubscription(orgId, plan, email, orgName);
       res.status(201).json({
         success: true,
@@ -96,7 +99,27 @@ router.delete('/subscriptions', async (req, res, next) => {
 router.get('/subscriptions/portal', async (req, res, next) => {
   try {
     const orgId     = req.user?.orgId;
-    const returnUrl = req.query.return_url;
+    const rawReturnUrl = req.query.return_url;
+
+    // Open-redirect fix: only allow return_url pointing to the configured FRONTEND_URL origin.
+    // If the value is absent or invalid, fall back to the frontend root.
+    let returnUrl;
+    if (rawReturnUrl) {
+      const allowedOrigin = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+      try {
+        const parsed = new URL(rawReturnUrl);
+        const parsedOrigin = `${parsed.protocol}//${parsed.host}`;
+        if (allowedOrigin && parsedOrigin !== allowedOrigin) {
+          return R.error(res, 400, 'Invalid return_url origin', null, 'VAL_002');
+        }
+        returnUrl = rawReturnUrl;
+      } catch {
+        return R.error(res, 400, 'Malformed return_url', null, 'VAL_001');
+      }
+    } else {
+      returnUrl = process.env.FRONTEND_URL || undefined;
+    }
+
     const url = await stripe.getBillingPortalUrl(orgId, returnUrl);
     res.json({ success: true, data: { portalUrl: url } });
   } catch (err) {
@@ -111,11 +134,15 @@ async function stripeWebhookHandler(req, res) {
   const sig = req.headers['stripe-signature'];
   if (!sig) return res.status(400).json({ error: 'Missing stripe-signature header' });
 
+  // OT-042: raw buffer es obligatorio — JSON.stringify(req.body) rompe la firma HMAC
+  if (!req.rawBody) {
+    logger.error('[stripe-webhook] Missing raw body — verify express raw body middleware is configured');
+    return res.status(400).json({ error: 'Raw body required for signature validation' });
+  }
+
   let event;
   try {
-    // req.body debe ser el raw buffer para validación de firma
-    const payload = req.rawBody || JSON.stringify(req.body);
-    event = stripe.constructWebhookEvent(payload, sig);
+    event = stripe.constructWebhookEvent(req.rawBody, sig);
   } catch (err) {
     logger.warn('[stripe-webhook] Invalid signature', { err: err.message });
     return res.status(400).json({ error: 'Invalid webhook signature' });
@@ -124,13 +151,18 @@ async function stripeWebhookHandler(req, res) {
   try {
     const orgId = event.data?.object?.metadata?.org_id;
 
-    // Registrar evento
+    // OT-043: INSERT IGNORE + check affectedRows antes de procesar
+    // Si affectedRows === 0 el evento ya fue procesado → salir sin ejecutar UPDATEs
     if (orgId) {
-      await db.query(
+      const [insertResult] = await db.query(
         `INSERT IGNORE INTO subscription_events (org_id, event_type, stripe_event_id, payload)
          VALUES (:orgId, :type, :eventId, :payload)`,
         { orgId, type: event.type, eventId: event.id, payload: JSON.stringify(event.data.object) },
       );
+      if (insertResult?.affectedRows === 0) {
+        logger.info('[stripe-webhook] Duplicate event — skipping', { eventId: event.id, type: event.type });
+        return res.json({ received: true });
+      }
     }
 
     // Manejar eventos relevantes

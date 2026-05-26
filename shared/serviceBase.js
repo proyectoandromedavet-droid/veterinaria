@@ -17,6 +17,14 @@ const { requireInternalSig }  = require('./internalAuth');
 const { fromHeaders }         = require('./requestContext');
 const { httpMetrics, metricsHandler } = require('./metrics');
 const { tracingMiddleware } = require('./tracing');
+const { validateCriticalEnv } = require('./validateEnv');
+
+// Global registry for optional per-service health checks (e.g. worker queue stats)
+const _healthCheckers = new Map();
+
+function registerHealthChecker(name, fn) {
+  _healthCheckers.set(String(name), fn);
+}
 
 function matchesPathRule(rule, req) {
   if (!rule) return false;
@@ -31,10 +39,59 @@ function shouldSkipInternalAuth(req, publicPaths = []) {
   return publicPaths.some((rule) => matchesPathRule(rule, req));
 }
 
+function matchesOpenApiIgnore(rule, pathname, req) {
+  if (!rule) return false;
+  if (rule instanceof RegExp) return rule.test(pathname);
+  if (typeof rule === 'function') return rule(pathname, req) === true;
+  if (typeof rule === 'string') return pathname === rule || pathname.startsWith(`${rule}/`);
+  return false;
+}
+
+function buildOpenApiIgnorePaths(extraIgnorePaths) {
+  const extraRules = Array.isArray(extraIgnorePaths)
+    ? extraIgnorePaths
+    : (extraIgnorePaths ? [extraIgnorePaths] : []);
+
+  return (pathname, req) => {
+    const path = pathname || req?.path || req?.originalUrl || '';
+    if (/^\/health(?:\/|$)/.test(path) || path === '/metrics') return true;
+    return extraRules.some((rule) => matchesOpenApiIgnore(rule, path, req));
+  };
+}
+
+function hasScopePermission(scopes, perm) {
+  if (!Array.isArray(scopes) || scopes.length === 0) return false;
+  if (scopes.includes('*') || scopes.includes(perm)) return true;
+  const [resource] = perm.split(':');
+  if (scopes.includes(`${resource}:*`)) return true;
+  if (perm.startsWith('crud:')) {
+    const [, table] = perm.split(':');
+    if (scopes.includes(`crud:${table}:*`)) return true;
+  }
+  return false;
+}
+
+function requestAllowsPermissionScope(req, perm) {
+  if (req.user?.authType !== 'api_key') return true;
+  return hasScopePermission(req.user.apiKeyScopes || [], perm);
+}
+
 function requirePerm(perm) {
   return async (req, res, next) => {
     const allowed = await hasPermissionDynamic(req.user?.roles || [], perm, req.user?.orgId || null);
-    if (!allowed) {
+    if (!allowed || !requestAllowsPermissionScope(req, perm)) {
+      // OT-058: log estructurado de denegaciones para auditoría y alertas
+      const log = createLogger('rbac');
+      log.warn('RBAC denied', {
+        permission: perm,
+        userId:  req.user?.userId  || null,
+        orgId:   req.user?.orgId   || null,
+        roles:   req.user?.roles   || [],
+        method:  req.method,
+        path:    req.originalUrl || req.path,
+        traceId: req.traceId || null,
+        ip:      req.ip || null,
+      });
       return res.status(403).json({
         success: false,
         error:   {
@@ -73,7 +130,7 @@ function guardWrite(resource) {
     const needed = map[req.method];
     if (!needed) return next();
     const allowed = await hasPermissionDynamic(req.user?.roles || [], needed, req.user?.orgId || null);
-    if (!allowed) {
+    if (!allowed || !requestAllowsPermissionScope(req, needed)) {
       return res.status(403).json({
         success: false,
         error:   {
@@ -102,13 +159,14 @@ function withOpenApiValidation(app, specPath, opts = {}, log = console) {
     const fs = require('fs');
     if (!fs.existsSync(specPath)) return;
     const { middleware: openApiValidator } = require('express-openapi-validator');
+    const { ignorePaths, ...validatorOpts } = opts || {};
     app.use(openApiValidator({
       apiSpec:           specPath,
       validateRequests:  { allowUnknownQueryParameters: true, coerceTypes: false },
       validateResponses: false,
       validateSecurity:  false,   // security enforced by HMAC + RBAC, not by spec
-      ignorePaths:       /^\/health/,
-      ...opts,
+      ignorePaths:       buildOpenApiIgnorePaths(ignorePaths),
+      ...validatorOpts,
     }));
     // Map validation errors to standard error envelope
     app.use((err, _req, res, next) => {
@@ -138,6 +196,7 @@ function buildApp(serviceName, routesFn, opts = {}) {
   const log = createLogger(serviceName);
   const app = express();
   const publicHealthPath = /^\/health(?:\/(?:live|ready|deep))?$/;
+  const metricsToken = process.env.METRICS_TOKEN || '';
   const publicMetricsPath = /^\/metrics$/;
   if (opts.trustProxy !== undefined) {
     app.set('trust proxy', opts.trustProxy);
@@ -174,11 +233,34 @@ function buildApp(serviceName, routesFn, opts = {}) {
   app.use(fromHeaders);
   app.use(httpMetrics(serviceName));
 
+  // OT-055: structured HTTP access log (method, route, status, latency, userId)
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on('finish', () => {
+      const ms = Date.now() - startedAt;
+      const route = req.route?.path || req.path || 'unknown';
+      const entry = {
+        method: req.method,
+        route,
+        status: res.statusCode,
+        ms,
+        userId: req.user?.userId || null,
+        orgId:  req.user?.orgId  || null,
+        traceId: req.traceId || req.headers?.['x-trace-id'] || null,
+        ip: req.ip || null,
+      };
+      if (res.statusCode >= 500) log.error('HTTP request', entry);
+      else if (res.statusCode >= 400) log.warn('HTTP request', entry);
+      else log.info('HTTP request', entry);
+    });
+    next();
+  });
+
   // OpenAPI request validation (if specPath provided)
   if (opts.specPath) withOpenApiValidation(app, opts.specPath, opts.openApiOpts || {}, log);
 
   // ── Healthcheck real — verifica DB, Redis, circuit breakers y memoria ────
-  async function runHealthChecks() {
+  async function runHealthChecks({ external = false } = {}) {
     const checks  = {};
     const latency = {};
     let healthy   = true;
@@ -231,6 +313,59 @@ function buildApp(serviceName, routesFn, opts = {}) {
       rssMb:       Math.round(mem.rss       / 1024 / 1024),
     };
 
+    // OT-059: dependencias externas — solo en health profundo para no degradar readiness.
+    if (external && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const t0 = Date.now();
+        await fetch('https://api.stripe.com/v1/charges?limit=1', {
+          headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        checks.stripe  = 'ok';
+        latency.stripe = Date.now() - t0;
+      } catch {
+        checks.stripe = 'degraded';
+      }
+    }
+
+    if (external && process.env.MP_ACCESS_TOKEN) {
+      try {
+        const t0 = Date.now();
+        await fetch('https://api.mercadopago.com/v1/payment_methods', {
+          headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        checks.mercadopago  = 'ok';
+        latency.mercadopago = Date.now() - t0;
+      } catch {
+        checks.mercadopago = 'degraded';
+      }
+    }
+
+    if (external && process.env.OPENAI_API_KEY) {
+      try {
+        const t0 = Date.now();
+        await fetch('https://api.openai.com/v1/models', {
+          headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        checks.openai  = 'ok';
+        latency.openai = Date.now() - t0;
+      } catch {
+        checks.openai = 'degraded';
+      }
+    }
+
+    // Optional per-service checkers (worker queue stats, etc.)
+    for (const [name, fn] of _healthCheckers) {
+      try {
+        checks[name] = await fn();
+      } catch (err) {
+        checks[name] = 'unavailable';
+        log.warn(`Healthcheck '${name}' failed`, { error: err.message });
+      }
+    }
+
     return { healthy, checks, latency };
   }
 
@@ -249,8 +384,16 @@ function buildApp(serviceName, routesFn, opts = {}) {
   });
 
   // /health/deep — alias explícito para load balancers avanzados
-  app.get('/health/deep', async (req, res) => {
-    const { healthy, checks, latency } = await runHealthChecks();
+  // Requires the same METRICS_TOKEN as /metrics to prevent information disclosure
+  // (the response reveals which external APIs are configured and their latency).
+  app.get('/health/deep', (req, res, next) => {
+    if (!metricsToken) return next();
+    if (req.get('authorization') !== `Bearer ${metricsToken}`) {
+      return res.status(401).json({ success: false, error: { message: 'Unauthorized', code: 'METRICS_AUTH_REQUIRED' } });
+    }
+    return next();
+  }, async (req, res) => {
+    const { healthy, checks, latency } = await runHealthChecks({ external: true });
     const hasOpenCircuit = checks._circuitOpen === true;
     delete checks._circuitOpen;
     res.status(healthy ? 200 : 503).json({
@@ -285,7 +428,13 @@ function buildApp(serviceName, routesFn, opts = {}) {
     });
   });
 
-  app.get('/metrics', metricsHandler);
+  app.get('/metrics', (req, res, next) => {
+    if (!metricsToken) return next();
+    if (req.get('authorization') !== `Bearer ${metricsToken}`) {
+      return res.status(401).json({ success: false, error: { message: 'Unauthorized', code: 'METRICS_AUTH_REQUIRED' } });
+    }
+    return next();
+  }, metricsHandler);
 
   function logNotFound(req, err) {
     log.warn('Route not found', {
@@ -433,6 +582,7 @@ function buildApp(serviceName, routesFn, opts = {}) {
 function startService(app, serviceName, port, { drainMs = 10_000, onStarted = null, onShutdown = null } = {}) {
   const http   = require('http');
   const log    = createLogger(serviceName);
+  validateCriticalEnv(log);
   const server = http.createServer(app);
   const registryIntervalMs = Math.max(15000, parseInt(process.env.SERVICE_REGISTRY_HEARTBEAT_MS || '20000', 10));
   let registryTimer = null;
@@ -440,6 +590,13 @@ function startService(app, serviceName, port, { drainMs = 10_000, onStarted = nu
 
   server.listen(port, async () => {
     log.info(`${serviceName} running on port ${port}`, { env: process.env.NODE_ENV });
+
+    // OT-083: run index verification in background at startup (non-blocking)
+    try {
+      const db = require('./db');
+      db.verifyIndexes().catch(() => {}); // fire-and-forget, warnings logged inside
+    } catch (_) { /* db not available in all services */ }
+
     if (typeof onStarted === 'function') {
       try {
         startupState = await onStarted({ server, port, serviceName, log });
@@ -520,8 +677,12 @@ function startService(app, serviceName, port, { drainMs = 10_000, onStarted = nu
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT',  () => shutdown('SIGINT'));
+  process.on('unhandledRejection', (reason) => {
+    log.error('Unhandled rejection — exiting process', { reason: String(reason?.message || reason) });
+    process.exit(1);
+  });
 
   return server;
 }
 
-module.exports = { buildApp, fromHeaders, requirePerm, guardWrite, startService, withOpenApiValidation };
+module.exports = { buildApp, fromHeaders, requirePerm, guardWrite, startService, withOpenApiValidation, registerHealthChecker };

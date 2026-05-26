@@ -11,6 +11,7 @@ const {
   fetchReportData,
   defaultCols,
 } = require('../reports.common');
+const { trackExport } = require('../../../shared/dlp');
 
 const router = Router();
 
@@ -25,6 +26,13 @@ router.post('/:type/export', async (req, res, next) => {
     const to = params.to || new Date().toISOString().slice(0, 10);
     const meta = { from, to, branch: req.user.branchName, generatedBy: req.user.email };
 
+    // DLP: rechazar si el usuario superó el umbral de export en la ventana de tiempo
+    const rows = Array.isArray(data) ? data : (data.byType || []);
+    const dlp = await trackExport(req.user.userId, req.user.orgId, rows.length);
+    if (dlp.exceeded) {
+      return R.tooMany(res, `Export limit exceeded (${dlp.count} of ${dlp.threshold} records in the last 5 minutes)`);
+    }
+
     if (format === 'pdf') {
       let pdfBuf;
       if (type === 'revenue') pdfBuf = await generateRevenuePdf({ rows: data, meta });
@@ -37,7 +45,6 @@ router.post('/:type/export', async (req, res, next) => {
       return res.send(pdfBuf);
     }
 
-    const rows = Array.isArray(data) ? data : (data.byType || []);
     const columns = defaultCols(type) || Object.keys(rows[0] || {}).map((k) => ({ key: k, header: k }));
     const title = `Reporte ${type} — ${from} a ${to}`;
 

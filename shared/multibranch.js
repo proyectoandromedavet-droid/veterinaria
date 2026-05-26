@@ -311,7 +311,7 @@ async function crossBranchPatientHistory (patientId, orgId) {
       `SELECT pt.*, bf.name AS from_branch, bt.name AS to_branch
        FROM patient_transfers pt
        JOIN branches bf ON pt.from_branch_id = bf.id AND bf.organization_id = :orgId
-       JOIN branches bt ON pt.to_branch_id   = bt.id
+       JOIN branches bt ON pt.to_branch_id   = bt.id AND bt.organization_id = :orgId
        WHERE pt.patient_id = :pid ORDER BY pt.created_at DESC`,
       { pid: patientId, orgId }
     ),

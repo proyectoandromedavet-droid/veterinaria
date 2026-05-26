@@ -126,7 +126,7 @@ async function buildTwoFaLimiter() {
     standardHeaders: true,
     legacyHeaders:   false,
     store,
-    keyGenerator:    (req) => `2fa:${req.body?.userId || req.ip}`,
+    keyGenerator:    (req) => `2fa:${req.ip}`,
     handler:         tooManyHandler('Too many 2FA attempts. Account locked for 15 minutes.'),
   });
 }
@@ -164,7 +164,7 @@ async function buildTenantLimiter() {
 
 // ── Lazy wrappers (inicialización diferida en primer request) ─────────────────
 
-function lazyLimiter(builderFn) {
+function lazyLimiter(builderFn, fallbackMax) {
   let instance = null;
   let building = false;
   const queue  = [];
@@ -179,9 +179,13 @@ function lazyLimiter(builderFn) {
     }
     if (!building) {
       building = true;
+      // Use the caller-provided fallbackMax (or the builder's own limit) so that
+      // auth/password-reset limiters don't silently fall back to the much higher
+      // apiLimiter default when Redis is unavailable.
+      const memMax = fallbackMax != null ? fallbackMax : maxApi;
       instance = await builderFn().catch((error) => {
-        log.warn('Rate limiter initialization failed - using memory fallback', { error: error?.message });
-        return rateLimit({ windowMs, max: maxApi });
+        log.warn('Rate limiter initialization failed - using memory fallback', { error: error?.message, max: memMax });
+        return rateLimit({ windowMs, max: memMax });
       });
       queue.forEach(fn => fn());
       queue.length = 0;
@@ -196,16 +200,96 @@ function lazyLimiter(builderFn) {
   };
 }
 
-const apiLimiter           = lazyLimiter(buildApiLimiter);
-const authLimiter          = lazyLimiter(buildAuthLimiter);
-const passwordResetLimiter = lazyLimiter(buildPasswordResetLimiter);
-const twoFaLimiter         = lazyLimiter(buildTwoFaLimiter);
-const exportLimiter        = lazyLimiter(buildExportLimiter);
-const tenantLimiter        = lazyLimiter(buildTenantLimiter);
+// ── Auth exponential backoff (OT-105) ─────────────────────────────────────────
+/**
+ * Progressive lockout for auth/login based on total attempt count from an IP
+ * within a 1-hour window.  Since the gateway proxies requests and cannot inspect
+ * downstream response status, ALL login requests count (conservative approach).
+ *
+ * Tiers (cumulative requests in 1h rolling window → lockout duration):
+ *   ≥ 20  →  30-min lockout
+ *   ≥ 10  →  5-min lockout
+ *   ≥  5  →  2-min lockout
+ *
+ * On Redis unavailable → fail-open (normal rate limiter still applies).
+ */
+const AUTH_BACKOFF_TIERS = [
+  { threshold: 20, lockoutSec: 1800 },
+  { threshold: 10, lockoutSec: 300  },
+  { threshold:  5, lockoutSec: 120  },
+];
+const AUTH_ATTEMPTS_TTL_SEC = 3600; // counter expires after 1h of no activity
+
+async function buildAuthBackoffLimiter() {
+  let redis = null;
+  try {
+    redis = await getRlRedis();
+    if (!redis.isReady) redis = null;
+  } catch { redis = null; }
+
+  return async function authBackoffMiddleware(req, res, next) {
+    if (!redis?.isReady) return next(); // fail-open if Redis unavailable
+
+    const ip         = req.ip || 'unknown';
+    const countKey   = `rl:auth:attempts:${ip}`;
+    const lockoutKey = `rl:auth:lockout:${ip}`;
+
+    try {
+      // 1. Check active lockout
+      const lockoutTtl = await redis.ttl(lockoutKey);
+      if (lockoutTtl > 0) {
+        res.setHeader('Retry-After', String(lockoutTtl));
+        return res.status(429).json({
+          success: false,
+          error: {
+            message: `Too many login attempts from this IP. Try again in ${Math.ceil(lockoutTtl / 60)} minute(s).`,
+            code:    'AUTH_BACKOFF',
+          },
+        });
+      }
+
+      // 2. Increment attempt counter
+      const pipe  = redis.multi();
+      pipe.incr(countKey);
+      pipe.expire(countKey, AUTH_ATTEMPTS_TTL_SEC);
+      const [[, count]] = await pipe.exec();
+
+      // 3. Apply tier if threshold crossed
+      for (const tier of AUTH_BACKOFF_TIERS) {
+        if (count >= tier.threshold) {
+          await redis.set(lockoutKey, '1', { EX: tier.lockoutSec });
+          res.setHeader('Retry-After', String(tier.lockoutSec));
+          return res.status(429).json({
+            success: false,
+            error: {
+              message: `Too many login attempts. Try again in ${Math.ceil(tier.lockoutSec / 60)} minute(s).`,
+              code:    'AUTH_BACKOFF',
+            },
+          });
+        }
+      }
+    } catch (err) {
+      log.warn('Auth backoff check failed - fail-open', { error: err?.message, ip });
+    }
+
+    next();
+  };
+}
+
+// Pass explicit fallback max values so the in-memory fallback respects each
+// limiter's own limit when Redis is unavailable (not the generic maxApi default).
+const apiLimiter           = lazyLimiter(buildApiLimiter,           maxApi);
+const authLimiter          = lazyLimiter(buildAuthLimiter,          maxAuth);
+const passwordResetLimiter = lazyLimiter(buildPasswordResetLimiter, 5);
+const twoFaLimiter         = lazyLimiter(buildTwoFaLimiter,         5);
+const exportLimiter        = lazyLimiter(buildExportLimiter,        10);
+const tenantLimiter        = lazyLimiter(buildTenantLimiter,        maxTenant);
+const authBackoffLimiter   = lazyLimiter(buildAuthBackoffLimiter,   maxAuth);
 
 module.exports = {
   apiLimiter,
   authLimiter,
+  authBackoffLimiter,
   passwordResetLimiter,
   twoFaLimiter,
   exportLimiter,

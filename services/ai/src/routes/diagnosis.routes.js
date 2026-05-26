@@ -12,6 +12,7 @@ const {
   requirePerm,
   validate,
   getUser,
+  ensurePatientInUserScope,
   withAiTimeout,
   log,
 } = require('../ai.common');
@@ -40,6 +41,9 @@ router.post('/',
       const { patientId, symptoms, anamnesis } = req.body;
       const contextLines = Math.min(Math.max(parseInt(req.body.contextLines ?? 3, 10) || 3, 1), 20);
       const user = getUser(req);
+      const scoped = await ensurePatientInUserScope(patientId, user);
+      if (!scoped) return R.notFound(res, 'Paciente no encontrado');
+
       const { select, orgFilter } = await buildPatientSelect();
 
       const patient = await db.queryOne(

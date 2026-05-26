@@ -21,6 +21,15 @@ function escHtml(s) {
     .replace(/'/g, '&#x27;');
 }
 
+/**
+ * Sanitize an email header value (To, Subject, From, etc.) to prevent
+ * header injection attacks. Strips carriage returns, newlines, and null bytes
+ * that could be used to inject additional headers.
+ */
+function sanitizeHeader(value) {
+  return String(value || '').replace(/[\r\n\0]/g, '');
+}
+
 // ── Transport ─────────────────────────────────────────────────────────────────
 function createTransport() {
   // Allow SMTP or SendGrid / Mailgun via SMTP bridge
@@ -47,7 +56,10 @@ const APP_URL = process.env.APP_URL || 'http://localhost:4050';
 
 // ── Low-level send ────────────────────────────────────────────────────────────
 async function send({ to, subject, html, text }) {
-  const info = await transport.sendMail({ from: FROM, to, subject, html, text });
+  // Sanitize header fields to prevent email header injection attacks
+  const safeSubject = sanitizeHeader(subject);
+  const safeTo      = sanitizeHeader(to);
+  const info = await transport.sendMail({ from: FROM, to: safeTo, subject: safeSubject, html, text });
   return info;
 }
 
@@ -201,6 +213,36 @@ async function sendInvoiceReceipt({ to, ownerName, invoiceNumber, total, paidAt,
   return send({ to, subject: `Comprobante de pago #${invoiceNumber} — ${clinicName}`, html });
 }
 
+// ── sendReportEmail ───────────────────────────────────────────────────────────
+async function sendReportEmail({ email, subject, reportName, buffer, filename, mimeType }) {
+  // Reuse the module-level transport singleton instead of creating a new one
+  // per call (which would leak connections / file descriptors).
+  // Sanitize header values and HTML-escape user-supplied data.
+  const safeSubject = sanitizeHeader(subject);
+  const safeTo      = sanitizeHeader(email);
+  await transport.sendMail({
+    from    : sanitizeHeader(`"VetManager Reportes" <${process.env.FROM_EMAIL || 'reportes@vetmanager.com'}>`),
+    to      : safeTo,
+    subject : safeSubject,
+    html    : `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+        <h2 style="color:#2563eb;">Reporte Programado</h2>
+        <p>Hola,</p>
+        <p>Se adjunta el reporte <strong>${escHtml(reportName)}</strong> generado automáticamente el
+           <strong>${escHtml(formatDate(new Date()))}</strong>.</p>
+        <p style="color:#64748b;font-size:13px;">
+          Este correo fue generado autom&#xE1;ticamente por VetManager Pro.<br>
+          Para cambiar la configuraci&#xF3;n de reportes programados, ingres&#xE1; al panel de administraci&#xF3;n.
+        </p>
+      </div>`,
+    attachments: [{
+      filename,
+      content : buffer,
+      contentType: mimeType,
+    }],
+  });
+}
+
 module.exports = {
   send,
   sendPasswordReset,
@@ -212,29 +254,3 @@ module.exports = {
   sendInvoiceReceipt,
   sendReportEmail,
 };
-
-// ── sendReportEmail ───────────────────────────────────────────────────────────
-async function sendReportEmail ({ email, subject, reportName, buffer, filename, mimeType }) {
-  const transport = createTransport();
-  await transport.sendMail({
-    from    : `"VetManager Reportes" <${process.env.FROM_EMAIL || 'reportes@vetmanager.com'}>`,
-    to      : email,
-    subject,
-    html    : `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
-        <h2 style="color:#2563eb;">📊 Reporte Programado</h2>
-        <p>Hola,</p>
-        <p>Se adjunta el reporte <strong>${reportName}</strong> generado automáticamente el
-           <strong>${formatDate(new Date())}</strong>.</p>
-        <p style="color:#64748b;font-size:13px;">
-          Este correo fue generado automáticamente por VetManager Pro.<br>
-          Para cambiar la configuración de reportes programados, ingresá al panel de administración.
-        </p>
-      </div>`,
-    attachments: [{
-      filename,
-      content : buffer,
-      contentType: mimeType,
-    }],
-  });
-}

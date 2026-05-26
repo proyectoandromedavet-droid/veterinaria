@@ -16,9 +16,30 @@ const {
   notificationMarkReadSet,
   notificationOrderExpr,
   buildNotificationInsert,
+  getRedis,
 } = require('../notifications.common');
 
 const router = express.Router();
+
+const PUSH_LIMIT     = parseInt(process.env.PUSH_RATE_LIMIT     || '20');
+const PUSH_WINDOW_MS = parseInt(process.env.PUSH_RATE_WINDOW_MS || '60000');
+
+async function checkPushRateLimit(orgId) {
+  // getRedis() devuelve { pub, sub } — usar pub para operaciones de escritura
+  const redis = await getRedis().catch(() => null);
+  if (!redis?.pub?.isReady) return; // si Redis no está disponible, dejar pasar (modo degradado)
+
+  const key = `ratelimit:push:${orgId}`;
+  const count = await redis.pub.incr(key);
+  if (count === 1) await redis.pub.pExpire(key, PUSH_WINDOW_MS);
+  if (count > PUSH_LIMIT) {
+    const ttl = await redis.pub.pTTL(key);
+    const err = new Error('Push rate limit exceeded');
+    err.status = 429;
+    err.retryAfter = Math.ceil(ttl / 1000);
+    throw err;
+  }
+}
 
 router.get('/', async (req, res, next) => {
   try {
@@ -101,11 +122,22 @@ router.patch('/read-all', async (req, res, next) => {
 
 router.post('/push', async (req, res, next) => {
   try {
+    const orgId = req.user?.orgId;
+    if (!orgId) return R.forbidden(res, 'Organization context required');
+    try {
+      await checkPushRateLimit(orgId);
+    } catch (err) {
+      if (err.status === 429) {
+        res.setHeader('Retry-After', err.retryAfter || 60);
+        return R.tooMany(res, 'Push notification rate limit exceeded — try again later');
+      }
+      throw err;
+    }
+
     const {
       targetUserIds,
       targetRoles,
       branchId,
-      orgId,
       type,
       title,
       message,
@@ -118,7 +150,22 @@ router.post('/push', async (req, res, next) => {
     const cols = schema.notification_logs || new Set();
 
     if (targetUserIds?.length) {
-      for (const uid of targetUserIds) {
+      // Cap: máximo 500 destinatarios por llamada
+      if (targetUserIds.length > 500) return R.badRequest(res, 'targetUserIds no puede superar 500 entradas');
+
+      // Verificar que todos los targetUserIds pertenecen a la misma org
+      const uidInts = targetUserIds.map((id) => parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0);
+      if (uidInts.length !== targetUserIds.length) return R.badRequest(res, 'targetUserIds contiene valores inválidos');
+
+      const belongRows = await db.query(
+        `SELECT id FROM users WHERE id IN (:uids) AND org_id = :orgId`,
+        { uids: uidInts, orgId }
+      );
+      if (belongRows.length !== uidInts.length) {
+        return R.forbidden(res, 'Uno o más targetUserIds no pertenecen a la organización', 'PUSH_CROSS_ORG');
+      }
+
+      for (const uid of uidInts) {
         const insert = buildNotificationInsert(cols, {
           userId: uid,
           branchId: branchId || req.user.branchId || null,
@@ -173,13 +220,15 @@ router.post('/push', async (req, res, next) => {
 
 router.get('/retries', async (req, res, next) => {
   try {
+    const orgId = req.user?.orgId;
+    if (!orgId) return R.forbidden(res, 'Organization context required');
     const rows = await db.query(
       `SELECT id, channel, status, attempt_count, max_attempts, next_attempt_at, last_error, created_at
        FROM notification_retry_jobs
-       WHERE (:orgId IS NULL OR org_id = :orgId)
+       WHERE org_id = :orgId
        ORDER BY created_at DESC
        LIMIT 100`,
-      { orgId: req.user?.orgId || null }
+      { orgId }
     );
     return R.ok(res, rows);
   } catch (err) {

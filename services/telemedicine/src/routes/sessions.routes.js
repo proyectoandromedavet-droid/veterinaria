@@ -16,15 +16,41 @@ const router = Router();
 
 const getWebrtcConfig = [(_req, res) => R.ok(res, { ...webrtc.getIceServers(), provider: webrtc.PROVIDER })];
 
+async function ensureSessionInScope(req, sessionId) {
+  return db.queryOne(
+    `SELECT * FROM tele_sessions WHERE id = :id AND branch_id = :bid`,
+    { id: sessionId, bid: req.user.branchId }
+  );
+}
+
+async function getRoomInScope(req, sessionId, extraWhere = '') {
+  return db.queryOne(
+    `SELECT wr.*
+       FROM webrtc_rooms wr
+       JOIN tele_sessions ts ON ts.id = wr.session_id
+      WHERE wr.session_id = :sid
+        AND ts.branch_id = :bid
+        ${extraWhere}
+      ORDER BY wr.created_at DESC
+      LIMIT 1`,
+    { sid: sessionId, bid: req.user.branchId }
+  );
+}
+
 router.get('/', async (req, res, next) => {
   try {
-    const { status, vetId, date, page = 1, limit = 20 } = req.query;
+    const { status, vetId, date } = req.query;
+    const limit  = Math.min(Math.max(parseInt(req.query.limit  || '20', 10) || 20, 1), 100);
+    const page   = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
     const offset = (page - 1) * limit;
     const conds  = ['ts.branch_id = :bid'];
-    const p      = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p      = { bid: req.user.branchId, limit, offset };
     if (status) { conds.push('ts.status = :status'); p.status = status; }
     if (vetId)  { conds.push('ts.vet_id = :vetId');  p.vetId  = vetId; }
-    if (date)   { conds.push('DATE(ts.scheduled_at) = :date'); p.date = date; }
+    if (date) {
+      conds.push('ts.scheduled_at >= :date AND ts.scheduled_at < DATE_ADD(:date, INTERVAL 1 DAY)');
+      p.date = date;
+    }
 
     const rows = await db.query(
       `SELECT ts.id, ts.session_code, ts.status, ts.session_type, ts.scheduled_at,
@@ -56,6 +82,8 @@ router.get('/today', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get('/webrtc-config', ...getWebrtcConfig);
+
 router.get('/:id', async (req, res, next) => {
   try {
     const session = await db.queryOne(
@@ -79,7 +107,7 @@ router.get('/:id', async (req, res, next) => {
       db.query(
         `SELECT tm.id, tm.sender_type, tm.message_text, tm.sent_at, tm.is_read,
                 tm.attachment_url, tm.attachment_type
-         FROM tele_messages tm WHERE tm.session_id = :sid ORDER BY tm.sent_at ASC`,
+         FROM tele_messages tm WHERE tm.session_id = :sid ORDER BY tm.sent_at DESC LIMIT 100`,
         { sid: req.params.id }
       ),
       db.query(
@@ -112,6 +140,24 @@ router.post('/',
         patientId, clientId, vetId, scheduledAt, sessionType,
         platformId, durationMinutes = 30, chiefComplaint, notes,
       } = req.body;
+
+      const ownership = await Promise.all([
+        db.queryOne(
+          `SELECT p.id
+             FROM patients p
+             JOIN patient_owners po ON po.patient_id = p.id AND po.client_id = :cid AND po.deleted_at IS NULL
+             JOIN clients c ON c.id = po.client_id
+            WHERE p.id = :pid
+              AND p.organization_id = :orgId
+              AND c.branch_id = :bid`,
+          { pid: patientId, cid: clientId, orgId: req.user.orgId, bid: req.user.branchId }
+        ),
+        db.queryOne('SELECT id FROM clients WHERE id = :cid AND branch_id = :bid', { cid: clientId, bid: req.user.branchId }),
+        db.queryOne('SELECT id FROM users WHERE id = :vid AND branch_id = :bid', { vid: vetId, bid: req.user.branchId }),
+      ]);
+      if (ownership.some((row) => !row)) {
+        return R.forbidden(res, 'Paciente, cliente o veterinario no pertenecen a la sucursal');
+      }
 
       const sessionCode = `TELE-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
@@ -159,6 +205,9 @@ router.post('/:id/pre-anamnesis',
   validateRequest,
   async (req, res, next) => {
     try {
+      const session = await ensureSessionInScope(req, req.params.id);
+      if (!session) return R.notFound(res, 'Sesion no encontrada');
+
       const {
         currentSymptoms, symptomsDuration, symptomsOnset,
         currentMedications, recentChanges, ownerConcerns,
@@ -188,6 +237,9 @@ router.post('/:id/pre-anamnesis',
 
 router.post('/:id/messages', body('messageText').optional(), async (req, res, next) => {
   try {
+    const session = await ensureSessionInScope(req, req.params.id);
+    if (!session) return R.notFound(res, 'Sesion no encontrada');
+
     const { messageText, senderType = 'vet', attachmentUrl, attachmentType } = req.body;
     if (!messageText && !attachmentUrl) return R.badRequest(res, 'message or attachment required');
 
@@ -209,6 +261,9 @@ router.post('/:id/prescription',
   validateRequest,
   async (req, res, next) => {
     try {
+      const session = await ensureSessionInScope(req, req.params.id);
+      if (!session) return R.notFound(res, 'Sesion no encontrada');
+
       const { prescriptionId, validityDays = 30 } = req.body;
       const signatureData = `${prescriptionId}-${req.user.userId}-${Date.now()}`;
       const signatureHash = crypto.createHash('sha256').update(signatureData).digest('hex');
@@ -234,6 +289,9 @@ router.post('/:id/rating',
   validateRequest,
   async (req, res, next) => {
     try {
+      const session = await ensureSessionInScope(req, req.params.id);
+      if (!session) return R.notFound(res, 'Sesion no encontrada');
+
       const { overallScore, vetScore, connectionScore, platformScore, comment } = req.body;
       await db.query(
         `INSERT INTO tele_ratings
@@ -250,8 +308,6 @@ router.post('/:id/rating',
     } catch (e) { next(e); }
   }
 );
-
-router.get('/webrtc-config', ...getWebrtcConfig);
 
 router.post('/:id/room', async (req, res, next) => {
   try {
@@ -329,11 +385,13 @@ router.get('/:id/room', async (req, res, next) => {
     const room = await db.queryOne(
       `SELECT wr.*, COUNT(wp.id) AS participant_count
        FROM webrtc_rooms wr
+       JOIN tele_sessions ts ON ts.id = wr.session_id
        LEFT JOIN webrtc_participants wp ON wp.room_id = wr.id AND wp.left_at IS NULL
        WHERE wr.session_id = :sid
+         AND ts.branch_id = :bid
        GROUP BY wr.id
        ORDER BY wr.created_at DESC LIMIT 1`,
-      { sid: req.params.id }
+      { sid: req.params.id, bid: req.user.branchId }
     );
     if (!room) return R.notFound(res, 'Sala no creada todavÃ­a');
     return R.ok(res, room);
@@ -342,14 +400,15 @@ router.get('/:id/room', async (req, res, next) => {
 
 router.post('/:id/room/token', async (req, res, next) => {
   try {
-    const room = await db.queryOne(
-      `SELECT * FROM webrtc_rooms WHERE session_id = :sid AND status IN ('created','active')`,
-      { sid: req.params.id }
-    );
+    const room = await getRoomInScope(req, req.params.id, "AND wr.status IN ('created','active')");
     if (!room) return R.notFound(res, 'Sala no encontrada o expirada');
 
-    const { identity, role = 'guest' } = req.body;
-    if (!identity) return R.badRequest(res, 'identity requerido (email o userId)');
+    // BUG-TELE-03: identity y role deben venir del usuario autenticado, no del body
+    const identity = req.user.email || String(req.user.userId);
+    const isVet = (req.user.roles || []).some((r) =>
+      ['vet', 'receptionist', 'branch_manager', 'org_admin', 'superadmin'].includes(r)
+    );
+    const role = isVet ? 'host' : 'guest';
 
     const result = await webrtc.generateToken({
       roomName: room.room_name,
@@ -375,10 +434,7 @@ router.post('/:id/room/token', async (req, res, next) => {
 
 router.delete('/:id/room', async (req, res, next) => {
   try {
-    const room = await db.queryOne(
-      `SELECT * FROM webrtc_rooms WHERE session_id = :sid`,
-      { sid: req.params.id }
-    );
+    const room = await getRoomInScope(req, req.params.id);
     if (!room) return R.notFound(res, 'Sala no encontrada');
 
     await webrtc.deleteRoom(room.room_name).catch(() => {});
@@ -398,20 +454,24 @@ router.delete('/:id/room', async (req, res, next) => {
 
 router.post('/:id/room/recording/start', async (req, res, next) => {
   try {
-    const room = await db.queryOne(
-      `SELECT * FROM webrtc_rooms WHERE session_id=:sid AND status='active'`,
-      { sid: req.params.id }
-    );
+    const room = await getRoomInScope(req, req.params.id, "AND wr.status='active'");
     if (!room) return R.notFound(res, 'No hay sala activa');
 
     const { recordingId } = await webrtc.startRecording(room.room_name);
 
-    const [r] = await db.query(
-      `INSERT INTO webrtc_recordings (room_id, session_id, provider_rec_id, status, started_at)
-       VALUES (:rid, :sid, :recId, 'recording', NOW())`,
-      { rid: room.id, sid: req.params.id, recId: recordingId }
-    );
-    return R.created(res, { id: r.insertId, recordingId });
+    let insertId;
+    try {
+      const [r] = await db.query(
+        `INSERT INTO webrtc_recordings (room_id, session_id, provider_rec_id, status, started_at)
+         VALUES (:rid, :sid, :recId, 'recording', NOW())`,
+        { rid: room.id, sid: req.params.id, recId: recordingId }
+      );
+      insertId = r.insertId;
+    } catch (dbErr) {
+      await webrtc.stopRecording(room.room_name, recordingId).catch(() => {});
+      throw dbErr;
+    }
+    return R.created(res, { id: insertId, recordingId });
   } catch (e) { next(e); }
 });
 
@@ -421,9 +481,11 @@ router.post('/:id/room/recording/stop', async (req, res, next) => {
       `SELECT wr.room_name, wrec.*
        FROM webrtc_recordings wrec
        JOIN webrtc_rooms wr ON wrec.room_id = wr.id
+       JOIN tele_sessions ts ON ts.id = wr.session_id
        WHERE wrec.session_id = :sid AND wrec.status = 'recording'
+         AND ts.branch_id = :bid
        ORDER BY wrec.started_at DESC LIMIT 1`,
-      { sid: req.params.id }
+      { sid: req.params.id, bid: req.user.branchId }
     );
     if (!rec) return R.notFound(res, 'No hay grabaciÃ³n activa');
 
@@ -444,9 +506,11 @@ router.get('/:id/recordings', async (req, res, next) => {
       `SELECT wrec.*, wr.room_name
        FROM webrtc_recordings wrec
        JOIN webrtc_rooms wr ON wrec.room_id = wr.id
+       JOIN tele_sessions ts ON ts.id = wr.session_id
        WHERE wrec.session_id = :sid
+         AND ts.branch_id = :bid
        ORDER BY wrec.created_at DESC`,
-      { sid: req.params.id }
+      { sid: req.params.id, bid: req.user.branchId }
     );
     return R.ok(res, rows);
   } catch (e) { next(e); }
@@ -454,10 +518,7 @@ router.get('/:id/recordings', async (req, res, next) => {
 
 router.get('/:id/waiting-room', async (req, res, next) => {
   try {
-    const room = await db.queryOne(
-      `SELECT id FROM webrtc_rooms WHERE session_id=:sid AND status IN ('created','active')`,
-      { sid: req.params.id }
-    );
+    const room = await getRoomInScope(req, req.params.id, "AND wr.status IN ('created','active')");
     if (!room) return R.notFound(res, 'Sala no encontrada');
 
     const rows = await db.query(
@@ -474,10 +535,9 @@ router.post('/:id/waiting-room/join',
   validateRequest,
   async (req, res, next) => {
     try {
-      const room = await db.queryOne(
-        `SELECT id FROM webrtc_rooms WHERE session_id=:sid AND status IN ('created','active')`,
-        { sid: req.params.id }
-      );
+      const session = await ensureSessionInScope(req, req.params.id);
+      if (!session) return R.notFound(res, 'Sesión no encontrada');
+      const room = await getRoomInScope(req, req.params.id, "AND wr.status IN ('created','active')");
       if (!room) return R.notFound(res, 'Sala no encontrada');
 
       const { displayName, identity } = req.body;
@@ -493,9 +553,11 @@ router.post('/:id/waiting-room/join',
 
 router.post('/:id/waiting-room/:wId/admit', async (req, res, next) => {
   try {
+    const room = await getRoomInScope(req, req.params.id, "AND wr.status IN ('created','active')");
+    if (!room) return R.notFound(res, 'Sala no encontrada');
     await db.query(
-      `UPDATE webrtc_waiting_room SET status='admitted', decided_at=NOW(), decided_by=:uid WHERE id=:id`,
-      { id: req.params.wId, uid: req.user.userId }
+      `UPDATE webrtc_waiting_room SET status='admitted', acted_at=NOW(), decided_by=:uid WHERE id=:id AND room_id=:rid`,
+      { id: req.params.wId, rid: room.id, uid: req.user.userId }
     );
     return R.noContent(res);
   } catch (e) { next(e); }
@@ -503,9 +565,11 @@ router.post('/:id/waiting-room/:wId/admit', async (req, res, next) => {
 
 router.post('/:id/waiting-room/:wId/reject', async (req, res, next) => {
   try {
+    const room = await getRoomInScope(req, req.params.id, "AND wr.status IN ('created','active')");
+    if (!room) return R.notFound(res, 'Sala no encontrada');
     await db.query(
-      `UPDATE webrtc_waiting_room SET status='rejected', decided_at=NOW(), decided_by=:uid WHERE id=:id`,
-      { id: req.params.wId, uid: req.user.userId }
+      `UPDATE webrtc_waiting_room SET status='rejected', acted_at=NOW(), decided_by=:uid WHERE id=:id AND room_id=:rid`,
+      { id: req.params.wId, rid: room.id, uid: req.user.userId }
     );
     return R.noContent(res);
   } catch (e) { next(e); }
@@ -513,10 +577,7 @@ router.post('/:id/waiting-room/:wId/reject', async (req, res, next) => {
 
 router.get('/:id/room/participants', async (req, res, next) => {
   try {
-    const room = await db.queryOne(
-      `SELECT id FROM webrtc_rooms WHERE session_id=:sid ORDER BY created_at DESC LIMIT 1`,
-      { sid: req.params.id }
-    );
+    const room = await getRoomInScope(req, req.params.id);
     if (!room) return R.notFound(res, 'Sala no encontrada');
 
     const rows = await db.query(
@@ -529,10 +590,7 @@ router.get('/:id/room/participants', async (req, res, next) => {
 
 router.post('/:id/room/participants/:identity/leave', async (req, res, next) => {
   try {
-    const room = await db.queryOne(
-      `SELECT id FROM webrtc_rooms WHERE session_id=:sid ORDER BY created_at DESC LIMIT 1`,
-      { sid: req.params.id }
-    );
+    const room = await getRoomInScope(req, req.params.id);
     if (!room) return R.notFound(res, 'Sala no encontrada');
 
     await db.query(

@@ -24,7 +24,8 @@
 const { get: cacheGet, set: cacheSet } = require('../../../shared/cache');
 const { callInternalService, buildSignedInternalHeaders } = require('../../../shared/internalService');
 const { createLogger } = require('../../../shared/logger');
-const SLUG_CACHE_TTL    = parseInt(process.env.SUBDOMAIN_CACHE_TTL || '3600');
+const _rawCacheTtl = parseInt(process.env.SUBDOMAIN_CACHE_TTL || '3600', 10);
+const SLUG_CACHE_TTL = Number.isFinite(_rawCacheTtl) && _rawCacheTtl > 0 ? _rawCacheTtl : 3600;
 const log = createLogger('gateway-subdomain');
 
 /**
@@ -32,13 +33,18 @@ const log = createLogger('gateway-subdomain');
  * "clinic-peludo.vetmanagerpro.com" + "vetmanagerpro.com" → "clinic-peludo"
  * Returns null if hostname doesn't match ROOT_DOMAIN or is a bare IP/localhost.
  */
+// Sólo se permiten slugs con letras, dígitos y guiones (RFC-1123 label).
+// Esto previene cache-key injection y path traversal en la URL interna.
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[a-z0-9]$/i;
+
 function extractSlug(hostname) {
   const rootDomain = process.env.ROOT_DOMAIN || "";
   if (!rootDomain || !hostname) return null;
   if (!hostname.endsWith(`.${rootDomain}`)) return null;
   const slug = hostname.slice(0, -(rootDomain.length + 1));
-  // Only single-level slug (no dots)
+  // Only single-level slug (no dots) and valid RFC-1123 characters
   if (!slug || slug.includes('.')) return null;
+  if (!SLUG_RE.test(slug)) return null;
   return slug;
 }
 
@@ -73,10 +79,11 @@ async function resolveSlug(slug) {
 }
 
 /**
- * Middleware — attaches `req.tenantSlug` and optionally `req.tenantOrgId`.
- * Never blocks the request on failure.
+ * Middleware — attaches `req.tenantSlug` and `req.tenantOrgId`.
+ * Blocks with 503 when a subdomain slug is detected but cannot be resolved
+ * (auth service down or unknown slug). No-ops on localhost/direct IP.
  */
-async function subdomainMiddleware(req, _res, next) {
+async function subdomainMiddleware(req, res, next) {
   try {
     const hostname = req.hostname;
     const slug     = extractSlug(hostname);
@@ -84,14 +91,32 @@ async function subdomainMiddleware(req, _res, next) {
 
     if (slug) {
       req.tenantOrgId = await resolveSlug(slug);
+      if (!req.tenantOrgId) {
+        log.error('Subdomain slug resolved to null — blocking request', {
+          slug,
+          hostname,
+          traceId: req.traceId,
+          requestId: req.requestId,
+        });
+        return res.status(503).json({
+          success: false,
+          error: { message: 'Tenant temporarily unavailable', code: 'TENANT_UNAVAILABLE' },
+        });
+      }
     }
   } catch (error) {
-    log.warn('Subdomain middleware degraded - continuing', {
+    log.error('Subdomain middleware error — blocking request', {
       hostname: req.hostname,
       error: error?.message,
       traceId: req.traceId,
       requestId: req.requestId,
     });
+    if (req.tenantSlug) {
+      return res.status(503).json({
+        success: false,
+        error: { message: 'Tenant temporarily unavailable', code: 'TENANT_UNAVAILABLE' },
+      });
+    }
     req.tenantSlug  = null;
     req.tenantOrgId = null;
   }
@@ -108,8 +133,15 @@ async function subdomainMiddleware(req, _res, next) {
  *   - user is superadmin (cross-org access allowed)
  */
 function tenantMismatchGuard(req, res, next) {
-  if (!req.tenantOrgId) return next();  // no subdomain — skip
-  if (!req.user?.orgId) return next();  // no JWT yet — JWT guard will handle auth
+  // Subdomain detectado pero no se pudo resolver → bloquear (auth service caído)
+  if (req.tenantSlug && !req.tenantOrgId) {
+    return res.status(503).json({
+      success: false,
+      error: { message: 'Tenant resolution temporarily unavailable', code: 'TENANT_UNAVAILABLE' },
+    });
+  }
+  if (!req.tenantOrgId) return next();  // sin subdomain (localhost/IP directo) — ok
+  if (!req.user?.orgId) return next();  // sin JWT aún — el auth guard lo rechaza
 
   if (req.user.roles?.includes('superadmin')) return next();
 
@@ -125,4 +157,4 @@ function tenantMismatchGuard(req, res, next) {
   next();
 }
 
-module.exports = { subdomainMiddleware, extractSlug, tenantMismatchGuard };
+module.exports = { subdomainMiddleware, extractSlug, resolveSlug, tenantMismatchGuard };

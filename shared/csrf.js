@@ -25,16 +25,57 @@
  */
 
 const crypto = require('crypto');
+const { resolveCookiePolicy } = require('./cookiePolicy');
 
-const SECRET      = process.env.CSRF_SECRET || crypto.randomBytes(32).toString('hex');
+// En producción, CSRF_SECRET debe estar configurado explícitamente.
+// Un secreto efímero por proceso invalida todos los tokens CSRF en cada reinicio.
+let SECRET;
+if (process.env.CSRF_SECRET) {
+  SECRET = process.env.CSRF_SECRET;
+} else {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'CSRF_SECRET debe estar configurado en producción. ' +
+      'Generá un secreto con: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
+    );
+  }
+  SECRET = crypto.randomBytes(32).toString('hex');
+}
 const COOKIE_NAME = process.env.CSRF_COOKIE_NAME || '_csrf';
 const TTL_SEC     = parseInt(process.env.CSRF_TTL_SEC || '3600');
 const EXCLUDE_PATHS = new Set(
-  (process.env.CSRF_EXCLUDE_PATHS || '/health,/metrics,/api/v1/auth/login,/api/v1/auth/refresh')
+  (process.env.CSRF_EXCLUDE_PATHS || '/health,/metrics,/api/v1/auth/login,/api/v1/auth/refresh,/api/v1/auth/password-reset/request,/api/v1/auth/password-reset/confirm,/api/v1/payments/mp/webhook,/api/v1/payments/stripe/webhook')
     .split(',').map(p => p.trim()).filter(Boolean)
 );
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+function normalizePath(path) {
+  const clean = String(path || '').split('?')[0] || '/';
+  return clean.length > 1 ? clean.replace(/\/+$/, '') : clean;
+}
+
+function candidatePaths(req) {
+  const paths = new Set([
+    normalizePath(req.path),
+    normalizePath(req.originalUrl),
+    normalizePath(req.baseUrl ? `${req.baseUrl}${req.path || ''}` : ''),
+  ]);
+
+  const original = normalizePath(req.originalUrl);
+  const versionless = original.replace(/^\/api\/v\d+/, '');
+  if (versionless !== original) paths.add(versionless || '/');
+  return paths;
+}
+
+function isExcluded(req) {
+  const paths = candidatePaths(req);
+  for (const rule of EXCLUDE_PATHS) {
+    const normalized = normalizePath(rule);
+    if (paths.has(normalized)) return true;
+  }
+  return false;
+}
 
 // ── Token generation / verification ──────────────────────────────────────────
 
@@ -87,11 +128,20 @@ function verifyToken(token) {
  */
 function csrfToken(req, res) {
   const token = generateToken();
+  const secureOverride = process.env.CSRF_COOKIE_SECURE === 'true'
+    ? true
+    : process.env.CSRF_COOKIE_SECURE === 'false'
+      ? false
+      : undefined;
+  const { secure, sameSite } = resolveCookiePolicy(req, {
+    sameSite: process.env.CSRF_COOKIE_SAME_SITE || 'strict',
+    secureOverride,
+  });
 
   res.cookie(COOKIE_NAME, token, {
     httpOnly: false,           // JS del frontend DEBE leer la cookie
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'Strict',
+    secure,
+    sameSite,
     maxAge:   TTL_SEC * 1000,
     path:     '/',
   });
@@ -112,7 +162,7 @@ function csrfToken(req, res) {
 function csrfProtect(req, res, next) {
   if (req.headers['x-api-key']) return next();
   if (SAFE_METHODS.has(req.method)) return next();
-  if (EXCLUDE_PATHS.has(req.path)) return next();
+  if (isExcluded(req)) return next();
 
   const headerToken = req.headers['x-csrf-token'];
   if (!headerToken) {
@@ -142,4 +192,4 @@ function csrfProtect(req, res, next) {
   next();
 }
 
-module.exports = { csrfProtect, csrfToken, generateToken, verifyToken };
+module.exports = { csrfProtect, csrfToken, generateToken, verifyToken, isExcluded };

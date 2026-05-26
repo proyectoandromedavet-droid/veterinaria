@@ -3,7 +3,7 @@ import axios from 'axios'
 const platformHttp = axios.create({
   baseURL: '',
   withCredentials: true,
-  timeout: 10000,
+  timeout: 180000,
 })
 
 function unwrap(response) {

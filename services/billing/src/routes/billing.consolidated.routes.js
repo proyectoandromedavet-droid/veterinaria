@@ -5,10 +5,15 @@ const { db, R, mb, logBillingError } = require('./billing.common');
 
 const router = Router();
 
+// Regex para validar formato de fecha YYYY-MM-DD
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 router.get('/summary', async (req, res, next) => {
   try {
     const from = req.query.from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
     const to = req.query.to || new Date().toISOString().slice(0, 10);
+    // BUG-FIX: validar formato de fechas para evitar strings arbitrarios
+    if (!DATE_RE.test(from) || !DATE_RE.test(to)) return R.badRequest(res, 'Formato de fecha inválido, use YYYY-MM-DD');
     const data = await mb.consolidatedFinancials(req.user.orgId, from, to);
     return R.ok(res, data, { from, to });
   } catch (e) {
@@ -19,14 +24,28 @@ router.get('/summary', async (req, res, next) => {
 
 router.get('/invoices', async (req, res, next) => {
   try {
-    const { branchId, from, to, status, page = 1, limit = 50 } = req.query;
+    const { branchId, from, to, status } = req.query;
+    const limit  = Math.min(Math.max(parseInt(req.query.limit  || '50', 10) || 50, 1), 200); // BUG-23
+    const page   = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
     const now = new Date();
     const f = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
     const t = to || now.toISOString().slice(0, 10);
+    // BUG-FIX: validar formato de fechas
+    if (!DATE_RE.test(f) || !DATE_RE.test(t)) return R.badRequest(res, 'Formato de fecha inválido, use YYYY-MM-DD');
     const offset = (page - 1) * limit;
     const conds = ['b.organization_id = :orgId', 'i.issued_date BETWEEN :from AND :to', "i.status != 'cancelled'"];
-    const p = { orgId: req.user.orgId, from: f, to: t, limit: parseInt(limit), offset: parseInt(offset) };
-    if (branchId) { conds.push('i.branch_id = :branchId'); p.branchId = branchId; }
+    const p = { orgId: req.user.orgId, from: f, to: t, limit, offset };
+    if (branchId) {
+      // BUG-FIX: verificar que el branchId pertenece al orgId del usuario (IDOR cross-org)
+      // La condición b.organization_id = :orgId en el WHERE ya filtra por org, pero si
+      // branchId es de otra org el JOIN lo descarta sin responder 403. Verificamos explícitamente.
+      const branchOwner = await db.queryOne(
+        `SELECT id FROM branches WHERE id = :branchId AND organization_id = :orgId LIMIT 1`,
+        { branchId, orgId: req.user.orgId }
+      );
+      if (!branchOwner) return R.forbidden(res, 'Sucursal fuera de la organización');
+      conds.push('i.branch_id = :branchId'); p.branchId = branchId;
+    }
     if (status) { conds.push('i.status = :status'); p.status = status; }
     const rows = await db.query(
       `SELECT i.id, i.invoice_number, i.status, i.issued_date, i.total_amount, i.paid_amount,
@@ -50,9 +69,14 @@ router.get('/invoices', async (req, res, next) => {
 router.get('/revenue-trend', async (req, res, next) => {
   try {
     const { from, to, groupBy = 'month' } = req.query;
+    // BUG-FIX: whitelist explícita de groupBy para evitar valores inesperados
+    const VALID_GROUP_BY = new Set(['day', 'week', 'month']);
+    if (!VALID_GROUP_BY.has(groupBy)) return R.badRequest(res, 'groupBy debe ser day, week o month');
     const now = new Date();
     const f = from || new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
     const t = to || now.toISOString().slice(0, 10);
+    // BUG-FIX: validar formato de fechas
+    if (!DATE_RE.test(f) || !DATE_RE.test(t)) return R.badRequest(res, 'Formato de fecha inválido, use YYYY-MM-DD');
     const fmt = groupBy === 'day' ? '%Y-%m-%d' : groupBy === 'week' ? '%x-W%v' : '%Y-%m';
     const rows = await db.query(
       `SELECT DATE_FORMAT(i.issued_date, :fmt) AS period,

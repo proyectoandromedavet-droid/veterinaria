@@ -12,13 +12,31 @@ const { getTableColumns } = require('../../../shared/schemaEngine');
 const { createLogger } = require('../../../shared/logger');
 
 const log = createLogger('ai');
+
+const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '30000');
+
+/**
+ * Ejecuta una llamada AI con timeout máximo configurable (default 30s).
+ * Lanza AbortError si se supera el tiempo, que el caller maneja como 504.
+ */
+async function withAiTimeout(fn) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  try {
+    return await fn(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const CHAT_SYSTEM_PROMPT = `Sos VetBot, asistente clinico veterinario para profesionales de la salud animal.
 Respondes preguntas sobre protocolos clinicos, farmacologia veterinaria, diagnosticos diferenciales e interpretacion de estudios.
 Usas terminologia tecnica veterinaria en espanol (Argentina).
 Siempre aclaras cuando una decision clinica requiere evaluacion presencial.
 No reemplazas el criterio del veterinario tratante.`;
 
-const schemaCache = new Map();
+const SCHEMA_TTL_MS = parseInt(process.env.SCHEMA_CACHE_TTL_MS || '300000'); // 5 min
+const schemaCache = new Map(); // key → { value, expiresAt }
 
 function validate(req, res, next) {
   return validateRequest(req, res, next);
@@ -28,13 +46,40 @@ function getUser(req) {
   return req.user || getRequestContext(req.headers);
 }
 
+async function ensurePatientInUserScope(patientId, user) {
+  return db.queryOne(
+    `SELECT p.id
+       FROM patients p
+      WHERE p.id = :patientId
+        AND p.organization_id = :orgId
+        AND (
+          :branchId IS NULL
+          OR EXISTS (
+            SELECT 1
+              FROM patient_owners po
+              JOIN clients c ON c.id = po.client_id
+             WHERE po.patient_id = p.id
+               AND c.branch_id = :branchId
+               AND po.deleted_at IS NULL
+          )
+        )`,
+    {
+      patientId,
+      orgId: user?.orgId || null,
+      branchId: user?.branchId || null,
+    }
+  );
+}
+
 async function hasColumn(tableName, columnName) {
   const key = `${tableName}.${columnName}`;
-  if (schemaCache.has(key)) return schemaCache.get(key);
+  const cached = schemaCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.value;
+
   const rows = await getTableColumns(tableName);
   const columns = new Set(rows.map((r) => r.COLUMN_NAME));
   const value = columns.has(columnName);
-  schemaCache.set(key, value);
+  schemaCache.set(key, { value, expiresAt: Date.now() + SCHEMA_TTL_MS });
   return value;
 }
 
@@ -126,11 +171,13 @@ module.exports = {
   computeRiskScores,
   summarizeRisks,
   getUser,
+  ensurePatientInUserScope,
   requirePerm,
   validate,
   buildPatientSelect,
   buildDiagnosisPrompt,
   buildImagePrompt,
   CHAT_SYSTEM_PROMPT,
+  withAiTimeout,
   log,
 };

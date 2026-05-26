@@ -13,6 +13,7 @@
  */
 
 const ExcelJS = require('exceljs');
+const { formatDateTime } = require('./locale');
 
 // ─── Paleta corporativa ───────────────────────────────────────────────────────
 
@@ -42,7 +43,14 @@ const THEME = {
  * @param {boolean}  [opts.autoFilter] — agregar autoFilter (default true)
  * @returns {Promise<Buffer>}
  */
+// SEC: cap de filas para evitar OOM o generación de archivos excesivamente grandes
+const MAX_EXPORT_ROWS = parseInt(process.env.EXPORT_MAX_ROWS || '10000', 10);
+
 async function toExcel ({ title, subtitle, columns, rows, totals, meta = {}, autoFilter = true }) {
+  // SEC: limitar filas para prevenir ataques de agotamiento de memoria
+  if (rows && rows.length > MAX_EXPORT_ROWS) {
+    rows = rows.slice(0, MAX_EXPORT_ROWS);
+  }
   const wb = new ExcelJS.Workbook();
   wb.creator   = 'VetManager API';
   wb.created   = new Date();
@@ -158,7 +166,7 @@ async function toExcel ({ title, subtitle, columns, rows, totals, meta = {}, aut
     currentRow++;
     ws.mergeCells(`A${currentRow}:${colLetter(columns.length)}${currentRow}`);
     const foot = ws.getCell(`A${currentRow}`);
-    foot.value = `Generado por: ${meta.generatedBy || 'VetManager'} — ${new Date().toLocaleString('es-AR')}`;
+    foot.value = `Generado por: ${meta.generatedBy || 'VetManager'} — ${formatDateTime(new Date())}`;
     foot.font  = { name: 'Calibri', size: 8, italic: true, color: { argb: '94A3B8' } };
     foot.alignment = { horizontal: 'right' };
   }
@@ -182,11 +190,21 @@ async function toExcel ({ title, subtitle, columns, rows, totals, meta = {}, aut
  * @returns {string}
  */
 function toCsv ({ columns, rows, delimiter = ';' }) {
+  // SEC: limitar filas para prevenir generación de archivos CSV enormes
+  if (rows && rows.length > MAX_EXPORT_ROWS) {
+    rows = rows.slice(0, MAX_EXPORT_ROWS);
+  }
   const escape = (val) => {
     if (val === null || val === undefined) return '';
-    const str = String(val);
+    let str = String(val);
+    // SEC: CSV injection — prefixar con comilla simple los valores que comienzan
+    // con caracteres de fórmula (=, +, -, @, \t, \r).
+    // Esto hace que Excel/LibreOffice los trate como texto literal.
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = "'" + str;
+    }
     // Si contiene el delimitador, comillas o salto de línea, envolver en comillas
-    if (str.includes(delimiter) || str.includes('"') || str.includes('\n')) {
+    if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
     return str;

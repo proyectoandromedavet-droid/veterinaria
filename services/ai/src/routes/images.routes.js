@@ -10,6 +10,7 @@ const {
   requirePerm,
   validate,
   getUser,
+  ensurePatientInUserScope,
   withAiTimeout,
   log,
 } = require('../ai.common');
@@ -58,6 +59,8 @@ router.post('/analyze',
       const { patientId, imageType, imageUrl, imageBase64, region, clinicalContext, labResultId } = req.body;
       const user = getUser(req);
       if (!imageUrl && !imageBase64) return R.badRequest(res, 'Se requiere imageUrl o imageBase64');
+      const scoped = await ensurePatientInUserScope(patientId, user);
+      if (!scoped) return R.notFound(res, 'Paciente no encontrado');
 
       const patient = await db.queryOne(
         `SELECT p.id, p.name, p.birthdate, p.sex, p.weight_kg AS weight,
@@ -73,9 +76,14 @@ router.post('/analyze',
       // Validate labResultId ownership — must belong to same patient and org
       if (labResultId) {
         const labResult = await db.queryOne(
-          `SELECT id FROM lab_results
-           WHERE id = :labId AND patient_id = :pid AND organization_id = :org`,
-          { labId: labResultId, pid: patientId, org: user.orgId }
+          `SELECT lr.id
+             FROM lab_results lr
+             JOIN lab_order_items loi ON loi.id = lr.lab_order_item_id
+             JOIN lab_orders lo ON lo.id = loi.lab_order_id
+            WHERE lr.id = :labId
+              AND lo.patient_id = :pid
+              AND lo.branch_id = :branchId`,
+          { labId: labResultId, pid: patientId, branchId: user.branchId }
         );
         if (!labResult) return R.notFound(res, 'Resultado de laboratorio no encontrado para este paciente');
       }

@@ -35,7 +35,18 @@ function getApp() {
   let credential;
 
   if (process.env.FIREBASE_CREDENTIAL_PATH) {
-    credential = admin.credential.cert(require(process.env.FIREBASE_CREDENTIAL_PATH));
+    // Validate the path to prevent path traversal / arbitrary file inclusion.
+    // Only allow absolute paths pointing to .json files within safe directories.
+    const credPath = process.env.FIREBASE_CREDENTIAL_PATH;
+    const normalised = require('path').resolve(credPath);
+    if (!normalised.endsWith('.json')) {
+      throw new Error('FIREBASE_CREDENTIAL_PATH must point to a .json file');
+    }
+    const fs = require('fs');
+    if (!fs.existsSync(normalised)) {
+      throw new Error(`FIREBASE_CREDENTIAL_PATH not found: ${normalised}`);
+    }
+    credential = admin.credential.cert(JSON.parse(fs.readFileSync(normalised, 'utf8')));
   } else if (process.env.FIREBASE_PROJECT_ID) {
     credential = admin.credential.cert({
       projectId:   process.env.FIREBASE_PROJECT_ID,
@@ -137,13 +148,28 @@ async function sendToTopic(topic, payload) {
 }
 
 // ── Suscribir / desuscribir tokens a topics ───────────────────────────────────
+
+/**
+ * FCM topic names must match /^[a-zA-Z0-9-_.~%]{1,900}$/.
+ * Reject topics that do not conform to prevent topic injection attacks.
+ */
+const VALID_TOPIC_RE = /^[a-zA-Z0-9\-_.~%]{1,900}$/;
+
+function assertValidTopic(topic) {
+  if (typeof topic !== 'string' || !VALID_TOPIC_RE.test(topic)) {
+    throw new Error(`Invalid FCM topic name: "${topic}"`);
+  }
+}
+
 async function subscribeToTopic(tokens, topic) {
   if (!tokens.length) return;
+  assertValidTopic(topic);
   return messaging().subscribeToTopic(tokens, topic);
 }
 
 async function unsubscribeFromTopic(tokens, topic) {
   if (!tokens.length) return;
+  assertValidTopic(topic);
   return messaging().unsubscribeFromTopic(tokens, topic);
 }
 

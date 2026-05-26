@@ -61,14 +61,23 @@ function isPrivateIpv4(ip) {
 }
 
 function isPrivateIpv6(ip) {
-  const lower = ip.toLowerCase();
+  // BUG-4: strip scope ID (e.g. fe80::1%eth0), normalizar a lowercase
+  const lower = ip.toLowerCase().split('%')[0];
+
+  // IPv4-mapped IPv6 (::ffff:x.x.x.x) — extraer y validar la IPv4 embebida
+  if (lower.startsWith('::ffff:')) {
+    const embedded = lower.slice(7);
+    if (embedded.includes('.')) return isPrivateIpv4(embedded);
+  }
+
   return (
     lower === '::1' ||
-    lower.startsWith('fe80:') ||
+    lower === '0:0:0:0:0:0:0:1' ||
+    lower === '::' ||
+    lower.startsWith('fe80') ||   // cubre fe80:: y fe80: con o sin ceros
     lower.startsWith('fc') ||
     lower.startsWith('fd') ||
-    lower === '::' ||
-    lower === '0:0:0:0:0:0:0:1'
+    lower.startsWith('::ffff:')   // IPv4-mapped genérico
   );
 }
 
@@ -110,6 +119,20 @@ function validateUrl(rawUrl) {
   if (ALLOWED_HOSTS.has(hostname)) return;
 
   if (!BLOCK_PRIVATE) return;
+
+  // BUG-7: rechazar IPs en formato decimal (ej: 2130706433 = 127.0.0.1)
+  // Node.js URL parsea estos como hostname numérico, no como IP con puntos
+  if (/^\d+$/.test(hostname)) {
+    const decimalToIp = (n) => {
+      const num = parseInt(n, 10);
+      if (isNaN(num)) return null;
+      return [(num >>> 24) & 0xFF, (num >>> 16) & 0xFF, (num >>> 8) & 0xFF, num & 0xFF].join('.');
+    };
+    const dotted = decimalToIp(hostname);
+    if (!dotted || isPrivateIpv4(dotted)) {
+      throw new AppError('Acceso a dirección IP privada o de loopback no permitido', 400, 'SSRF_PRIVATE_IP');
+    }
+  }
 
   // Rechazar si el hostname es directamente una IP privada
   if (isPrivateIp(hostname)) {

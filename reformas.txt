@@ -1,0 +1,303 @@
+REFORMAS - ANÁLISIS COMPLETO VETERINARIAPROD
+==============================================
+Total: 148 hallazgos | 16 Críticos | 52 Altos | 80 Medios/Bajos
+Fecha: 2026-05-22
+==============================================
+
+LEYENDA:
+[CRITICO] = Acción inmediata requerida
+[ALTO]    = Resolver en próximo sprint
+[MEDIO]   = Resolver en próximo mes
+[BAJO]    = Backlog técnico
+
+
+══════════════════════════════════════════════
+BATCH 1 — ANÁLISIS GENERAL (15 agentes)
+══════════════════════════════════════════════
+
+────────────────────────────────────────────
+SEGURIDAD SUPERFICIAL
+────────────────────────────────────────────
+1.  [CRITICO] Credenciales reales commiteadas en repositorio: RDS (AJPFOX101110 / Cuernos2503), Redis password completa, JWT private key (base64), CSRF_SECRET, INTERNAL_SECRET, Stripe API key, MercadoPago API key, Gmail API key. Revocar y rotar inmediatamente.
+2.  [ALTO]    CORS acepta localhost e IPs explícitas con credentials:true sin restricciones adicionales en producción.
+3.  [ALTO]    subdomainMiddleware falla silenciosamente si no resuelve el slug — continúa sin tenantOrgId, permitiendo bypass de aislamiento multi-tenant.
+4.  [MEDIO]   Rate limiting de auth débil: 10 req/min = ~600 intentos/hora sin backoff exponencial.
+5.  [BAJO]    Error OAuth2 redirige con ?sso_error= — posible leak de información al cliente.
+6.  [BAJO]    JWT_KEYRING_JSON sin rotación automática visible.
+
+────────────────────────────────────────────
+WEBSOCKETS
+────────────────────────────────────────────
+7.  [ALTO]    Token revocado no se revalida durante sesión WebSocket activa — logout no desconecta la sesión WS. Archivo: websocket.connections.js:120-124, websocket.auth.js:103-139.
+8.  [ALTO]    Sin límite de conexiones por usuario/IP — userSockets es un Map sin cota, riesgo de DoS y memory leak. Archivo: websocket.connections.js:39.
+9.  [MEDIO]   Sin reconexión automática al pub/sub Redis si cae — suscripción al canal notifications se pierde silenciosamente. Archivo: websocket.pubsub.js:21-35.
+10. [MEDIO]   Eventos sin scope (sin targetUserIds, orgId, branchId, targetRoles) se broadcast a todos los conectados. Archivo: websocket.js:106-113.
+11. [BAJO]    Sin validación de tamaño ni schema en mensajes cliente→servidor — superficie frágil si se añaden handlers futuros.
+
+────────────────────────────────────────────
+MIGRACIONES SQL
+────────────────────────────────────────────
+12. [CRITICO] Runner sin transacciones por migración — migrate.js ejecuta cada archivo con conn.query() sin BEGIN/COMMIT. Fallo parcial deja la BD en estado corrupto sin rollback automático.
+13. [CRITICO] Migraciones 032–039 sin archivo de rollback — el comando --rollback aborta con error fatal en todas ellas.
+14. [ALTO]    Migración 035: DROP FOREIGN KEY fk_inv_item_branch sin verificar existencia en information_schema — si ya no existe, bloquea todo el runner con process.exit(1).
+15. [ALTO]    Migración 037: ALTER NOT NULL en tabla patients sin transacción explícita — fallo entre UPDATE y ALTER deja la BD en estado parcialmente modificado.
+16. [MEDIO]   Migración 039: IDs de vacunas hardcodeados (WHEN v.id IN (1,2,3)) — asigna fabricantes incorrectos en entornos con datos distintos al original.
+17. [MEDIO]   Migración 034: índice UNIQUE en columna sku con filas preexistentes NULL — posibles errores silenciosos al importar stock.
+
+────────────────────────────────────────────
+CONSISTENCIA ENTRE ENTORNOS
+────────────────────────────────────────────
+18. [CRITICO] SERVICE_PORTAL apunta a puerto 4060 en K8s ConfigMap pero el servicio expone 3010 — conexiones rechazadas en producción.
+19. [CRITICO] K8s usa emptyDir para Redis, Prometheus y Grafana — todos los datos (sesiones, métricas, dashboards) se borran en cada rolling update.
+20. [CRITICO] Puertos desincronizados entre entornos: gateway dev=4050, prod Docker=3000, K8s=4050. Ingress/LoadBalancer falla.
+21. [ALTO]    SERVICE_DISCOVERY_MODE mixto: env en dev, hybrid en servicios, env en K8s — routing inconsistente.
+22. [ALTO]    TRACING_ENABLED=false en K8s ConfigMap pero habilitado en docker-compose — producción sin observabilidad de trazas.
+23. [ALTO]    MinIO presente en dev, ausente en prod Docker y K8s — comportamiento de almacenamiento distinto entre entornos.
+24. [ALTO]    Redis sin límite de memoria ni persistencia en dev vs 512MB+LRU en prod — eviction diferente puede causar pérdidas inesperadas.
+25. [MEDIO]   NODE_ENV no definido explícitamente en dev — puede ejecutar en modo development sin saberlo.
+
+────────────────────────────────────────────
+RIESGOS DE PRODUCCIÓN
+────────────────────────────────────────────
+26. [CRITICO] Redis es SPOF total: 1 réplica sin Sentinel ni Cluster — si cae, toda la autenticación y validación de tokens falla. Archivo: k8s/redis.yaml.
+27. [CRITICO] Gateway no drena conexiones activas al apagar — shutdown() llama server.close() sin esperar conexiones. WebSockets cortados abruptamente en cada deploy. Archivo: gateway/src/bootstrap/lifecycle.js.
+28. [CRITICO] unhandledRejection solo loguea y mantiene el proceso vivo — fallo no capturado deja el servicio en estado corrupto silencioso indefinidamente.
+29. [ALTO]    Sin resources.limits en ningún Deployment K8s — un servicio con memory leak puede consumir todo el nodo y causar OOM kills en cascada.
+30. [ALTO]    Sin strategy de deploy declarada ni PodDisruptionBudget — actualizaciones pueden dejar servicios en 0 instancias disponibles brevemente.
+31. [ALTO]    Variables críticas (INTERNAL_SECRET, JWT_PRIVATE_KEY, STRIPE_WEBHOOK_SECRET, CSRF_SECRET) con valor CHANGE_ME sin validación al arranque — sistema bootea con seguridad comprometida.
+32. [MEDIO]   Todas las imágenes K8s usan tag :latest — un push accidental puede actualizar producción en el próximo restart de pod.
+33. [MEDIO]   GRAFANA_PASSWORD con default admin si la variable no está definida (GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}).
+
+────────────────────────────────────────────
+CONTRATO API FRONTEND↔BACKEND
+────────────────────────────────────────────
+34. [ALTO]    GET /follow-ups y POST /follow-ups — completamente ausentes del spec OpenAPI y del router del gateway.
+35. [ALTO]    GET /auth/audit/alerts — no existe; solo existe /auth/audit/export.
+36. [ALTO]    GET /payments — solo existe POST /payments en el spec.
+37. [ALTO]    GET /triage y POST /triage sin ID — el spec define POST /triage/{id} con parámetro obligatorio.
+38. [ALTO]    GET /health/deep — no registrado en gateway ni en el spec OpenAPI.
+39. [MEDIO]   PUT /appointments/{id} — solo existe PATCH /appointments/{id}/status en el spec.
+40. [MEDIO]   DELETE /patients/{id} — no documentado, pacientes no tiene DELETE en el spec.
+41. [MEDIO]   GET /imaging — debería ser /imaging/orders según el spec.
+42. [MEDIO]   PATCH /auth/admin/users/{id}/role, toggle-active y reset-password — ninguno en el spec; solo existe /deactivate.
+43. [MEDIO]   6 endpoints de reportes (/reports/summary, /reports/financial, /reports/patients, /reports/clinical, /reports/inventory, /reports/staff) con nombres completamente distintos a los del spec (/reports/dashboard, /reports/revenue, /reports/appointments, /reports/diagnoses, etc.).
+44. [BAJO]    GET /auth/roles debería ser /auth/admin/rbac/roles según el spec.
+
+────────────────────────────────────────────
+CI/CD
+────────────────────────────────────────────
+45. [ALTO]    docker push: false en el pipeline — las imágenes se construyen pero nunca se publican al registry. El flujo CI→CD está roto por diseño.
+46. [ALTO]    Sin deploy automático a K8s — los manifests existen pero no hay step de kubectl apply tras build exitoso.
+47. [ALTO]    Deploy a producción es completamente manual — solo staging está automatizado.
+48. [MEDIO]   Sin type checking (tsc) en el pipeline — errores de tipos no se detectan en CI.
+
+────────────────────────────────────────────
+OBSERVABILIDAD Y LOGGING
+────────────────────────────────────────────
+49. [ALTO]    No se loguea request body ni response time sistemáticamente — imposible debuggear qué envió el cliente cuando falla una validación.
+50. [ALTO]    TRACING_ENABLED=false en K8s ConfigMap — traces distribuidos desactivados en producción (confirmado también en hallazgo #22).
+51. [MEDIO]   Latencia HTTP solo en métricas genéricas (http_request_duration_seconds) sin desagregación por ruta específica.
+52. [MEDIO]   Intentos RBAC denegados tienen métrica (rbacDenials) pero no log estructurado con usuario+recurso+permiso — inauditable.
+53. [MEDIO]   Health checks no verifican dependencias externas (Stripe, MercadoPago, OpenAI) — servicio puede reportar healthy con integraciones de pago caídas.
+
+────────────────────────────────────────────
+RBAC Y PERMISOS
+────────────────────────────────────────────
+54. [ALTO]    Gateway solo enforcea autenticación, no permisos granulares — cualquier usuario autenticado puede llamar cualquier servicio que no implemente sus propias validaciones.
+55. [ALTO]    POST /security-alerts/:id/acknowledge no verifica que la alerta pertenezca al orgId del usuario — un org_admin puede reconocer alertas de otra organización.
+56. [ALTO]    optionalAuth omite el check de revocación Redis — tokens revocados pasan sin detectarse en rutas con auth opcional.
+57. [MEDIO]   Servicio AI no verifica el permiso ai:use — el frontend lo bloquea pero el endpoint es directamente accesible.
+58. [MEDIO]   assertOrgAccess lee req.user?.role (singular) como fallback cuando el JWT emite roles (array) — lógica frágil con doble ruta de lectura.
+59. [BAJO]    Roles imaging_tech y api_user definidos en RBAC pero ausentes en allowedMenu del frontend — usuarios con esos roles no ven ningún elemento de menú.
+
+────────────────────────────────────────────
+MÓDULO DE IA
+────────────────────────────────────────────
+60. [MEDIO]   Prompt injection sin sanitización — message, symptoms, anamnesis y region se inyectan directamente en prompts sin límite de longitud ni filtrado. Archivos: chat.routes.js:55, diagnosis.routes.js, images.routes.js.
+61. [MEDIO]   Historial de sesión carga los últimos 20 mensajes sin recortar longitud total — sesiones largas generan contextos muy costosos.
+62. [MEDIO]   Rate limiting solo por cuota mensual/org — un único usuario puede consumir toda la cuota de la organización en segundos.
+63. [MEDIO]   imageBase64 sin validación de tamaño máximo ni tipo MIME — payload de cientos de MB pasaría sin rechazo.
+64. [BAJO]    Alertas de consumo al 80% del límite solo escriben log warn — sin webhook ni email externo.
+65. [BAJO]    Planes enterprise/pro con límite Infinity — sin tope absoluto de gasto en API de IA.
+
+────────────────────────────────────────────
+DATOS SENSIBLES Y PRIVACIDAD
+────────────────────────────────────────────
+66. [ALTO]    Si FIELD_ENCRYPTION_SECRET no está definido, fallback a JWT_SECRET como clave maestra de cifrado — comprometer el JWT compromete todo el cifrado en reposo de PII.
+67. [MEDIO]   GET /clients/ devuelve email y teléfono sin cifrar en la response.
+68. [MEDIO]   GET /invoices/:id devuelve email, teléfono y tax_id del cliente completos (over-fetching innecesario).
+69. [MEDIO]   MercadoPago y Stripe reciben email del cliente en claro en cada transacción de pago.
+70. [BAJO]    Endpoint GDPR export (/clients/:id/gdpr/export) sin TLS mandatorio forzado.
+71. [BAJO]    console.error() en frontend puede capturar objetos completos con PII en catch blocks.
+
+────────────────────────────────────────────
+MULTI-TENANT / SUBDOMAIN ROUTING
+────────────────────────────────────────────
+72. [CRITICO] tenantMismatchGuard ausente en 6 de 8 registries — cross-tenant posible en medical.registry.js (appointments, prescriptions, triage), billing.registry.js (facturas, pagos, inventario), lab.registry.js (lab, imagenología, vacunas), engagement.registry.js (notificaciones, documentos, reportes) y ai.registry.js.
+73. [ALTO]    portal.registry.js sin autenticación ni guard — acceso sin token a datos del tenant desde el portal.
+74. [BAJO]    WebSockets no validan subdominio ni tenant — solo validan el JWT.
+
+────────────────────────────────────────────
+FRONTEND: ESTADO Y AUTENTICACIÓN
+────────────────────────────────────────────
+75. [ALTO]    Race condition en bootstrap — el router ejecuta guards antes de que bootstrap() complete. Si la hidratación es lenta, isAuthenticated retorna falso y redirige a /login aunque hay sesión válida (flash redirect). Archivos: stores/auth.js, router/index.js.
+76. [MEDIO]   JWT en memoria no valida expiración localmente — si el usuario vuelve después de 24h sin recargar, el token se usa hasta que el servidor lo rechace.
+77. [MEDIO]   logout() no espera la request de cierre en el servidor — si la red falla, la sesión queda activa en el backend aunque el cliente la limpió.
+78. [BAJO]    CSRF token cacheado 55min sin reintento inteligente si el servidor lo invalida antes del TTL.
+
+────────────────────────────────────────────
+DEUDA TÉCNICA Y CODE SMELLS
+────────────────────────────────────────────
+79. [ALTO]    shared/redis.js usa console.log/warn en código crítico de infraestructura en lugar de logger estructurado — logs sin contexto de traza en producción.
+80. [ALTO]    proxy.factory.js (188 líneas) acumula múltiple responsabilidad: circuit breaker, tracing, header sanitization, error handling y conversión de spans. Lógica duplicada en líneas 49-58 y 80-89.
+81. [ALTO]    dlp.js intercepta res.json() globalmente — frágil a cambios de Express, requiere rollout sincronizado con todas las rutas.
+82. [ALTO]    Redis cache sin invalidación coordinada — solo TTLs fijos, datos stale posibles después de cualquier escritura.
+83. [MEDIO]   Mezcla de patrones async: try/catch+AbortSignal en algunos servicios, .catch() con arrow functions en otros.
+84. [MEDIO]   shared/ai.js implementa HTTPS manualmente cuando los adapters ya usan fetch — código probablemente muerto.
+85. [MEDIO]   EvolucionesView.vue (150+ líneas) maneja búsqueda, paginación, modals, laboratorio, imagenología, hospitalización y cirugía en un único componente.
+86. [BAJO]    Archivos .tmp/audit_db.js y compare_runtime.js presentes sin documentación ni propósito claro.
+
+
+══════════════════════════════════════════════
+BATCH 2 — ANÁLISIS ESPECÍFICO (10 agentes)
+══════════════════════════════════════════════
+
+────────────────────────────────────────────
+KUBERNETES: SEGURIDAD
+────────────────────────────────────────────
+87. [CRITICO] Todos los containers sin SecurityContext — corren como root por defecto, sin readOnlyRootFilesystem, sin allowPrivilegeEscalation:false, sin capabilities restrictivas.
+88. [CRITICO] Sin NetworkPolicies definidas — todos los pods pueden comunicarse entre sí sin ninguna restricción de red. Si un pod es comprometido, tiene acceso libre a todos los demás.
+89. [ALTO]    Comunicación inter-servicio por HTTP plano (ej: SERVICE_AUTH: http://vetmanager-auth:3001) — credenciales y datos clínicos en tránsito sin cifrado dentro del cluster.
+90. [ALTO]    Sin Ingress configurado con TLS — gateway expone puerto 80 sin HTTPS.
+91. [ALTO]    Sin ServiceAccounts dedicados ni RBAC de K8s — todos los pods usan el default ServiceAccount con permisos innecesarios.
+92. [ALTO]    Sin PodDisruptionBudgets — actualizaciones pueden dejar servicios con 0 instancias disponibles simultáneamente.
+93. [MEDIO]   Redis sin TLS dentro del cluster — datos de sesión y tokens en caché viajan en claro.
+94. [MEDIO]   AUTH_COOKIE_SAME_SITE: none requiere validación CORS adicional para evitar CSRF.
+
+────────────────────────────────────────────
+PAGOS: STRIPE Y MERCADOPAGO
+────────────────────────────────────────────
+95. [CRITICO] Webhook MercadoPago sin idempotencia — no hay UNIQUE en mp_payment_id ni SELECT previo. Si MP reintenta el webhook (comportamiento estándar ante timeout), se inserta un segundo pago y la factura se acredita doble. Archivo: billing.mp.webhook.routes.js:36-65.
+96. [ALTO]    Monto acreditado viene directamente del payload MP (paymentData.transaction_amount) sin comparar contra invoice.total_amount — manipulación posible de external_reference puede liberar factura con pago menor al real. Archivo: billing.mp.webhook.routes.js:50.
+97. [MEDIO]   Stripe webhook usa req.rawBody || JSON.stringify(req.body) — si raw buffer no disponible, la verificación de firma Stripe queda inválida y acepta eventos falsificados. Archivo: stripe.routes.js:117.
+98. [MEDIO]   Stripe: UPDATE tenants en invoice.payment_succeeded ejecuta aunque INSERT IGNORE descarte el evento duplicado — estado inconsistente posible. Archivo: stripe.routes.js:130-141.
+99. [BAJO]    Creación de preferencia MP sin idempotency key — llamadas concurrentes al mismo invoiceId generan múltiples links de pago activos. Archivo: billing.mp.routes.js:31.
+100. [BAJO]   Reembolso via API interna no actualiza invoices.paid_amount ni invoices.status — solo el webhook lo hace; reembolso manual deja factura en estado incorrecto. Archivo: billing.mp.routes.js:84-103.
+
+────────────────────────────────────────────
+RESILIENCIA ENTRE SERVICIOS
+────────────────────────────────────────────
+101. [CRITICO] Worker de notificaciones sin try-catch en executeJob — si falla, el job queda en estado processing indefinidamente, nunca pasa a failed, dead letters invisibles. Archivo: services/notifications/bootstrap/runtime.js:92-99.
+102. [ALTO]   callInternalService sin retry ni backoff exponencial — una falla de red transitoria causa fallo inmediato de la operación. Archivo: shared/internalService.js.
+103. [ALTO]   Circuit breaker solo en gateway/proxy.factory.js — servicios AI, Auth y Documents llaman APIs externas directamente sin ninguna protección.
+104. [ALTO]   syncGmail llama Google API sin timeout explícito ni circuit breaker — si Google cuelga, bloquea el thread del worker indefinidamente.
+105. [ALTO]   Event bus sin timeout en handlers — si un handler cuelga, el stream Redis xReadGroup no avanza. Archivo: shared/eventBus.js:252.
+106. [MEDIO]  Gateway proxy con timeout de 180s (3 minutos) — excesivo, una request colgada acapara conexiones durante demasiado tiempo.
+107. [MEDIO]  Modo degraded en auth.controller.js responde 503 igual que caída total — el fallback no agrega valor real.
+
+────────────────────────────────────────────
+SUPPLY CHAIN Y DEPENDENCIAS
+────────────────────────────────────────────
+108. [ALTO]   ws desincronizado: gateway usa ^8.17.1 con CVE-2024-37890 (DoS) mientras el resto del repo usa ^8.20.1. Archivo: gateway/package.json.
+109. [ALTO]   yamljs ^0.3.0 — abandonado desde 2017, CVEs históricos de inyección al parsear YAML no confiable. Se usa para cargar el spec OpenAPI. Reemplazar por js-yaml.
+110. [MEDIO]  Todas las imágenes Docker usan node:20-alpine sin tag de versión fija — cada rebuild puede traer una versión distinta de Node, builds no reproducibles.
+111. [MEDIO]  multer ^1.4.5-lts.1 en mantenimiento mínimo con historial de CVEs de DoS.
+112. [MEDIO]  hpp ^0.2.3 (HTTP Parameter Pollution protection) sin actualizaciones desde 2016.
+113. [MEDIO]  @afipsdk/afip.js ^1.2.3 — SDK de nicho con pocas descargas y sin auditoría pública de seguridad.
+114. [BAJO]   Sin .npmrc configurado — sin registry privado, susceptible a dependency confusion attacks.
+115. [BAJO]   bcryptjs ^2.4.3 sin actualizaciones desde 2020 — preferible migrar a argon2.
+
+────────────────────────────────────────────
+PERFORMANCE Y QUERIES DE BD
+────────────────────────────────────────────
+116. [ALTO]   SELECT * FROM `${table}` en admin-table-preview.routes.js:80 — retorna todas las columnas incluyendo campos cifrados y BLOBs sin filtrado.
+117. [ALTO]   Loop async de getEffectivePermissions() ejecuta una query por cada rol del usuario en vez de un batch query — N+1 en cada login y validación de token. Archivo: auth.controller.js:295-302.
+118. [MEDIO]  Búsquedas por email y name sin índice explícito verificado en tablas users y roles.
+119. [MEDIO]  Connection pool con queueLimit=0 ilimitado — bajo carga alta la cola crece sin límite, riesgo de OOM. Archivo: shared/db.js:30.
+120. [MEDIO]  setRoleOverride() seguido de getEffectivePermissions() sin savepoints — override queda commiteado si la auditoría posterior falla. Archivo: admin-rbac.routes.js:155.
+121. [BAJO]   Pool default de 10 conexiones — insuficiente en producción bajo concurrencia, recomendado 20-30.
+122. [BAJO]   Sin enableKeepAlive en el pool de conexiones MySQL — conexiones largas pueden cerrarse silenciosamente.
+
+────────────────────────────────────────────
+WORKERS Y JOBS BACKGROUND
+────────────────────────────────────────────
+123. [ALTO]   Sin locks distribuidos en workers — si hay 2+ instancias con WEBHOOK_WORKER=true, pueden procesar el mismo webhook simultáneamente enviando el evento duplicado.
+124. [ALTO]   Sin idempotencia garantizada en claimDelivery() — race condition posible cuando múltiples workers eligen el mismo job.
+125. [ALTO]   Jobs congelados invisibles — si un worker muere mientras procesa, el job queda en estado processing indefinidamente; el lease vence pero no hay retry automático.
+126. [MEDIO]  Health checks (/health/deep) no incluyen estado de workers ni tamaño de cola pendiente.
+127. [MEDIO]  Dead Letter Queue sin limpieza automática ni alertas operacionales — jobs fallidos acumulan en el stream Redis sin visibilidad.
+
+────────────────────────────────────────────
+FACTURACIÓN AFIP / ARCA
+────────────────────────────────────────────
+128. [CRITICO] Race condition en numeración de comprobante — dos requests concurrentes llaman getLastVoucher() y obtienen el mismo nroComprobante. AFIP rechaza el segundo, la factura queda en BD sin CAE en estado inconsistente. Archivo: shared/afip.js:117.
+129. [CRITICO] Sin atomicidad entre AFIP y BD — si el CAE llega de AFIP pero el UPDATE invoices falla, el CAE queda asignado en AFIP sin reflejarse en la BD. Re-intento genera un segundo CAE duplicado fiscal. Archivo: billing.afip.routes.js:34-58.
+130. [CRITICO] Cancelación de facturas sin nota de crédito en AFIP — PATCH /cancel solo cambia estado en BD sin emitir nota de crédito. INCUMPLIMIENTO FISCAL: una factura autorizada con CAE no puede anularse sin nota de crédito ante AFIP.
+131. [ALTO]   IVA hardcodeado al 21% como fallback (total_amount / 1.21) — ítems con alícuotas mixtas (10.5%, exentos) generan comprobantes mal declarados ante AFIP. Archivo: billing.afip.routes.js:31.
+132. [ALTO]   Sin retry ni timeout configurado en llamadas a AFIP/ARCA — error transitorio de AFIP falla la operación directamente sin reintentos.
+133. [ALTO]   Cache de instancias AFIP en memoria sin TTL — tokens WSAA expiran a las 12h pero la instancia cacheada no se invalida, causando errores irrecuperables en runtime prolongado. Archivo: shared/afip.js (_instances Map).
+134. [MEDIO]  Número interno de factura (INV-{branchId}-{date}-{seq}) desvinculado del nroComprobante AFIP hasta después de la autorización — dificulta trazabilidad y auditoría.
+
+────────────────────────────────────────────
+BACKUP Y DISASTER RECOVERY
+────────────────────────────────────────────
+135. [CRITICO] MinIO sin ningún backup configurado — documentos médicos, prescripciones, autorizaciones, fotos de grooming y archivos de telemedicina son IRRECUPERABLES ante fallo del volumen.
+136. [ALTO]   verify-restore.sh en CI solo verifica que el script existe — nunca ejecuta un restore real contra servicios levantados; el drill es ficticio.
+137. [ALTO]   Sin Velero ni snapshot controllers en K8s — si el nodo donde corre Redis falla, el PVC puede perderse con él.
+138. [MEDIO]  PITR de RDS limitado a 7 días — cambios de esquema destructivos anteriores a esa ventana no son recuperables.
+139. [MEDIO]  Sin runbook de DR completo publicado — solo troubleshooting de servicios individuales, sin orquestación de recuperación total del sistema.
+140. [BAJO]   Sin ambiente staging con datos sanitizados — no hay forma de probar un restore real sin usar datos de producción.
+
+────────────────────────────────────────────
+PERFORMANCE FRONTEND
+────────────────────────────────────────────
+141. [MEDIO]  i18n/index.ts de ~1,900 líneas con traducciones ES-AR y EN-US incrustadas en el bundle inicial — ambos idiomas siempre cargados aunque el usuario solo use uno. Ahorro estimado: 30-50KB. Archivo: src/i18n/index.ts.
+142. [BAJO]   Sin manualChunks en vite.config.js — sin chunk splitting explícito para vendors (vue, vue-router, pinia, axios).
+
+────────────────────────────────────────────
+ERROR HANDLING FRONTEND
+────────────────────────────────────────────
+143. [ALTO]   FacturacionView: estado local se actualiza aunque markInvoicePaidRequest() falle — factura aparece como creada sin pago registrado, inconsistencia de datos en auditoría. Archivo: FacturacionView:700-702.
+144. [ALTO]   Emitir factura con pago automático sin confirmación previa — si el paso 2 falla, factura queda creada en estado inconsistente sin que el usuario lo sepa. Archivo: FacturacionView:616-619.
+145. [MEDIO]  Promise.all() en EvolucionesView:610 y :726 sin .catch() individual — si falla cargar catálogos, el error se pierde silenciosamente y la UI no comunica el problema.
+146. [MEDIO]  Todos los catch usan el mismo mensaje genérico sin distinguir 400 vs 500 vs timeout vs offline — usuario no sabe si debe reintentar o reportar el error.
+147. [MEDIO]  extractEvolutionError() puede retornar stack traces al usuario si el backend los incluye en la respuesta. Archivo: EvolucionesView:819.
+148. [BAJO]   Sin manejo específico de errores de red u offline — timeout de 180s muestra solo "No se pudo guardar" sin contexto.
+
+
+══════════════════════════════════════════════
+RESUMEN POR PRIORIDAD
+══════════════════════════════════════════════
+
+CRÍTICOS (16) — Acción inmediata:
+  #1   Credenciales reales commiteadas en repositorio
+  #12  Runner de migraciones sin transacciones
+  #13  Migraciones 032-039 sin rollback
+  #18  SERVICE_PORTAL con puerto incorrecto en K8s
+  #19  K8s emptyDir borra datos en cada deploy
+  #20  Puertos desincronizados entre entornos
+  #26  Redis SPOF sin HA
+  #27  Gateway no drena conexiones al apagar
+  #28  unhandledRejection no reinicia el proceso
+  #72  tenantMismatchGuard ausente en 6/8 registries
+  #87  Containers K8s sin SecurityContext (corren como root)
+  #88  Sin NetworkPolicies en K8s
+  #95  Webhook MercadoPago sin idempotencia (double-charge)
+  #101 Worker notificaciones sin try-catch en executeJob
+  #128 Race condition en numeración de comprobante AFIP
+  #129 Sin atomicidad entre AFIP y BD al obtener CAE
+  #130 Cancelación de facturas sin nota de crédito AFIP (incumplimiento fiscal)
+  #135 MinIO sin backup (documentos irrecuperables)
+
+ALTOS (52) — Próximo sprint:
+  Ver hallazgos numerados: 2, 3, 7, 8, 14, 15, 21, 22, 23, 24, 29, 30, 31,
+  34, 35, 36, 37, 38, 45, 46, 47, 49, 50, 54, 55, 56, 66, 73, 75, 79, 80,
+  81, 82, 89, 90, 91, 92, 96, 102, 103, 104, 105, 108, 109, 116, 117, 123,
+  124, 125, 131, 132, 133, 136, 137, 143, 144
+
+MEDIOS/BAJOS (80) — Backlog:
+  Resto de hallazgos numerados del #4 al #148 no listados arriba.
+
+══════════════════════════════════════════════
+FIN DEL DOCUMENTO
+══════════════════════════════════════════════

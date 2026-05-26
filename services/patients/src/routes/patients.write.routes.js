@@ -15,10 +15,19 @@ const {
 const router = Router();
 
 router.post('/',
-  body('name').notEmpty().trim(),
+  body('name').notEmpty().trim().isLength({ max: 150 }),
   body('speciesId').isInt(),
   body('primaryOwnerId').isInt(),
   body('sex').isIn(['male', 'female', 'unknown']),
+  // CORRECCIÓN: añadidas validaciones de birthdate y weightKg ausentes en POST.
+  body('birthdate').optional({ nullable: true }).isISO8601().withMessage('birthdate debe ser fecha ISO-8601'),
+  body('birthDate').optional({ nullable: true }).isISO8601().withMessage('birthDate debe ser fecha ISO-8601'),
+  body('weightKg').optional({ nullable: true }).isFloat({ min: 0, max: 1000 }).withMessage('weightKg debe ser un número entre 0 y 1000'),
+  body('bodyConditionScore').optional().isInt({ min: 1, max: 9 }),
+  body('notes').optional().isString().trim().isLength({ max: 2000 }),
+  body('chipNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('tattooNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('passportNumber').optional().isString().trim().isLength({ max: 50 }),
   validate,
   async (req, res, next) => {
     try {
@@ -106,20 +115,17 @@ router.post('/',
            VALUES (${values.join(', ')})`,
           {
             ...params,
-            hcNumber: `TMP${Date.now()}${Math.floor(Math.random() * 1000)}`,
+            // UUID como placeholder temporal — único garantizado incluso bajo alta concurrencia.
+            // El UPDATE inmediato siguiente (dentro de la misma transacción) establece el valor real.
+            hcNumber: `TMP-${require('crypto').randomUUID()}`,
           }
         );
         const patientId = r.insertId;
 
         if (patientCols.has('hc_number')) {
           await conn.query(
-            `UPDATE patients
-                SET hc_number = :hcNumber
-              WHERE id = :patientId`,
-            {
-              patientId,
-              hcNumber: `HC${String(patientId).padStart(6, '0')}`,
-            }
+            `UPDATE patients SET hc_number = :hcNumber WHERE id = :patientId`,
+            { patientId, hcNumber: `HC${String(patientId).padStart(6, '0')}` }
           );
         }
 
@@ -150,9 +156,20 @@ router.post('/',
 );
 
 router.put('/:id',
-  body('name').optional().notEmpty().trim(),
+  body('name').optional().notEmpty().trim().isLength({ max: 150 }),
   body('sex').optional().isIn(['male', 'female', 'unknown']),
+  // CORRECCIÓN: añadidas validaciones de birthdate y weightKg ausentes.
+  // Sin ellas se podían insertar fechas arbitrarias y pesos negativos/gigantes.
+  body('birthdate').optional({ nullable: true }).isISO8601().withMessage('birthdate debe ser fecha ISO-8601'),
+  body('birthDate').optional({ nullable: true }).isISO8601().withMessage('birthDate debe ser fecha ISO-8601'),
+  body('weightKg').optional({ nullable: true }).isFloat({ min: 0, max: 1000 }).withMessage('weightKg debe ser un número entre 0 y 1000'),
   body('bodyConditionScore').optional().isInt({ min: 1, max: 9 }),
+  body('notes').optional().isString().trim().isLength({ max: 2000 }),
+  body('chipNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('microchip').optional().isString().trim().isLength({ max: 50 }),
+  body('microchipNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('tattooNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('passportNumber').optional().isString().trim().isLength({ max: 50 }),
   validate,
   async (req, res, next) => {
     try {
@@ -185,7 +202,7 @@ router.put('/:id',
       const sets = [];
       const params = { id: req.params.id };
       for (const [key, value] of Object.entries(req.body)) {
-        const targets = rawMap[key] || (patientCols.has(key) ? [key] : []);
+        const targets = rawMap[key] ?? [];
         for (const column of targets) {
           if (!patientCols.has(column)) continue;
           const paramKey = `${column}_${sets.length}`;
@@ -213,5 +230,38 @@ router.put('/:id',
     }
   }
 );
+
+// OT-066: DELETE /:id — soft delete (sets is_active/active = 0, is_deceased omitted)
+// Requiere permiso patients:delete. La historia clínica se conserva.
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const visiblePatient = await ensurePatientVisible(req.params.id, req.user);
+    if (!visiblePatient) return R.notFound(res, 'Patient not found');
+
+    const schema = await getPatientSchema();
+    const patientCols = schema.patients || new Set();
+
+    const sets = [];
+    if (patientCols.has('is_active')) sets.push('is_active = 0');
+    if (patientCols.has('active'))    sets.push('active = 0');
+    if (!sets.length) {
+      // Fallback: mark deleted via notes if no active column exists
+      sets.push("notes = CONCAT(COALESCE(notes,''), ' [DELETED]')");
+    }
+
+    await db.query(
+      `UPDATE patients SET ${sets.join(', ')}, updated_at = NOW() WHERE id = :id`,
+      { id: req.params.id }
+    );
+    return R.noContent(res);
+  } catch (e) {
+    logPatientsError('DELETE /patients/:id', e, {
+      patientId: req.params.id,
+      branchId: req.user?.branchId,
+      orgId: req.user?.orgId,
+    });
+    next(e);
+  }
+});
 
 module.exports = router;

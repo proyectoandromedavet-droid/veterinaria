@@ -1,11 +1,35 @@
 'use strict';
 
-const { Router, db, R, logMedicalError, encrypt } = require('./medical-records.sections.common');
+const {
+  Router,
+  body,
+  db,
+  R,
+  validate,
+  logMedicalError,
+  encrypt,
+  ensureMedicalRecordInScope,
+} = require('./medical-records.sections.common');
+
+const VALID_TREATMENT_TYPES = ['medication', 'surgery', 'procedure', 'therapy', 'diet', 'other'];
 
 const router = Router();
 
-router.post('/:id/treatments', async (req, res, next) => {
+router.post('/:id/treatments',
+  body('treatmentType').optional().isIn(VALID_TREATMENT_TYPES),
+  body('description').optional({ nullable: true }).isString().isLength({ max: 2000 }),
+  body('dose').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  body('doseUnit').optional({ nullable: true }).isString().isLength({ max: 50 }),
+  body('frequency').optional({ nullable: true }).isString().isLength({ max: 200 }),
+  body('route').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  body('durationDays').optional({ nullable: true }).isInt({ min: 1, max: 3650 }),
+  body('notes').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  validate,
+  async (req, res, next) => {
   try {
+    const scopedRecord = await ensureMedicalRecordInScope(req, req.params.id);
+    if (!scopedRecord) return R.notFound(res, 'Historia clinica no encontrada');
+
     const {
       medicationId, treatmentType = 'medication',
       description, dose, doseUnit, frequency,

@@ -158,10 +158,10 @@ async function writeAuditLog(entry) {
 }
 
 function getAuditSecret() {
-  const secret = process.env.AUDIT_CHAIN_SECRET
-    || process.env.FIELD_ENCRYPTION_SECRET
-    || process.env.JWT_SECRET;
-  if (!secret) throw new Error('AUDIT_CHAIN_SECRET must be configured');
+  // BUG-17: no usar JWT_SECRET ni FIELD_ENCRYPTION_SECRET como fallback —
+  // comprometer uno no debe comprometer la cadena de auditoría.
+  const secret = process.env.AUDIT_CHAIN_SECRET;
+  if (!secret) throw new Error('AUDIT_CHAIN_SECRET must be configured (env var missing)');
   return secret;
 }
 

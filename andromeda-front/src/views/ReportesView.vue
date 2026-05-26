@@ -167,10 +167,13 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import http from '../api/client'
+import { appointmentsApi, patientsApi, reportsApi } from '../api'
 import BaseButton from '../components/base/BaseButton.vue'
 import { t } from '../i18n'
-import { logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
+
+const { notifyError, success } = useUiFeedback()
 
 const loading = ref(false)
 const error = ref('')
@@ -219,15 +222,15 @@ function barWidth(val, max) {
 
 function petEmoji(species) {
   const map = {
-    dog: '🐶',
-    cat: '🐱',
-    rabbit: '🐰',
-    bird: '🐦',
-    fish: '🐟',
-    reptile: '🦎',
-    hamster: '🐹',
+    dog: '\u{1F43E}',
+    cat: '\u{1F43E}',
+    rabbit: '\u{1F43E}',
+    bird: '\u{1F43E}',
+    fish: '\u{1F43E}',
+    reptile: '\u{1F43E}',
+    hamster: '\u{1F43E}',
   }
-  return map[species] || '🐾'
+  return map[species] || '\u{1F43E}'
 }
 
 function speciesLabel(species) {
@@ -304,10 +307,10 @@ async function load() {
 
   try {
     const [appts, patients, revenue, apptReport] = await Promise.allSettled([
-      http.get('/appointments', { params: { limit: 1 } }),
-      http.get('/patients', { params: { limit: 1 } }),
-      http.get('/reports/revenue', { params: { from, to } }),
-      http.get('/reports/appointments', { params: { from, to } }),
+      appointmentsApi.list({ limit: 1 }),
+      patientsApi.list({ limit: 1 }),
+      reportsApi.revenue({ from, to }),
+      reportsApi.appointments({ from, to }),
     ])
 
     const apptMeta = appts.status === 'fulfilled' ? appts.value.data?.meta : null
@@ -346,7 +349,8 @@ async function load() {
       }
     }
   } catch (e) {
-    error.value = t('reports.loadError')
+    logError('reportes.load', e)
+    error.value = extractDetailedErrorMessage(e, t('reports.loadError'), { context: 'Carga de reportes' })
   } finally {
     loading.value = false
   }
@@ -358,7 +362,7 @@ async function exportReport() {
     if (dateFrom.value) payload.from = dateFrom.value
     if (dateTo.value) payload.to = dateTo.value
 
-    const { data: blob } = await http.post('/reports/revenue/export', payload, { responseType: 'blob' })
+    const { data: blob } = await reportsApi.exportRevenue(payload)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -366,9 +370,13 @@ async function exportReport() {
     a.click()
     URL.revokeObjectURL(url)
   } catch (error) {
-    logError('reportes.exportCsv', error, { dateFrom: dateFrom.value, dateTo: dateTo.value })
-    alert(t('reports.exportError'))
+    notifyError('reportes.exportCsv', error, t('reports.exportError'), {
+      context: 'Exportación de reporte',
+      meta: { dateFrom: dateFrom.value, dateTo: dateTo.value },
+    })
+    return
   }
+  success('Reporte exportado correctamente.')
 }
 
 onMounted(() => setPeriod('month'))

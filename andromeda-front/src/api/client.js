@@ -88,7 +88,7 @@ http.interceptors.response.use(
   async err => {
     const original = err.config
     const csrfCode = err.response?.data?.error?.code
-    if (['CSRF_MISSING', 'CSRF_INVALID'].includes(csrfCode) && !original?._retryCsrf) {
+    if (original && ['CSRF_MISSING', 'CSRF_INVALID'].includes(csrfCode) && !original._retryCsrf) {
       original._retryCsrf = true
       try {
         const csrfToken = await fetchCsrfToken()
@@ -102,7 +102,7 @@ http.interceptors.response.use(
     }
     const requestUrl = String(original?.url || '').toLowerCase();
     const isAuthEndpoint = requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/login') || requestUrl.includes('/auth/2fa/challenge');
-    if (err.response?.status === 401 && !original._retry && !isAuthEndpoint) {
+    if (original && err.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       if (refreshing) {
         return new Promise((resolve, reject) => {
           queue.push({ resolve, reject, config: original })
@@ -128,7 +128,8 @@ http.interceptors.response.use(
         queue.forEach(({ reject }) => reject(refreshError))
         queue = []
         const auth = useAuthStore()
-        auth.logout()
+        await auth.logout()
+        return Promise.reject(refreshError)
       } finally {
         refreshing = false
       }

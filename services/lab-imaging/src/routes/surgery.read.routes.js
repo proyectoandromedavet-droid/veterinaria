@@ -7,10 +7,12 @@ const router = Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const { patientId, status, from, to, page = 1, limit = 20 } = req.query;
+    const { patientId, status, from, to } = req.query;
+    const limit  = Math.min(Math.max(parseInt(req.query.limit || '20', 10) || 20, 1), 100); // BUG-9
+    const page   = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
     const offset = (page - 1) * limit;
     const conds = ['s.branch_id = :bid'];
-    const p = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p = { bid: req.user.branchId, limit, offset };
     if (patientId) { conds.push('s.patient_id = :pid'); p.pid = patientId; }
     if (status) { conds.push('s.status = :status'); p.status = status; }
     if (from) { conds.push('s.scheduled_date >= :from'); p.from = from; }

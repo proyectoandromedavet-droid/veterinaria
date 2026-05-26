@@ -3,6 +3,8 @@
 const { validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
+const { createLogger } = require('../../../../shared/logger');
+const log = createLogger('billing');
 const { httpCacheHeaders } = require('../../../../shared/cache');
 const mp = require('../../../../shared/mercadopago');
 const afip = require('../../../../shared/afip');
@@ -25,7 +27,7 @@ function buildInvoiceNumber(branchId, seq) {
 const notDeleted = (alias) => `${alias}.deleted_at IS NULL`;
 
 function logBillingError(scope, error, meta = {}) {
-  console.error(`[billing] ${scope}`, {
+  log.error(`${scope}`, {
     message: error?.message,
     code: error?.code,
     errno: error?.errno,

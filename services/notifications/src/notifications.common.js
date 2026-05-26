@@ -16,7 +16,7 @@ const {
   buildNotificationInsert,
 } = require('../../../shared/notificationLogSchema');
 const { createLogger } = require('../../../shared/logger');
-const { enqueueJob, processPendingJobs } = require('../../../shared/notificationRetry');
+const { enqueueJob, processPendingJobs, resetStaleProcessingJobs, getQueueStats } = require('../../../shared/notificationRetry');
 const eventBus = require('../../../shared/eventBus');
 
 const log = createLogger('notifications');
@@ -121,4 +121,6 @@ module.exports = {
   notificationOrderExpr,
   buildNotificationInsert,
   processPendingJobs,
+  resetStaleProcessingJobs,
+  getQueueStats,
 };

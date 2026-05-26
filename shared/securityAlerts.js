@@ -2,7 +2,19 @@
 
 const db = require('./db');
 
+// Maximum byte length for serialised metadata stored in DB.
+const MAX_METADATA_BYTES = 8192;
+
 async function createAlert({ orgId, userId = null, type, severity = 'warning', description, metadata = null }) {
+  let serialisedMetadata = null;
+  if (metadata) {
+    const raw = JSON.stringify(metadata);
+    // Truncate oversized metadata to avoid unbounded DB writes
+    serialisedMetadata = Buffer.byteLength(raw, 'utf8') > MAX_METADATA_BYTES
+      ? JSON.stringify({ _truncated: true, preview: raw.slice(0, MAX_METADATA_BYTES) })
+      : raw;
+  }
+
   await db.query(
     `INSERT INTO security_alerts
        (organization_id, user_id, alert_type, severity, description, metadata, created_at)
@@ -14,7 +26,7 @@ async function createAlert({ orgId, userId = null, type, severity = 'warning', d
       type,
       severity,
       description,
-      metadata: metadata ? JSON.stringify(metadata) : null,
+      metadata: serialisedMetadata,
     }
   ).catch(() => {});
 }

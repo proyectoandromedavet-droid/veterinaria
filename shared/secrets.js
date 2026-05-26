@@ -5,6 +5,9 @@ const path = require('path');
 
 let bundleCache = null;
 let bundleLoaded = false;
+// BUG-28: TTL para invalidar la caché del bundle en procesos de larga duración (10 minutos)
+const BUNDLE_CACHE_TTL_MS = parseInt(process.env.SECRETS_CACHE_TTL_MS || String(10 * 60 * 1000), 10);
+let bundleCachedAt = 0;
 
 function normalizeValue(value, { trim = true } = {}) {
   if (value == null) return value;
@@ -13,12 +16,22 @@ function normalizeValue(value, { trim = true } = {}) {
 }
 
 function loadBundle() {
-  if (bundleLoaded) return bundleCache;
+  // BUG-28: respetar TTL — invalidar caché pasado el tiempo configurado
+  const now = Date.now();
+  if (bundleLoaded && (now - bundleCachedAt) < BUNDLE_CACHE_TTL_MS) return bundleCache;
+
   bundleLoaded = true;
   bundleCache = {};
+  bundleCachedAt = now;
 
   const inlineJson = process.env.SECRETS_JSON;
   const bundleFile = process.env.SECRETS_FILE;
+
+  // BUG-27: advertir si se usa SECRETS_JSON en producción (secretos en variables de entorno son un riesgo)
+  if (inlineJson && process.env.NODE_ENV === 'production') {
+    // eslint-disable-next-line no-console
+    console.warn('[secrets] WARNING: SECRETS_JSON is set in production. Prefer SECRETS_FILE pointing to a mounted secret volume.');
+  }
 
   try {
     if (inlineJson) {
@@ -82,6 +95,7 @@ function getAnySecret(names, options = {}) {
 function resetSecretCache() {
   bundleCache = null;
   bundleLoaded = false;
+  bundleCachedAt = 0;
 }
 
 module.exports = {

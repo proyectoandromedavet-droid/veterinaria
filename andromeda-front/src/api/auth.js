@@ -1,5 +1,7 @@
 import http from './client'
 
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 30000
+
 export const authApi = {
   login:        (data)          => http.post('/auth/login', data),
   twoFaChallenge: (data)        => http.post('/auth/2fa/challenge', data),
@@ -8,9 +10,9 @@ export const authApi = {
     const suffix = params ? `?${params}` : ''
     window.location.href = `${http.defaults.baseURL}/auth/sso/${provider}/connect${suffix}`
   },
-  refresh:      ()              => http.post('/auth/refresh', {}),
+  refresh:      ()              => http.post('/auth/refresh', {}, { timeout: AUTH_BOOTSTRAP_TIMEOUT_MS }),
   logout:       ()              => http.post('/auth/logout', {}),
-  me:           ()              => http.get('/auth/me'),
+  me:           ()              => http.get('/auth/me', { timeout: AUTH_BOOTSTRAP_TIMEOUT_MS }),
   changePassword: (data)        => http.post('/auth/change-password', data),
   resetRequest: (email)         => http.post('/auth/password-reset/request', { email }),
   resetConfirm: (data)          => http.post('/auth/password-reset/confirm', data),

@@ -1,6 +1,6 @@
 'use strict';
 
-const { hasPermission, requirePermission, requireAny, requireAll } = require('../../shared/rbac');
+const { hasPermission, hasScopePermission, requirePermission, requireAny, requireAll } = require('../../shared/rbac');
 
 describe('hasPermission', () => {
   test('superadmin has all permissions', () => {
@@ -24,6 +24,14 @@ describe('hasPermission', () => {
 
   test('unknown role has no permissions', () => {
     expect(hasPermission(['ghost_role'], 'patients:read')).toBe(false);
+  });
+});
+
+describe('hasScopePermission', () => {
+  test('limits API key scopes to exact or resource wildcard grants', () => {
+    expect(hasScopePermission(['patients:read'], 'patients:read')).toBe(true);
+    expect(hasScopePermission(['patients:read'], 'patients:update')).toBe(false);
+    expect(hasScopePermission(['patients:*'], 'patients:update')).toBe(true);
   });
 });
 
@@ -51,6 +59,15 @@ describe('requirePermission middleware', () => {
     const res  = mockRes();
     const next = jest.fn();
     await requirePermission('surgery:create')(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res._status).toBe(403);
+  });
+
+  test('returns 403 when API key scope does not include granted role permission', async () => {
+    const req  = { user: { roles: ['org_admin'], authType: 'api_key', apiKeyScopes: ['patients:read'] } };
+    const res  = mockRes();
+    const next = jest.fn();
+    await requirePermission('patients:update')(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res._status).toBe(403);
   });

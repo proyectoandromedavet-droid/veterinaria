@@ -10,6 +10,7 @@ const {
   logMessage,
   reminderDueExpr,
 } = require('../notifications.common');
+const { formatDate, formatTime } = require('../../../../shared/locale');
 
 const router = express.Router();
 
@@ -33,15 +34,22 @@ router.post('/:reminderId', async (req, res, next) => {
     if (!reminder) return R.notFound(res, 'Recordatorio no encontrado');
     if (!reminder.phone) return R.badRequest(res, 'El cliente no tiene telefono registrado');
 
+    // Sanitizar y validar el teléfono proveniente de BD (previene header injection)
+    const PHONE_RE_REMINDER = /^\+?[1-9]\d{6,14}$/;
+    const cleanPhone = String(reminder.phone).replace(/[\r\n\0\s]/g, '');
+    if (!PHONE_RE_REMINDER.test(cleanPhone)) {
+      return R.badRequest(res, 'El número de teléfono del cliente no tiene formato E.164 válido');
+    }
+
     const templatePayload = {
       channel,
-      to: reminder.phone,
+      to: cleanPhone,
       template: 'appointmentReminder',
       vars: {
         ownerName: reminder.owner_name,
         petName: reminder.pet_name,
-        date: new Date(reminder.due_date).toLocaleDateString('es-AR'),
-        time: new Date(reminder.due_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+        date: formatDate(reminder.due_date),
+        time: formatTime(reminder.due_date),
         vetName: 'su veterinario',
         clinicName: reminder.clinic_name,
       },
@@ -61,7 +69,7 @@ router.post('/:reminderId', async (req, res, next) => {
 
     await logMessage({
       channel,
-      to: reminder.phone,
+      to: cleanPhone,
       message: result.body,
       result: result.results,
       userId: req.user.userId,

@@ -27,11 +27,13 @@ function createPoolFromEnv(prefix = 'MYSQL') {
     user:               process.env[`${prefix}_USER`]     || 'vetapp',
     password:           getSecret(`${prefix}_PASSWORD`, { defaultValue: '' }) || '',
     waitForConnections: true,
-    connectionLimit:    parseInt(process.env[`${prefix}_POOL_MAX`] || process.env.MYSQL_POOL_MAX || '10'),
-    queueLimit:         0,
+    connectionLimit:    parseInt(process.env[`${prefix}_POOL_MAX`] || process.env.MYSQL_POOL_MAX || '20'),  // OT-081
+    queueLimit:         parseInt(process.env[`${prefix}_QUEUE_LIMIT`] || process.env.MYSQL_QUEUE_LIMIT || '200'),  // OT-079
     timezone:           'Z',
     charset:            'utf8mb4',
     namedPlaceholders:  true,
+    enableKeepAlive:    true,   // OT-082: prevent silent connection drops on long-lived pools
+    keepAliveInitialDelay: 10000,
   });
 }
 
@@ -318,6 +320,49 @@ async function lockQuery(sql, params) {
   return transaction(async (conn) => conn.queryOne(sql, params));
 }
 
+/**
+ * OT-083: Verify that critical search indexes exist. Logs warnings if missing.
+ * Non-destructive — reads only from INFORMATION_SCHEMA.
+ * Call once at startup (from serviceBase or individual service index).
+ */
+const CRITICAL_INDEXES = [
+  { table: 'users',  columns: ['email'],     keyName: 'idx_users_email' },
+  { table: 'users',  columns: ['org_id'],    keyName: 'idx_users_org_id' },
+  { table: 'clients', columns: ['email'],    keyName: 'idx_clients_email' },
+  { table: 'clients', columns: ['branch_id'], keyName: 'idx_clients_branch_id' },
+  { table: 'patients', columns: ['branch_id'], keyName: 'idx_patients_branch_id' },
+  { table: 'appointments', columns: ['branch_id', 'scheduled_date'], keyName: 'idx_appointments_branch_date' },
+];
+
+async function verifyIndexes() {
+  if (process.env.NODE_ENV === 'test') return;
+  try {
+    const rows = await query(
+      `SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME
+       FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME IN ('users','clients','patients','appointments')`,
+      {}
+    );
+    const existing = new Set(rows.map((r) => `${r.TABLE_NAME}.${r.INDEX_NAME}`));
+
+    for (const idx of CRITICAL_INDEXES) {
+      const key = `${idx.table}.${idx.keyName}`;
+      if (!existing.has(key)) {
+        getLogger().warn('Missing critical DB index — search performance may be degraded', {
+          table:   idx.table,
+          columns: idx.columns.join(', '),
+          keyName: idx.keyName,
+          suggestion: `CREATE INDEX ${idx.keyName} ON ${idx.table} (${idx.columns.join(', ')});`,
+        });
+      }
+    }
+  } catch (err) {
+    // Non-critical — log only
+    getLogger().warn('verifyIndexes check failed', { message: err.message });
+  }
+}
+
 module.exports = {
   getPool,
   getReadPool,
@@ -331,4 +376,5 @@ module.exports = {
   placeholders,
   withLock,
   lockQuery,
+  verifyIndexes,  // OT-083
 };

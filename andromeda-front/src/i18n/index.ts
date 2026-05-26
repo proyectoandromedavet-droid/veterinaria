@@ -346,7 +346,7 @@ const messages = {
       showPassword: 'Mostrar',
       hidePassword: 'Ocultar',
       signIn: 'Ingresar',
-      welcomeMessage: 'Si el correo existe, recibiras el enlace en minutos.',
+      welcomeMessage: 'Si el correo existe, recibirás el enlace en minutos.',
       ssoGoogle: 'Google Workspace',
       ssoMicrosoft: 'Microsoft',
     },
@@ -1919,6 +1919,5 @@ export function t(path: string, params?: Record<string, string | number>): strin
   if (!params) return value
   return value.replace(/\{(\w+)\}/g, (_, key) => String(params[key] ?? `{${key}}`))
 }
-
 
 

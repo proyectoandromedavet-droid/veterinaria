@@ -30,6 +30,16 @@ paths:
       responses:
         '200':
           description: OK
+  /portal/auth/password-reset/confirm:
+    post:
+      responses:
+        '200':
+          description: OK
+  /portal/auth/reset-password:
+    post:
+      responses:
+        '200':
+          description: OK
   /portal/me:
     get:
       responses:

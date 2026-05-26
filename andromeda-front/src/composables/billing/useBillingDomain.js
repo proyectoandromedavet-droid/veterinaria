@@ -1,5 +1,4 @@
 import { billingApi } from '../../api'
-import http from '../../api/client'
 
 export function asArray(value) {
   if (Array.isArray(value)) return value
@@ -132,8 +131,8 @@ export async function createInvoice(form) {
   return data?.data || data || null
 }
 
-export async function cancelInvoice(invoiceId) {
-  const { data } = await billingApi.invoices.cancel(invoiceId)
+export async function cancelInvoice(invoiceId, reason = 'Cancelada desde facturación') {
+  const { data } = await billingApi.invoices.cancel(invoiceId, reason)
   return data?.data || data || null
 }
 
@@ -147,14 +146,19 @@ export async function loadConsolidatedBilling(filters = {}) {
   if (filters.from) params.from = filters.from
   if (filters.to) params.to = filters.to
 
-  const [summaryRes, outstandingRes] = await Promise.all([
-    http.get('/billing/consolidated/summary', { params }),
-    http.get('/billing/consolidated/outstanding'),
+  const [summaryRes, outstandingRes] = await Promise.allSettled([
+    billingApi.consolidated.summary(params),
+    billingApi.consolidated.outstanding(),
   ])
+  if (summaryRes.status === 'rejected' && outstandingRes.status === 'rejected') {
+    throw summaryRes.reason
+  }
+  const summaryData = summaryRes.status === 'fulfilled' ? summaryRes.value.data : {}
+  const outstandingData = outstandingRes.status === 'fulfilled' ? outstandingRes.value.data : []
 
   return {
-    summary: summaryRes.data?.data || summaryRes.data || {},
-    outstanding: asArray(outstandingRes.data?.data || outstandingRes.data)
+    summary: summaryData?.data || summaryData || {},
+    outstanding: asArray(outstandingData?.data || outstandingData)
       .map(normalizeConsolRow)
       .filter(Boolean),
   }

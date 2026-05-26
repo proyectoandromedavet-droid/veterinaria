@@ -386,7 +386,7 @@
 import { computed, ref, reactive, onMounted } from 'vue'
 import { t } from '../i18n'
 import { useAuthStore } from '../stores/auth'
-import { logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
 import EvolutionOrdersTab from '../components/evolutions/EvolutionOrdersTab.vue'
 import EvolutionPrescriptionTab from '../components/evolutions/EvolutionPrescriptionTab.vue'
 import EvolutionDetailModal from '../components/evolutions/EvolutionDetailModal.vue'
@@ -548,9 +548,9 @@ async function selectPatient(pt) {
   loadingHistory.value = true
   try {
     const history = await loadPatientHistoryRequest(pt.id)
-    form.vaccinationHistory = history.vaccinationHistory
-    form.dewormingHistory = history.dewormingHistory
-    form.previousSurgeries = history.previousSurgeries
+    form.vaccinationHistory = history?.vaccinationHistory ?? []
+    form.dewormingHistory = history?.dewormingHistory ?? []
+    form.previousSurgeries = history?.previousSurgeries ?? []
   } catch (error) {
     logError('evoluciones.loadHistory', error, { patientId: pt?.id })
   }
@@ -569,7 +569,7 @@ function formatDate(iso) {
 async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
-    const payload = await listMedicalRecordsRequest({ page, from: dateFrom.value, to: dateTo.value })
+    const payload = await listMedicalRecordsRequest({ page, search: search.value, from: dateFrom.value, to: dateTo.value })
     let rows = payload.rows
     const needle = search.value.trim().toLowerCase()
     if (needle) {
@@ -590,7 +590,8 @@ async function load(page = 1) {
     items.value = rows
     pagination.value = payload.meta
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las evoluciones'
+    logError('evoluciones.load', e)
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las evoluciones', { context: 'Carga de evoluciones' })
   } finally { loading.value = false }
 }
 
@@ -622,7 +623,8 @@ async function openDetail(record) {
     relatedOrders.surgeries = related.surgeries
     relatedOrders.hospitalizations = related.hospitalizations
   } catch (e) {
-    detailError.value = e.response?.data?.message || 'No se pudo cargar el detalle de la ficha'
+    logError('evoluciones.openDetail', e, { recordId: record?.id })
+    detailError.value = extractDetailedErrorMessage(e, 'No se pudo cargar el detalle de la ficha', { context: 'Detalle de evolucion' })
   } finally {
     detailLoading.value = false
   }

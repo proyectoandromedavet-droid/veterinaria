@@ -3,7 +3,7 @@
 require('dotenv').config();
 
 const path = require('path');
-const { buildApp, startService } = require('../../../shared/serviceBase');
+const { buildApp, startService, registerHealthChecker } = require('../../../shared/serviceBase');
 const { log } = require('./notifications.common');
 const { startRuntime } = require('./bootstrap/runtime');
 
@@ -16,16 +16,20 @@ const messageBulkRoutes = require('./routes/messages.bulk.routes');
 const messageHistoryRoutes = require('./routes/messages.history.routes');
 const fcmRoutes = require('./routes/notifications.fcm.routes');
 
+const { getQueueStats } = require('./notifications.common');
+
 const PORT = parseInt(process.env.PORT || '3009', 10);
 const retryIntervalMs = parseInt(process.env.NOTIFICATION_RETRY_INTERVAL_MS || '30000', 10);
 
-const app = buildApp('notifications', (app) => {
+registerHealthChecker('notificationQueue', getQueueStats);
+
+const app = buildApp('notifications', (app, requirePerm) => {
   app.use('/notifications', coreRoutes);
   app.use('/notifications/reminders', remindersRoutes);
-  app.use('/notifications/messages/send', messageSendRoutes);
+  app.use('/notifications/messages/send', requirePerm('notifications:send'), messageSendRoutes);
   app.use('/notifications/messages/template', messageTemplateRoutes);
-  app.use('/notifications/messages/reminder', messageReminderRoutes);
-  app.use('/notifications/messages/bulk-reminders', messageBulkRoutes);
+  app.use('/notifications/messages/reminder', requirePerm('notifications:send'), messageReminderRoutes);
+  app.use('/notifications/messages/bulk-reminders', requirePerm('notifications:send'), messageBulkRoutes);
   app.use('/notifications/messages', messageHistoryRoutes);
   app.use('/notifications/fcm', fcmRoutes);
 }, {
@@ -39,6 +43,8 @@ if (process.env.NODE_ENV !== 'test') {
     }),
     onShutdown: async ({ startupState }) => {
       if (startupState?.retryInterval) clearInterval(startupState.retryInterval);
+      if (startupState?.staleResetInterval) clearInterval(startupState.staleResetInterval);
+      if (startupState?.outboxRelay) clearInterval(startupState.outboxRelay);
       if (startupState?.stopEventBus) {
         await startupState.stopEventBus().catch((err) => log.warn('event bus stop failed', { err: err.message }));
       }

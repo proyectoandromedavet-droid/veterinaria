@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2 class="page-title">Inteligencia artificial</h2>
-        <p class="page-sub">Diagnostico asistido, evaluacion de riesgo y chatbot clinico.</p>
+        <p class="page-sub">Diagnóstico asistido, evaluación de riesgo y chatbot clínico.</p>
       </div>
       <div class="header-actions">
         <BaseButton variant="ghost" @click="loadPatients" :disabled="loadingPatients">Actualizar pacientes</BaseButton>
@@ -11,10 +11,11 @@
     </div>
 
     <div v-if="error" class="alert alert--error">{{ error }}</div>
+    <div v-if="featureWarning" class="alert alert--warning">{{ featureWarning }}</div>
 
     <div class="grid">
       <section class="card">
-        <h3>Diagnostico asistido</h3>
+        <h3>Diagnóstico asistido</h3>
         <div class="field">
           <label for="diag-patient">Paciente</label>
           <select id="diag-patient" name="diag-patient" v-model="diagnosisForm.patientId">
@@ -23,14 +24,14 @@
           </select>
         </div>
         <div class="field">
-          <label for="diag-symptoms">Sintomas</label>
-          <input id="diag-symptoms" name="diag-symptoms" v-model.trim="diagnosisForm.symptoms" type="text" placeholder="vomitos, diarrea, letargo" />
+          <label for="diag-symptoms">Síntomas</label>
+          <input id="diag-symptoms" name="diag-symptoms" v-model.trim="diagnosisForm.symptoms" type="text" placeholder="vómitos, diarrea, letargo" />
         </div>
         <div class="field">
           <label for="diag-anamnesis">Anamnesis</label>
-          <textarea id="diag-anamnesis" name="diag-anamnesis" v-model.trim="diagnosisForm.anamnesis" rows="4" placeholder="Contexto clinico adicional" />
+          <textarea id="diag-anamnesis" name="diag-anamnesis" v-model.trim="diagnosisForm.anamnesis" rows="4" placeholder="Contexto clínico adicional" />
         </div>
-        <BaseButton @click="runDiagnosis" :disabled="loadingDiagnosis">Analizar</BaseButton>
+        <BaseButton @click="runDiagnosis" :disabled="loadingDiagnosis || loadingAiFeatures || !aiFeatures.diagnosis">Analizar</BaseButton>
 
         <div v-if="diagnosisResult" class="result">
           <div class="result-head">
@@ -44,7 +45,7 @@
               <p>{{ item.reasoning }}</p>
             </article>
           </div>
-          <p v-else class="muted">Sin diagnosticos devueltos por el servicio.</p>
+          <p v-else class="muted">Sin diagnósticos devueltos por el servicio.</p>
         </div>
       </section>
 
@@ -57,7 +58,7 @@
             <option v-for="p in patients" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
           </select>
         </div>
-        <BaseButton @click="loadRisk" :disabled="loadingRisk">Evaluar riesgo</BaseButton>
+        <BaseButton @click="loadRisk" :disabled="loadingRisk || loadingAiFeatures || !aiFeatures.risk">Evaluar riesgo</BaseButton>
 
         <div v-if="riskResult" class="result">
           <div class="result-head">
@@ -80,7 +81,7 @@
     </div>
 
     <section class="card">
-      <h3>Chat clinico</h3>
+      <h3>Chat clínico</h3>
       <div class="chat-toolbar">
         <div class="field field--grow">
           <label for="chat-patient">Paciente opcional</label>
@@ -89,18 +90,19 @@
             <option v-for="p in patients" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
           </select>
         </div>
-        <BaseButton variant="ghost" @click="resetChat">Nueva sesion</BaseButton>
+        <BaseButton variant="ghost" @click="resetChat">Nueva sesión</BaseButton>
       </div>
       <div class="chat-box">
         <article v-for="(msg, index) in chatMessages" :key="index" class="chat-msg" :class="`chat-msg--${msg.role}`">
           <strong>{{ msg.role === 'assistant' ? 'IA' : 'Usuario' }}</strong>
           <p>{{ msg.content }}</p>
         </article>
-        <div v-if="!chatMessages.length" class="empty-state">Todavia no hay mensajes.</div>
+        <div v-if="!chatMessages.length" class="empty-state">Todavía no hay mensajes.</div>
       </div>
       <div class="chat-input">
-        <textarea id="chat-input" name="chat-input" v-model.trim="chatInput" rows="3" placeholder="Escribi una consulta clinica..." />
-        <BaseButton @click="sendChat" :disabled="loadingChat || !chatInput">Enviar</BaseButton>
+        <label for="chat-input" class="sr-only">Mensaje del chat clínico</label>
+        <textarea id="chat-input" name="chat-input" v-model.trim="chatInput" rows="3" placeholder="Escribí una consulta clínica..." />
+        <BaseButton @click="sendChat" :disabled="loadingChat || loadingAiFeatures || !aiFeatures.chat || !chatInput">Enviar</BaseButton>
       </div>
     </section>
   </div>
@@ -110,13 +112,19 @@
 import { onMounted, ref } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import { aiApi, patientsApi } from '../api'
-import { extractErrorMessage } from '../utils/errors'
+import { adminUsersApi } from '../api/adminUsers'
+import { useAuthStore } from '../stores/auth'
+import { extractDetailedErrorMessage } from '../utils/errors'
 
+const auth = useAuthStore()
 const error = ref('')
 const loadingPatients = ref(false)
+const loadingAiFeatures = ref(false)
 const loadingDiagnosis = ref(false)
 const loadingRisk = ref(false)
 const loadingChat = ref(false)
+const aiFeatures = ref({ diagnosis: true, risk: true, chat: true })
+const featureWarning = ref('')
 
 const patients = ref([])
 const diagnosisResult = ref(null)
@@ -142,6 +150,10 @@ function pct(value) {
   return `${Math.round(num * 100)}%`
 }
 
+function isFeatureOn(value) {
+  return value === true || value === 1 || value === '1' || value === 'true'
+}
+
 function shortDate(value) {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('es-AR')
@@ -157,14 +169,38 @@ async function loadPatients() {
       name: row.name || row.patient_name || `Paciente ${row.id}`,
     }))
   } catch (e) {
-    error.value = extractErrorMessage(e, 'No se pudieron cargar los pacientes.', { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar los pacientes.', { context: 'Carga de pacientes para IA' })
   } finally {
     loadingPatients.value = false
   }
 }
 
+async function loadAiFeatureFlags() {
+  if (!auth.orgId) return
+  loadingAiFeatures.value = true
+  featureWarning.value = ''
+  try {
+    const { data } = await adminUsersApi.getFeatureFlags(auth.orgId)
+    const flags = data?.data?.flags || data?.flags || {}
+    aiFeatures.value = {
+      diagnosis: isFeatureOn(flags.ai_diagnosis),
+      risk: isFeatureOn(flags.ai_risk_assessment),
+      chat: isFeatureOn(flags.ai_chatbot),
+    }
+  } catch (e) {
+    aiFeatures.value = { diagnosis: false, risk: false, chat: false }
+    featureWarning.value = extractDetailedErrorMessage(e, 'No se pudo cargar la configuración de IA. Las funciones quedan bloqueadas hasta reintentar.', { context: 'Feature flags de IA' })
+  } finally {
+    loadingAiFeatures.value = false
+  }
+}
+
 async function runDiagnosis() {
-  if (!diagnosisForm.value.patientId || !diagnosisForm.value.symptoms) return
+  if (!aiFeatures.value.diagnosis) return
+  if (!diagnosisForm.value.patientId || !diagnosisForm.value.symptoms) {
+    error.value = 'Seleccioná un paciente y cargá al menos un síntoma para ejecutar el diagnóstico asistido.'
+    return
+  }
   loadingDiagnosis.value = true
   error.value = ''
   try {
@@ -176,25 +212,36 @@ async function runDiagnosis() {
     const { data } = await aiApi.diagnosis(payload)
     diagnosisResult.value = data?.data || null
   } catch (e) {
-    error.value = extractErrorMessage(e, 'No se pudo ejecutar el diagnostico asistido.', { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, 'No se pudo ejecutar el diagnóstico asistido.', { context: 'Diagnóstico asistido IA' })
   } finally {
     loadingDiagnosis.value = false
   }
 }
 
 async function loadRisk() {
-  if (!riskPatientId.value) return
+  if (!aiFeatures.value.risk) return
+  if (!riskPatientId.value) {
+    error.value = 'Seleccioná un paciente para evaluar el riesgo.'
+    return
+  }
   loadingRisk.value = true
   error.value = ''
   try {
-    const [{ data: risk }, { data: history }] = await Promise.all([
+    const [riskResultResponse, historyResultResponse] = await Promise.allSettled([
       aiApi.risk(riskPatientId.value),
       aiApi.riskHistory(riskPatientId.value),
     ])
+    if (riskResultResponse.status === 'rejected') throw riskResultResponse.reason
+    const risk = riskResultResponse.value?.data
     riskResult.value = risk?.data || null
-    riskHistory.value = asArray(history?.data)
+    if (historyResultResponse.status === 'fulfilled') {
+      riskHistory.value = asArray(historyResultResponse.value?.data?.data)
+    } else {
+      riskHistory.value = []
+      featureWarning.value = extractDetailedErrorMessage(historyResultResponse.reason, 'No se pudo cargar el historial de riesgo.', { context: 'Historial de riesgo IA' })
+    }
   } catch (e) {
-    error.value = extractErrorMessage(e, 'No se pudo calcular el riesgo del paciente.', { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, 'No se pudo calcular el riesgo del paciente.', { context: 'Evaluación de riesgo IA' })
   } finally {
     loadingRisk.value = false
   }
@@ -207,7 +254,11 @@ function resetChat() {
 }
 
 async function sendChat() {
-  if (!chatInput.value) return
+  if (!aiFeatures.value.chat) return
+  if (!chatInput.value) {
+    error.value = 'Escribí una consulta para enviar al chat clínico.'
+    return
+  }
   loadingChat.value = true
   error.value = ''
   const userMessage = chatInput.value
@@ -228,16 +279,20 @@ async function sendChat() {
     }
   } catch (e) {
     chatMessages.value.pop()
-    error.value = extractErrorMessage(e, 'No se pudo completar la conversacion.', { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, 'No se pudo completar la conversación.', { context: 'Chat clínico IA' })
   } finally {
     loadingChat.value = false
   }
 }
 
-onMounted(loadPatients)
+onMounted(() => {
+  loadPatients()
+  loadAiFeatureFlags()
+})
 </script>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { display: flex; flex-direction: column; gap: 18px; }
 .page-header, .header-actions, .chat-toolbar, .chat-input, .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .page-title { font-size: 1.4rem; font-weight: 700; color: var(--text); }
@@ -269,6 +324,7 @@ onMounted(loadPatients)
 .chat-input textarea { flex: 1; min-height: 88px; }
 .empty-state, .alert { padding: 18px; border-radius: var(--radius-lg); background: var(--white); box-shadow: var(--shadow-sm); }
 .alert--error { color: var(--danger); }
+.alert--warning { color: #8a5a00; background: #fff8e6; border: 1px solid #f0d38a; box-shadow: none; }
 @media (max-width: 768px) {
   .page-header, .chat-toolbar, .chat-input, .result-head { align-items: stretch; flex-direction: column; }
   .chat-msg { max-width: 100%; }

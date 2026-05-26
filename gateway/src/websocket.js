@@ -22,6 +22,10 @@ async function attachWebSocket(httpServer) {
     registerSocket(auth.user, ws, req);
   });
 
+  wss.on('error', (err) => {
+    logger.error('WebSocket server error', { error: err.message, stack: err.stack });
+  });
+
   attachHeartbeat(wss);
 
   logger.info('WebSocket server attached at /ws');

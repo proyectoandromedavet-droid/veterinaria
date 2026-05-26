@@ -60,10 +60,12 @@ function versionNegotiationMiddleware(req, res, next) {
   const normalizedVersion = String(requested.version || '').toLowerCase();
 
   if (!supported.includes(normalizedVersion)) {
+    // Do not reflect the raw user-supplied version string to avoid reflected XSS
+    // in clients that render error messages as HTML.
     return res.status(406).json({
       success: false,
       error: {
-        message: `Unsupported API version '${requested.version}'`,
+        message: 'Unsupported API version',
         code: 'API_VERSION_UNSUPPORTED',
         supportedVersions: supported,
       },

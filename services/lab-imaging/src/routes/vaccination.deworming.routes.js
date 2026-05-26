@@ -10,8 +10,10 @@ const router = Router();
 
 const getDeworming = [async (req, res, next) => {
   try {
-    const { patientId, page = 1, limit = 30 } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
+    const { patientId } = req.query;
+    const safePage  = Math.max(1, parseInt(req.query.page  || 1, 10));
+    const safeLimit = Math.min(Math.max(1, parseInt(req.query.limit || 30, 10)), 100);
+    const offset = (safePage - 1) * safeLimit;
 
     let branchId = req.user?.branchId || null;
 
@@ -28,8 +30,8 @@ const getDeworming = [async (req, res, next) => {
     const conds = ['dr.branch_id = :bid'];
     const p = {
       bid: branchId,
-      limit: Number(limit),
-      offset: Number(offset),
+      limit: safeLimit,
+      offset,
     };
 
     if (patientId) {
@@ -81,10 +83,26 @@ const getDewormingAlerts = [async (req, res, next) => {
   }
 }];
 
+const MAX_DEWORMING_NEXT_DUE_YEARS = 5;
+
 const postDeworming = [
   body('patientId').isInt(),
   body('productId').isInt(),
-  body('dewormingDate').isISO8601(),
+  body('dewormingDate').isISO8601().custom((val) => {
+    const d = new Date(val);
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    if (d > now) throw new Error('La fecha de desparasitación no puede ser futura');
+    return true;
+  }),
+  body('nextDueDate').optional().isISO8601().custom((val) => {
+    const d = new Date(val);
+    const maxFuture = new Date();
+    maxFuture.setFullYear(maxFuture.getFullYear() + MAX_DEWORMING_NEXT_DUE_YEARS);
+    if (d > maxFuture) throw new Error(`La próxima fecha no puede ser más de ${MAX_DEWORMING_NEXT_DUE_YEARS} años en el futuro`);
+    return true;
+  }),
+  body('notes').optional().isString().trim().isLength({ max: 1000 }),
   validate,
   async (req, res, next) => {
     try {

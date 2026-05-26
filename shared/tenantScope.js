@@ -3,10 +3,26 @@
 const R = require('./response');
 
 function getTenantContext(req) {
-  return {
-    orgId: req?.user?.orgId || req?.user?.organization_id || req?.headers?.['x-org-id'] || null,
-    branchId: req?.user?.branchId || req?.user?.branch_id || req?.headers?.['x-branch-id'] || null,
-  };
+  // SEC: para requests autenticados, el orgId/branchId SIEMPRE viene del JWT (req.user).
+  // Los headers x-org-id y x-branch-id solo se aceptan cuando NO hay usuario autenticado
+  // (e.g. llamadas internas de servicios sin JWT de usuario).
+  // Aceptar los headers de un usuario autenticado permitiría escalada de privilegios
+  // hacia otro tenant simplemente enviando un header diferente.
+  const fromJwt = req?.user?.orgId || req?.user?.organization_id;
+  const fromHeader = req?.headers?.['x-org-id'] || null;
+
+  const orgId = fromJwt != null
+    ? fromJwt
+    : fromHeader;   // solo para llamadas internas sin JWT de usuario
+
+  const branchFromJwt = req?.user?.branchId || req?.user?.branch_id;
+  const branchFromHeader = req?.headers?.['x-branch-id'] || null;
+
+  const branchId = branchFromJwt != null
+    ? branchFromJwt
+    : (fromJwt != null ? null : branchFromHeader);  // branch header solo si tampoco hay orgId de JWT
+
+  return { orgId: orgId || null, branchId: branchId || null };
 }
 
 function scopeParams(req, extra = {}) {

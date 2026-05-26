@@ -5,6 +5,10 @@
  * File upload hardening con validación de magic bytes, límites de tamaño,
  * extensiones peligrosas y sanitización de nombres.
  *
+ * OT-087: multer@1.4.5-lts.1 es el fork comunidad de multer (sin updates oficiales desde 2021).
+ * Alternativa evaluada: migrar a busboy directamente o a multipart/formdata nativo en Node 18+.
+ * Pendiente para próximo ciclo mayor de upgrades.
+ *
  * Uso:
  *   const { createUploader, validateMagicBytes } = require('./fileUpload');
  *
@@ -127,8 +131,16 @@ async function validateMagicBytes(filePath, declaredMime) {
  * con nombre aleatorio para evitar conflictos y path traversal.
  */
 function createStorage(category = 'misc') {
-  // Asegurar que el directorio exista
-  const dest = path.join(UPLOAD_DIR, category);
+  // Sanitizar category para evitar path traversal (ej: "../../etc")
+  // Solo se permiten letras, números, guiones y guiones bajos.
+  const safeCategory = String(category).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64) || 'misc';
+  // Asegurar que el directorio exista y esté dentro de UPLOAD_DIR
+  const dest = path.join(UPLOAD_DIR, safeCategory);
+  const resolvedDest = path.resolve(dest);
+  const resolvedBase = path.resolve(UPLOAD_DIR);
+  if (!resolvedDest.startsWith(resolvedBase + path.sep) && resolvedDest !== resolvedBase) {
+    throw new Error(`createStorage: category '${category}' resuelve fuera de UPLOAD_DIR`);
+  }
   fs.mkdirSync(dest, { recursive: true });
 
   return multer.diskStorage({

@@ -139,12 +139,15 @@ function cacheMiddleware(ttl = 60, keyFn) {
       return res.status(cached.status).json(cached.body);
     }
 
-    // Intercept json() to capture the response
+    // OT-074: keep res.json synchronous — fire-and-forget the cache write to avoid
+    // making the Express response async (which is fragile across Express versions).
     const origJson = res.json.bind(res);
-    res.json = async function(body) {
+    res.json = function(body) {
       if (res.statusCode < 400) {
         const secs = typeof ttl === 'function' ? ttl(req) : ttl;
-        await set(key, { status: res.statusCode, body }, secs);
+        set(key, { status: res.statusCode, body }, secs).catch((e) =>
+          log.warn('cacheMiddleware write failed', { key, error: e?.message })
+        );
       }
       res.setHeader('X-Cache', 'MISS');
       return origJson(body);
@@ -157,7 +160,10 @@ function cacheMiddleware(ttl = 60, keyFn) {
 function defaultKey(req) {
   const userId = req.user?.userId || 'anon';
   const orgId  = req.user?.orgId  || 'none';
-  return `cache:${orgId}:${userId}:${req.method}:${req.originalUrl}`;
+  // SEC: sanitizar la URL para eliminar caracteres especiales de Redis (*, ?, [, ])
+  // que podrían interferir con el pattern matching de SCAN en invalidatePrefix.
+  const safeUrl = (req.originalUrl || '/').replace(/[*?[\]]/g, '_');
+  return `cache:${orgId}:${userId}:${req.method}:${safeUrl}`;
 }
 
 /** Return first segment of key for metric label */
@@ -197,4 +203,43 @@ function httpCacheHeaders({ maxAge = 60, scope = 'private', noCache = false, var
   };
 }
 
-module.exports = { get, set, del, invalidatePrefix, remember, cacheMiddleware, httpCacheHeaders, getClient };
+/**
+ * OT-075: Explicit cache invalidation after write operations.
+ *
+ * Invalidates all cached entries for a given orgId.
+ * Use after POST/PUT/PATCH/DELETE in routes that also use cacheMiddleware on GET.
+ *
+ * @param {string|number} orgId
+ */
+async function invalidateForOrg(orgId) {
+  if (!orgId) return;
+  await invalidatePrefix(`cache:${orgId}:`);
+}
+
+/**
+ * Express middleware: invalidate org cache after successful write responses.
+ * Apply after auth middleware on mutating routes.
+ *
+ * Usage:  router.post('/', cacheInvalidateOnWrite, handler)
+ */
+function cacheInvalidateOnWrite(req, res, next) {
+  const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+  if (!WRITE_METHODS.has(req.method)) return next();
+
+  const origJson = res.json.bind(res);
+  res.json = function(body) {
+    if (res.statusCode < 400 && req.user?.orgId) {
+      invalidateForOrg(req.user.orgId).catch((e) =>
+        log.warn('cacheInvalidateOnWrite failed', { orgId: req.user?.orgId, error: e?.message })
+      );
+    }
+    return origJson(body);
+  };
+  next();
+}
+
+module.exports = {
+  get, set, del, invalidatePrefix, remember,
+  cacheMiddleware, httpCacheHeaders, getClient,
+  invalidateForOrg, cacheInvalidateOnWrite,  // OT-075
+};

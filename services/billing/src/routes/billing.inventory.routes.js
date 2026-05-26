@@ -8,10 +8,12 @@ const router = Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const { search, itemType, stockStatus, page = 1, limit = 30 } = req.query;
+    const page  = Math.max(parseInt(req.query.page  || '1',  10) || 1,  1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '30', 10) || 30, 1), 100);
+    const { search, itemType, stockStatus } = req.query;
     const offset = (page - 1) * limit;
     const conds = ['ist.branch_id = :bid'];
-    const p = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p = { bid: req.user.branchId, limit, offset };
     if (search) { conds.push('(ii.name LIKE :s OR ii.sku LIKE :s)'); p.s = `%${search}%`; }
     if (itemType) { conds.push('ii.item_type = :itemType'); p.itemType = itemType; }
     if (stockStatus === 'low') conds.push('ist.quantity_available <= ist.reorder_point');
@@ -35,6 +37,8 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+const OUTGOING_MOVEMENT_TYPES = new Set(['sale', 'expired', 'loss', 'transfer']);
+
 router.post('/movements',
   body('itemId').isInt(),
   body('movementType').isIn(['purchase','sale','adjustment','transfer','expired','loss']),
@@ -43,17 +47,65 @@ router.post('/movements',
   async (req, res, next) => {
     try {
       const { itemId, movementType, quantity, unitCost, reference, notes } = req.body;
-      await db.query(
-        `INSERT INTO inventory_movements
-           (item_id, branch_id, movement_type, quantity, unit_cost, reference, notes, created_by)
-         VALUES (:item, :bid, :type, :qty, :cost, :ref, :notes, :uid)`,
-        {
-          item: itemId, bid: req.user.branchId, type: movementType,
-          qty: quantity, cost: unitCost || null, ref: reference || null,
-          notes: notes || null, uid: req.user.userId,
+
+      // BUG-30: envolver en transacción con FOR UPDATE para evitar race condition y
+      // actualizar inventory_stock correctamente en salidas
+      const movementId = await db.transaction(async (conn) => {
+        // BUG-FIX: verificar que el item pertenece a la branch del usuario (IDOR cross-branch)
+        const itemOwner = await conn.queryOne(
+          `SELECT ist.item_id FROM inventory_stock ist
+           WHERE ist.item_id = :iid AND ist.branch_id = :bid
+           LIMIT 1`,
+          { iid: itemId, bid: req.user.branchId }
+        );
+        if (!itemOwner) {
+          const err = new Error('Item de inventario no encontrado en esta sucursal');
+          err.http = 404;
+          throw err;
         }
-      );
-      return R.created(res);
+
+        if (OUTGOING_MOVEMENT_TYPES.has(movementType)) {
+          const stock = await conn.queryOne(
+            `SELECT quantity_available FROM inventory_stock
+             WHERE item_id = :iid AND branch_id = :bid FOR UPDATE`,
+            { iid: itemId, bid: req.user.branchId }
+          );
+          if (!stock || stock.quantity_available < quantity) {
+            const err = new Error('Insufficient stock for this movement');
+            err.http = 400;
+            throw err;
+          }
+        }
+
+        const [r] = await conn.query(
+          `INSERT INTO inventory_movements
+             (item_id, branch_id, movement_type, quantity, unit_cost, reference, notes, created_by)
+           VALUES (:item, :bid, :type, :qty, :cost, :ref, :notes, :uid)`,
+          {
+            item: itemId, bid: req.user.branchId, type: movementType,
+            qty: quantity, cost: unitCost || null, ref: reference || null,
+            notes: notes || null, uid: req.user.userId,
+          }
+        );
+
+        // Actualizar stock disponible según el tipo de movimiento
+        if (OUTGOING_MOVEMENT_TYPES.has(movementType)) {
+          await conn.query(
+            `UPDATE inventory_stock SET quantity_available = GREATEST(0, quantity_available - :qty)
+             WHERE item_id = :iid AND branch_id = :bid`,
+            { qty: quantity, iid: itemId, bid: req.user.branchId }
+          );
+        } else if (movementType === 'purchase') {
+          await conn.query(
+            `UPDATE inventory_stock SET quantity_available = quantity_available + :qty
+             WHERE item_id = :iid AND branch_id = :bid`,
+            { qty: quantity, iid: itemId, bid: req.user.branchId }
+          );
+        }
+
+        return r.insertId;
+      });
+      return R.created(res, { id: movementId });
     } catch (e) {
       logBillingError('POST /inventory/movements', e, { branchId: req.user?.branchId, body: req.body });
       next(e);
@@ -69,7 +121,7 @@ router.post('/items',
   async (req, res, next) => {
     try {
       const { name, sku, itemType, description, unitCost, salePrice, minimumStock, reorderPoint, supplierId, requiresPrescription } = req.body;
-      const r = await db.query(
+      const [r] = await db.query(
         `INSERT INTO inventory_items (name, sku, item_type, description, unit_cost, sale_price, minimum_stock, requires_prescription, supplier_id, is_active)
          VALUES (:name, :sku, :type, :desc, :cost, :price, :minStock, :rx, :sup, 1)`,
         { name, sku: sku||null, type: itemType, desc: description||null, cost: unitCost||0, price: salePrice, minStock: minimumStock||0, rx: requiresPrescription?1:0, sup: supplierId||null }
@@ -93,13 +145,26 @@ router.put('/items/:id',
   async (req, res, next) => {
     try {
       const { name, sku, description, unitCost, salePrice, minimumStock, reorderPoint, supplierId, isActive } = req.body;
-      await db.query(
+      // BUG-FIX: verificar que el item pertenece a la branch del usuario (IDOR cross-branch)
+      // inventory_items no tiene branch_id propio; la relación es a través de inventory_stock
+      const stockOwner = await db.queryOne(
+        `SELECT ist.item_id FROM inventory_stock ist
+         WHERE ist.item_id = :id AND ist.branch_id = :bid AND ${notDeleted('ist')}
+         LIMIT 1`,
+        { id: req.params.id, bid: req.user.branchId }
+      );
+      if (!stockOwner) return R.notFound(res, 'Item de inventario no encontrado');
+
+      const [updateResult] = await db.query(
         `UPDATE inventory_items SET name=:name, sku=:sku, description=:desc, unit_cost=:cost,
           sale_price=:price, minimum_stock=:min, supplier_id=:sup,
           is_active=:active, updated_at=NOW()
          WHERE id=:id AND ${notDeleted('inventory_items')}`,
         { id: req.params.id, name, sku: sku||null, desc: description||null, cost: unitCost||0, price: salePrice||0, min: minimumStock||0, sup: supplierId||null, active: isActive!==false?1:0 }
       );
+      // BUG-FIX: verificar affectedRows para detectar actualizaciones fallidas
+      if (!updateResult.affectedRows) return R.notFound(res, 'Item de inventario no encontrado o eliminado');
+
       if (reorderPoint !== undefined) {
         await db.query(
           `UPDATE inventory_stock SET reorder_point=:rp, minimum_stock=:min WHERE item_id=:id AND branch_id=:bid`,
@@ -116,10 +181,13 @@ router.put('/items/:id',
 
 router.get('/batches', async (req, res, next) => {
   try {
-    const { itemId, expiringDays, page = 1, limit = 30 } = req.query;
+    const { itemId, expiringDays } = req.query;
+    // BUG-FIX: aplicar cap en limit para evitar DoS por queries masivas
+    const page  = Math.max(parseInt(req.query.page  || '1',  10) || 1,  1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '30', 10) || 30, 1), 100);
     const offset = (page - 1) * limit;
     const conds = ['ib.branch_id = :bid', 'ib.quantity_available > 0'];
-    const p = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p = { bid: req.user.branchId, limit, offset };
     if (itemId) { conds.push('ib.item_id = :itemId'); p.itemId = itemId; }
     if (expiringDays) { conds.push('ib.expiry_date <= DATE_ADD(NOW(), INTERVAL :days DAY)'); p.days = expiringDays; }
 
@@ -151,6 +219,15 @@ router.post('/batches',
   async (req, res, next) => {
     try {
       const { itemId, lotNumber, expiryDate, manufactureDate, quantityReceived, unitCost, supplierId, notes } = req.body;
+      // BUG-FIX: verificar que el item pertenece a la branch del usuario antes de crear el lote (IDOR cross-branch)
+      const itemOwner = await db.queryOne(
+        `SELECT ist.item_id FROM inventory_stock ist
+         WHERE ist.item_id = :iid AND ist.branch_id = :bid
+         LIMIT 1`,
+        { iid: itemId, bid: req.user.branchId }
+      );
+      if (!itemOwner) return R.notFound(res, 'Item de inventario no encontrado en esta sucursal');
+
       const r = await db.query(
         `INSERT INTO inventory_batches
            (item_id, branch_id, supplier_id, lot_number, manufacture_date, expiry_date,
@@ -197,12 +274,14 @@ router.get('/alerts', async (req, res, next) => {
 
 router.patch('/alerts/:id/resolve', async (req, res, next) => {
   try {
-    await db.query(
+    // BUG-FIX: verificar affectedRows para detectar alertas no encontradas o de otra branch
+    const [resolveResult] = await db.query(
       `UPDATE stock_alerts
        SET resolved=1, resolved_at=NOW()
        WHERE id=:id AND branch_id=:bid AND ${notDeleted('stock_alerts')}`,
       { id: req.params.id, bid: req.user.branchId }
     );
+    if (!resolveResult.affectedRows) return R.notFound(res, 'Alerta no encontrada');
     return R.noContent(res);
   } catch (e) {
     logBillingError('PATCH /inventory/alerts/:id/resolve', e, { alertId: req.params.id, branchId: req.user?.branchId });

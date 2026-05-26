@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="page-header__left">
         <span class="page-emoji">🐾</span>
-      <div>
+        <div>
           <h2 class="page-title">{{ t('patients.title') }}</h2>
           <p class="page-sub">{{ t('patients.subtitle') }}</p>
         </div>
@@ -24,6 +24,7 @@
         </option>
       </select>
     </div>
+    <div v-if="speciesError" class="alert alert--warning" role="status">{{ speciesError }}</div>
 
     <!-- Carga -->
     <div v-if="loading" class="loading-state" role="status" aria-live="polite">
@@ -312,6 +313,9 @@ import {
 } from '../composables/patients/usePatientsDomain'
 import { t } from '../i18n'
 import { logError } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
+
+const { success } = useUiFeedback()
 
 const items        = ref([])
 const loading      = ref(false)
@@ -320,6 +324,7 @@ const search       = ref('')
 const speciesFilter = ref('')
 const pagination   = ref({ page: 1, totalPages: 1 })
 const speciesList  = ref([])   // [{ id, common_name, slug }]
+const speciesError = ref('')
 
 function formatAge(bd) {
   return formatPatientAge(bd)
@@ -332,10 +337,12 @@ function formatDate(iso) {
 // ── Load species list ────────────────────────────────────────────────────────
 
 async function loadSpecies() {
+  speciesError.value = ''
   try {
     speciesList.value = await loadSpeciesCatalog()
   } catch (error) {
     logError('pacientes.loadSpecies', error)
+    speciesError.value = 'No se pudo cargar el catálogo de especies. Podés seguir viendo pacientes, pero para crear uno nuevo necesitás reintentar.'
   }
 }
 
@@ -424,7 +431,7 @@ function openEdit(p) {
   // Preserve speciesId as display info when editing (can't change)
   form.speciesId = p.species_id || ''
   form.sex       = p.sex || 'unknown'
-  form.birthDate = p.birthdate ? p.birthdate.split('T')[0] : ''
+  form.birthDate = p.birthdate ? (p.birthdate.includes('T') ? p.birthdate.split('T')[0] : p.birthdate.slice(0, 10)) : ''
   form.weight    = p.weight_kg || ''
   form.microchip = p.chip_number || ''
   form.breedId   = p.breed_id || ''
@@ -451,8 +458,10 @@ async function handleSave() {
   try {
     if (editingId.value) {
       await updatePatient(editingId.value, form)
+      success('Paciente actualizado.')
     } else {
       await createOwnerAndPatient(form)
+      success('Paciente creado.')
     }
     closeModal()
     await load()
@@ -617,6 +626,7 @@ function boolLabel(value) {
 
 .alert { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.875rem; }
 .alert--error { background: #FDEAEA; color: #c0392b; border-left: 3px solid var(--danger); }
+.alert--warning { background: #fff8e6; color: #8a5a00; border-left: 3px solid #f0b429; }
 .mx { margin: 0 24px 8px; }
 
 .loading-state, .empty-state {
@@ -635,5 +645,10 @@ function boolLabel(value) {
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
-@media (max-width: 500px) { .form-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) {
+  .patient-grid { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .modal__actions { flex-direction: column-reverse; }
+  .modal__actions :deep(button) { width: 100%; }
+}
 </style>

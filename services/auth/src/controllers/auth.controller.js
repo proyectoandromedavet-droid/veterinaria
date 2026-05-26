@@ -1,6 +1,10 @@
 'use strict';
 
-const bcrypt  = require('bcryptjs');
+// OT-091: migrating from bcryptjs to argon2id via shared/passwordHash abstraction.
+// pwHash.verify() auto-detects bcrypt vs argon2 hashes; pwHash.hash() produces argon2id.
+// On successful bcrypt login, transparent re-hashing to argon2id is triggered automatically.
+const bcrypt  = require('bcryptjs');  // kept for recovery-code hashing (low-risk path)
+const pwHash  = require('../../../../shared/passwordHash');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
@@ -15,16 +19,62 @@ const { enqueueJob } = require('../../../../shared/notificationRetry');
 const oidc = require('../../../../shared/oidc');
 const { getEffectivePermissions } = require('../../../../shared/rbac');
 const { createLogger } = require('../../../../shared/logger');
+const { resolveCookiePolicy } = require('../../../../shared/cookiePolicy');
+const { formatDateTime } = require('../../../../shared/locale');
+const {
+  getDependencyMode,
+  recordDependencyDegradation,
+  logDependencyIssue,
+  dependencyFailureResponse,
+} = require('../../../../shared/dependencyPolicy');
+const { encrypt: encryptField, decrypt: decryptField } = require('../../../../shared/encryption'); // BUG-008
 
 const log = createLogger('auth-controller');
+
+function getAccessRevocationTtlSec() {
+  return Math.max(60, parseInt(process.env.JWT_REVOCATION_TTL_SEC || '900', 10));
+}
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 async function getRedis() {
   return getRedisSingleton('auth-controller', 'auth-controller');
 }
 
+function getSessionSecurityMode() {
+  return getDependencyMode(
+    'auth_session_security',
+    process.env.NODE_ENV === 'production' ? 'strict' : 'degraded'
+  );
+}
+
+function sessionSecurityError(context, cause) {
+  const err = new Error('Session security backend unavailable');
+  err.code = 'AUTH_SESSION_SECURITY_UNAVAILABLE';
+  err.context = context;
+  err.cause = cause;
+  return err;
+}
+
+function isSessionSecurityError(err) {
+  return err?.code === 'AUTH_SESSION_SECURITY_UNAVAILABLE';
+}
+
+function sessionSecurityUnavailable(res, err) {
+  res.setHeader('Retry-After', '30');
+  return dependencyFailureResponse(res, {
+    statusCode: 503,
+    message: 'Authentication service temporarily unavailable — session security backend is offline',
+    code: 'AUTH_016',
+    details: {
+      context: err?.context || 'redis',
+      retryable: true,
+      mode: 'strict',
+    },
+  });
+}
+
 function logRedisWarning(context, err) {
-  console.warn('[auth][redis]', {
+  log.warn('redis', {
     context,
     message: err?.message,
     code: err?.code,
@@ -32,7 +82,7 @@ function logRedisWarning(context, err) {
 }
 
 function logAuth401(req, endpoint, extra = {}) {
-  console.warn('[auth][401]', {
+  log.warn('401', {
     endpoint,
     requestId: req.headers['x-request-id'] || req.requestId || null,
     hasAuthorization: Boolean(req.headers.authorization),
@@ -42,31 +92,70 @@ function logAuth401(req, endpoint, extra = {}) {
   });
 }
 
-async function runRedis(context, op) {
+async function runRedis(context, op, opts = {}) {
+  const mode = getSessionSecurityMode();
   try {
     const redis = await getRedis();
-    if (!redis?.isReady) return null;
+    if (!redis?.isReady) {
+      recordDependencyDegradation('auth_session_security', mode, opts.critical && mode === 'strict' ? 'blocked' : 'degraded', { service: 'auth' });
+      if (opts.critical && mode === 'strict') throw sessionSecurityError(context);
+      return null;
+    }
     return await op(redis);
   } catch (err) {
+    if (isSessionSecurityError(err)) throw err;
+    recordDependencyDegradation('auth_session_security', mode, opts.critical && mode === 'strict' ? 'blocked' : 'degraded', { service: 'auth' });
+    logDependencyIssue(log, 'auth_session_security', mode, 'Redis session security operation failed', err, { context });
     logRedisWarning(context, err);
+    if (opts.critical && mode === 'strict') throw sessionSecurityError(context, err);
     return null;
   }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+async function getActiveSessionJtis(userId) {
+  const rows = await db.query(
+    `SELECT jti
+     FROM sessions
+     WHERE user_id = :userId
+       AND is_revoked = FALSE
+       AND jti IS NOT NULL`,
+    { userId }
+  );
+  return rows.map(row => row.jti).filter(Boolean);
+}
+
+async function revokeSessionJtis(jtis, context) {
+  if (!jtis.length) return;
+  await runRedis(context, async (redis) => {
+    const multi = redis.multi();
+    for (const jti of jtis) {
+      multi.setEx(`revoked:${jti}`, getAccessRevocationTtlSec(), '1');
+    }
+    await multi.exec();
+  }, { critical: true });
+}
+
 function parseUserAgent(ua = '') {
   if (/mobile/i.test(ua))  return 'mobile';
   if (/tablet/i.test(ua))  return 'tablet';
   return 'desktop';
 }
 
-function setSessionCookies(res, accessToken, refreshToken) {
+function setSessionCookies(req, res, accessToken, refreshToken) {
   const configuredSameSite = String(process.env.AUTH_COOKIE_SAME_SITE || 'none').toLowerCase();
-  const sameSite = ['lax', 'strict', 'none'].includes(configuredSameSite) ? configuredSameSite : 'none';
-  const secureCookies = process.env.AUTH_COOKIE_SECURE === 'true' || sameSite === 'none';
+  const secureOverride = process.env.AUTH_COOKIE_SECURE === 'true'
+    ? true
+    : process.env.AUTH_COOKIE_SECURE === 'false'
+      ? false
+      : undefined;
+  const { secure, sameSite } = resolveCookiePolicy(req, {
+    sameSite: configuredSameSite,
+    secureOverride,
+  });
   const cookieBase = {
     httpOnly: true,
-    secure: secureCookies,
+    secure,
     sameSite,
   };
 
@@ -79,13 +168,13 @@ function setSessionCookies(res, accessToken, refreshToken) {
   res.cookie('refreshToken', refreshToken, {
     ...cookieBase,
     maxAge: 7 * 24 * 60 * 60 * 1000,
-    path:   '/api/v1/auth/refresh',
+    path:   '/api/v1/auth',
   });
 }
 
 function clearSessionCookies(res) {
   res.clearCookie('accessToken', { path: '/' });
-  res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
+  res.clearCookie('refreshToken', { path: '/api/v1/auth' });
 }
 
 /**
@@ -213,12 +302,12 @@ async function ensureUserRoles(userId) {
   return roleRows.map((r) => r.name);
 }
 
+// OT-072: parallelize Redis lookups instead of sequential N+1 pattern
 async function getUserPermissions(roles, orgId) {
-  const merged = new Set();
-  for (const role of roles || []) {
-    const permissions = await getEffectivePermissions(role, orgId);
-    for (const permission of permissions) merged.add(permission);
-  }
+  const allPerms = await Promise.all(
+    (roles || []).map((role) => getEffectivePermissions(role, orgId))
+  );
+  const merged = new Set(allPerms.flat());
   return [...merged];
 }
 
@@ -252,7 +341,7 @@ async function finalizeLogin(res, req, user, roles, responseData = null) {
   const { accessToken, refreshToken, jti } = await buildTokenPair(user, roles);
   const permissions = await getUserPermissions(roles, user.organization_id);
   await persistSession(req, user, refreshToken, jti);
-  setSessionCookies(res, accessToken, refreshToken);
+  setSessionCookies(req, res, accessToken, refreshToken);
   return {
     accessToken,
     expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m',
@@ -333,7 +422,7 @@ async function login(req, res) {
       return R.tooMany(res, `Account locked. Try again after ${result.locked_until}`);
     }
   } catch (spErr) {
-    console.error('[auth][sp_login_attempt] failed (skipping):', spErr.message);
+    log.error('sp_login_attempt failed (skipping)', { message: spErr.message });
   }
 
   const user = await db.queryOne(
@@ -344,7 +433,9 @@ async function login(req, res) {
     { email }
   );
 
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+  // OT-091: use pwHash.verify() which handles both bcrypt and argon2id hashes
+  const passwordValid = user && await pwHash.verify(password, user.password_hash);
+  if (!user || !passwordValid) {
     // Redis: backoff exponencial por IP+email y por cuenta
     await recordFailedAttempt(email, ip);
     // BD: registrar intento fallido y aplicar lockout a nivel de cuenta
@@ -362,6 +453,14 @@ async function login(req, res) {
   }
 
   const roles = await ensureUserRoles(user.id);
+
+  // OT-091: transparent hash upgrade — if the stored hash is bcrypt and argon2 is
+  // now available, re-hash the verified password and update the DB silently.
+  if (pwHash.isLegacyHash(user.password_hash) && pwHash.isArgon2Available()) {
+    pwHash.hash(password).then((newHash) =>
+      db.query('UPDATE users SET password_hash = :h WHERE id = :id', { h: newHash, id: user.id })
+    ).catch((e) => log.warn('Hash upgrade failed', { userId: user.id, error: e.message }));
+  }
 
   // Limpiar contadores de brute force (Redis + BD) al login exitoso
   await clearBruteForce(email, ip);
@@ -392,7 +491,7 @@ async function login(req, res) {
         name:      `${user.first_name} ${user.last_name}`,
         ip,
         userAgent: ua,
-        time:      new Date().toLocaleString('es-AR', { timeZone: process.env.TZ || 'America/Argentina/Buenos_Aires' }),
+        time:      formatDateTime(new Date()),
       },
       createdBy: user.id,
       orgId: user.organization_id,
@@ -451,9 +550,15 @@ async function refresh(req, res) {
 
   // ── Reuse detection ────────────────────────────────────────────────────────
   // If this hash was already rotated away, a stolen token is being replayed.
-  const reusedSessionId = await runRedis('refresh.reuse-check', (redis) =>
-    redis.get(`rt:used:${tokenHash}`)
-  );
+  let reusedSessionId;
+  try {
+    reusedSessionId = await runRedis('refresh.reuse-check', (redis) =>
+      redis.get(`rt:used:${tokenHash}`), { critical: true }
+    );
+  } catch (err) {
+    if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+    throw err;
+  }
   if (reusedSessionId) {
     // Revoke the session that was created after this token was stolen.
     await db.query(
@@ -466,9 +571,14 @@ async function refresh(req, res) {
       `SELECT jti FROM sessions WHERE id = :id`, { id: reusedSessionId }
     );
     if (stolenSession?.jti) {
-      await runRedis('refresh.revoke-stolen-jti', (redis) =>
-        redis.setEx(`revoked:${stolenSession.jti}`, 15 * 60, '1')
-      );
+      try {
+        await runRedis('refresh.revoke-stolen-jti', (redis) =>
+        redis.setEx(`revoked:${stolenSession.jti}`, getAccessRevocationTtlSec(), '1'), { critical: true }
+        );
+      } catch (err) {
+        if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+        throw err;
+      }
     }
     await runRedis('refresh.clear-used-marker', (redis) =>
       redis.del(`rt:used:${tokenHash}`)
@@ -502,9 +612,14 @@ async function refresh(req, res) {
   }
 
   // Revoke old access JTI
-  await runRedis('refresh.revoke-old-jti', (redis) =>
-    redis.setEx(`revoked:${session.jti}`, 15 * 60, '1')
-  );
+  try {
+    await runRedis('refresh.revoke-old-jti', (redis) =>
+      redis.setEx(`revoked:${session.jti}`, getAccessRevocationTtlSec(), '1'), { critical: true }
+    );
+  } catch (err) {
+    if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+    throw err;
+  }
 
   const roles = await db.query(
     `SELECT r.name FROM roles r
@@ -532,11 +647,16 @@ async function refresh(req, res) {
   );
 
   // Mark old hash as "used" — 10 min window accounts for clock skew + network latency
-  await runRedis('refresh.mark-used', (redis) =>
-    redis.setEx(`rt:used:${tokenHash}`, 10 * 60, String(session.id))
-  );
+  try {
+    await runRedis('refresh.mark-used', (redis) =>
+      redis.setEx(`rt:used:${tokenHash}`, 10 * 60, String(session.id)), { critical: true }
+    );
+  } catch (err) {
+    if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+    throw err;
+  }
 
-  setSessionCookies(res, accessToken, newRefresh);
+  setSessionCookies(req, res, accessToken, newRefresh);
 
   return R.ok(res, { accessToken });
 }
@@ -550,9 +670,14 @@ async function logout(req, res) {
 
   // Revoke current token
   if (jti) {
-    await runRedis('logout.revoke-jti', (redis) =>
-      redis.setEx(`revoked:${jti}`, 15 * 60, '1')
-    );
+    try {
+      await runRedis('logout.revoke-jti', (redis) =>
+      redis.setEx(`revoked:${jti}`, getAccessRevocationTtlSec(), '1'), { critical: true }
+      );
+    } catch (err) {
+      if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+      throw err;
+    }
   }
 
   // Mark session as revoked
@@ -570,9 +695,56 @@ async function logout(req, res) {
  * POST /auth/logout-all  — revoke all sessions
  */
 async function logoutAll(req, res) {
+  const sessions = await db.query(
+    `SELECT jti FROM sessions
+     WHERE user_id = :userId
+       AND is_revoked = FALSE
+       AND expires_at > NOW()
+       AND jti IS NOT NULL`,
+    { userId: req.user.userId }
+  );
   await db.callProc('sp_revoke_user_sessions', [req.user.userId]);
+  if (sessions.length) {
+    try {
+      await runRedis('logout-all.revoke-jtis', async (redis) => {
+        const multi = redis.multi();
+        for (const session of sessions) {
+          multi.setEx(`revoked:${session.jti}`, getAccessRevocationTtlSec(), '1');
+        }
+        await multi.exec();
+      }, { critical: true });
+    } catch (err) {
+      if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+      throw err;
+    }
+  }
   clearSessionCookies(res);
   return R.noContent(res);
+}
+
+async function syncRecentRevocations(limit = 500) {
+  const ttlSec = getAccessRevocationTtlSec();
+  const rows = await db.query(
+    `SELECT jti
+     FROM sessions
+     WHERE is_revoked = TRUE
+       AND revoked_at >= DATE_SUB(NOW(), INTERVAL :ttlSec SECOND)
+       AND jti IS NOT NULL
+     ORDER BY revoked_at DESC
+     LIMIT :limit`,
+    { ttlSec, limit }
+  );
+  if (!rows.length) return 0;
+
+  await runRedis('revocation-sync.recent-jtis', async (redis) => {
+    const multi = redis.multi();
+    for (const row of rows) {
+      multi.setEx(`revoked:${row.jti}`, ttlSec, '1');
+    }
+    await multi.exec();
+  });
+
+  return rows.length;
 }
 
 /**
@@ -683,7 +855,14 @@ async function confirmPasswordReset(req, res) {
     });
   }
 
-  const passwordHash = await bcrypt.hash(newPassword, 12);
+  const passwordHash = await pwHash.hash(newPassword);
+  const sessionJtis = await getActiveSessionJtis(record.user_id);
+  try {
+    await revokeSessionJtis(sessionJtis, 'password-reset.revoke-session-jtis');
+  } catch (err) {
+    if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+    throw err;
+  }
 
   await db.transaction(async (conn) => {
     await conn.execute(
@@ -716,8 +895,9 @@ async function changePassword(req, res) {
     `SELECT id, password_hash, email, first_name, last_name FROM users WHERE id = :id`,
     { id: req.user.userId }
   );
+  if (!user) return R.notFound(res, 'User not found');
 
-  if (!(await bcrypt.compare(currentPassword, user.password_hash))) {
+  if (!(await pwHash.verify(currentPassword, user.password_hash))) {
     return R.badRequest(res, 'Current password is incorrect');
   }
 
@@ -736,15 +916,30 @@ async function changePassword(req, res) {
   }
 
   // Verificar que la nueva contraseña no sea igual a la actual
-  if (await bcrypt.compare(newPassword, user.password_hash)) {
+  if (await pwHash.verify(newPassword, user.password_hash)) {
     return R.badRequest(res, 'La nueva contraseña no puede ser igual a la actual');
   }
 
-  const hash = await bcrypt.hash(newPassword, 12);
-  await db.query(
-    `UPDATE users SET password_hash = :hash, updated_at = NOW() WHERE id = :id`,
-    { hash, id: req.user.userId }
-  );
+  const hash = await pwHash.hash(newPassword);
+  const sessionJtis = await getActiveSessionJtis(req.user.userId);
+  try {
+    await revokeSessionJtis(sessionJtis, 'change-password.revoke-session-jtis');
+  } catch (err) {
+    if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+    throw err;
+  }
+
+  await db.transaction(async (conn) => {
+    await conn.query(
+      `UPDATE users SET password_hash = :hash, updated_at = NOW() WHERE id = :id`,
+      { hash, id: req.user.userId }
+    );
+    await conn.query(
+      `UPDATE sessions SET is_revoked = TRUE, revoked_at = NOW()
+       WHERE user_id = :id AND is_revoked = FALSE`,
+      { id: req.user.userId }
+    );
+  });
 
   return R.ok(res, { message: 'Password changed successfully' });
 }
@@ -774,9 +969,14 @@ async function revokeSession(req, res) {
   );
   if (!session) return R.notFound(res, 'Session not found');
 
-  await runRedis('revoke-session.revoke-jti', (redis) =>
-    redis.setEx(`revoked:${session.jti}`, 15 * 60, '1')
-  );
+  try {
+    await runRedis('revoke-session.revoke-jti', (redis) =>
+    redis.setEx(`revoked:${session.jti}`, getAccessRevocationTtlSec(), '1'), { critical: true }
+    );
+  } catch (err) {
+    if (isSessionSecurityError(err)) return sessionSecurityUnavailable(res, err);
+    throw err;
+  }
   await db.query(
     `UPDATE sessions SET is_revoked = TRUE, revoked_at = NOW() WHERE id = :id`,
     { id }
@@ -807,8 +1007,38 @@ async function listApiKeys(req, res) {
 /**
  * POST /auth/api-keys
  */
+// BUG-013: scopes de API key permitidos
+const ALLOWED_API_KEY_SCOPES = new Set([
+  'read', 'write', 'admin',
+  'patients:read', 'patients:write',
+  'medical:read', 'medical:write',
+  'billing:read', 'billing:write',
+  'lab:read', 'lab:write',
+  'reports:read',
+  'notifications:send',
+  'webhooks:manage',
+]);
+
 async function createApiKey(req, res) {
   const { name, scopes = [], expiresAt } = req.body;
+
+  // BUG-013: validar que los scopes sean conocidos
+  if (!Array.isArray(scopes) || scopes.some((s) => !ALLOWED_API_KEY_SCOPES.has(String(s)))) {
+    return R.badRequest(res, `Scopes inválidos. Permitidos: ${[...ALLOWED_API_KEY_SCOPES].join(', ')}`);
+  }
+
+  // BUG-014: validar expiresAt con cap máximo de 1 año
+  if (expiresAt) {
+    const exp = new Date(expiresAt);
+    if (isNaN(exp.getTime()) || exp <= new Date()) {
+      return R.badRequest(res, 'expiresAt debe ser una fecha futura válida');
+    }
+    const maxExpiry = new Date(Date.now() + 365 * 24 * 3600 * 1000);
+    if (exp > maxExpiry) {
+      return R.badRequest(res, 'expiresAt no puede ser mayor a 1 año');
+    }
+  }
+
   const cols = await getApiKeysColumns();
   const rawKey   = jwt.generateOpaqueToken();
   const keyHash  = jwt.hashToken(rawKey);
@@ -938,9 +1168,10 @@ async function setup2fa(req, res) {
   const { secret, otpauthUrl, qrDataUrl } = await twoFactor.setupTwoFactor(user.id, user.email);
 
   // Temporarily store unconfirmed secret (user must verify before enabling)
+  // BUG-008: cifrar el secreto TOTP en reposo
   await db.query(
     `UPDATE users SET two_factor_secret = :secret WHERE id = :id`,
-    { secret, id: user.id }
+    { secret: encryptField(secret), id: user.id }
   );
 
   return R.ok(res, { qrDataUrl, otpauthUrl, message: 'Scan QR code then call POST /auth/2fa/verify to confirm' });
@@ -961,10 +1192,14 @@ async function verify2fa(req, res) {
   if (!user.two_factor_secret) return R.badRequest(res, 'Run POST /auth/2fa/setup first');
   if (user.two_factor_enabled) return R.conflict(res, '2FA already verified');
 
-  const valid = twoFactor.verifyTwoFactor(user.two_factor_secret, token);
+  // BUG-008: descifrar el secreto TOTP antes de verificar
+  const valid = twoFactor.verifyTwoFactor(decryptField(user.two_factor_secret), token);
   if (!valid) return R.badRequest(res, 'Invalid or expired TOTP token');
 
   const recoveryCodes = twoFactor.generateRecoveryCodes(8);
+  // Recovery codes are one-time-use TOTP backup tokens, not user login passwords.
+  // Kept on bcrypt intentionally — they are never re-hashed/upgraded and the
+  // comparison path (verifyRecoveryCode) uses bcrypt.compare directly.
   const bcryptCodes   = await Promise.all(recoveryCodes.map(c => bcrypt.hash(c, 10)));
 
   await db.transaction(async (conn) => {
@@ -1008,7 +1243,8 @@ async function disable2fa(req, res) {
   if (!user)                    return R.notFound(res, 'User not found');
   if (!user.two_factor_enabled) return R.badRequest(res, '2FA is not enabled');
 
-  const valid = twoFactor.verifyTwoFactor(user.two_factor_secret, token);
+  // BUG-008: descifrar el secreto TOTP antes de verificar
+  const valid = twoFactor.verifyTwoFactor(decryptField(user.two_factor_secret), token);
   if (!valid) return R.badRequest(res, 'Invalid TOTP token');
 
   await db.query(
@@ -1051,10 +1287,31 @@ async function challenge2fa(req, res) {
   );
   if (!user || !user.two_factor_enabled) return R.badRequest(res, 'Invalid 2FA challenge');
 
-  const valid = twoFactor.verifyTwoFactor(user.two_factor_secret, oneTimeCode);
+  // BUG-006/010: burned token — previene replay del código TOTP y race condition paralela
+  const totpKey = `totp:used:${userId}:${oneTimeCode}`;
+  const redis = await getRedisSingleton().catch(() => null);
+  if (redis) {
+    const already = await redis.set(totpKey, '1', 'NX', 'EX', 90).catch(() => null);
+    if (already === null) {
+      // SET NX falló: el código ya fue usado en esta ventana
+      logAuth401(req, 'POST /auth/2fa/challenge', { reason: 'totp_replay' });
+      return R.unauthorized(res, 'Invalid TOTP token');
+    }
+  }
+
+  // BUG-008: descifrar el secreto TOTP antes de verificar
+  const valid = twoFactor.verifyTwoFactor(decryptField(user.two_factor_secret), oneTimeCode);
   if (!valid) {
+    // Liberar el burned token si el código era inválido (para no bloquear al usuario)
+    if (redis) redis.del(totpKey).catch(() => {});
     logAuth401(req, 'POST /auth/2fa/challenge', { reason: 'invalid_totp_token' });
     return R.unauthorized(res, 'Invalid TOTP token');
+  }
+
+  // BUG-007: invalidar el pendingToken tras uso exitoso
+  if (pending.jti && redis) {
+    const pendingTtl = Math.max(0, (pending.exp || 0) - Math.floor(Date.now() / 1000));
+    if (pendingTtl > 0) redis.set(`revoked:${pending.jti}`, '1', 'EX', pendingTtl).catch(() => {});
   }
 
   // Build full token pair after successful 2FA
@@ -1093,13 +1350,23 @@ async function ssoConnect(req, res) {
   const authFlow = await oidc.buildAuthorizationUrl(provider, config);
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
+  const defaultRedirect = `${frontendUrl}/login?sso=success`;
+  let safeRedirectTo = defaultRedirect;
+  if (req.query.redirectTo) {
+    try {
+      const parsed = new URL(req.query.redirectTo, frontendUrl);
+      const allowedOrigin = new URL(frontendUrl).origin;
+      if (parsed.origin === allowedOrigin) safeRedirectTo = parsed.href;
+    } catch { /* ignore invalid URL */ }
+  }
+
   await runRedis('sso.connect.store-state', (redis) =>
     redis.setEx(`sso:state:${authFlow.state}`, 600, JSON.stringify({
       provider,
       nonce: authFlow.nonce,
       verifier: authFlow.verifier,
       orgId: configRow.organization_id,
-      redirectTo: req.query.redirectTo || `${frontendUrl}/login?sso=success`,
+      redirectTo: safeRedirectTo,
     }))
   );
 
@@ -1112,7 +1379,9 @@ async function ssoCallback(req, res) {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
   if (error) {
-    return res.redirect(`${frontendUrl}/login?sso_error=${encodeURIComponent(String(error))}`);
+    // OT-106: log the specific provider error internally, expose only a generic code
+    log.warn('[sso] Provider returned error', { provider, error: String(error) });
+    return res.redirect(`${frontendUrl}/login?sso_error=provider_error`);
   }
   if (!code || !state) return R.badRequest(res, 'Missing code/state');
 
@@ -1132,16 +1401,33 @@ async function ssoCallback(req, res) {
     scopes: JSON.parse(configRow.scopes || '["openid","email","profile"]'),
   };
   const tokenResponse = await oidc.exchangeCode(provider, config, code, stateData.verifier);
-  const claims = oidc.decodeJwtWithoutVerify(tokenResponse.id_token);
 
-  if (claims.nonce !== stateData.nonce) {
-    return res.redirect(`${frontendUrl}/login?sso_error=invalid_nonce`);
+  let claims;
+  try {
+    claims = await oidc.verifyIdToken(provider, config, tokenResponse.id_token, {
+      nonce: stateData.nonce,
+    });
+  } catch (err) {
+    log.warn('[sso] ID token verification failed', { provider, error: err.message });
+    return res.redirect(`${frontendUrl}/login?sso_error=invalid_token`);
   }
 
   const email = String(claims.email || '').toLowerCase();
+  if (claims.email_verified === false) {
+    return res.redirect(`${frontendUrl}/login?sso_error=email_not_verified`);
+  }
   const emailDomain = email.split('@')[1];
-  const allowedDomains = JSON.parse(configRow.allowed_domains || '[]').map((d) => String(d).toLowerCase());
+  let allowedDomains;
+  try {
+    allowedDomains = JSON.parse(configRow.allowed_domains || '[]').map((d) => String(d).toLowerCase());
+  } catch {
+    // OT-106: don't reveal internal config structure — log internally
+    log.warn('[sso] allowed_domains parse failed', { provider, orgId: stateData.orgId });
+    return res.redirect(`${frontendUrl}/login?sso_error=auth_error`);
+  }
   if (!email || (allowedDomains.length && !allowedDomains.includes(emailDomain))) {
+    // OT-106: 'domain_not_allowed' is kept as-is — it is informative to the user without
+    // leaking internal configuration details
     return res.redirect(`${frontendUrl}/login?sso_error=domain_not_allowed`);
   }
 
@@ -1162,9 +1448,13 @@ async function ssoCallback(req, res) {
       );
       branchId = branchRow?.id || null;
     }
-    if (!branchId) return res.redirect(`${frontendUrl}/login?sso_error=branch_missing`);
+    // OT-106: 'branch_missing' reveals internal provisioning details — use generic code
+    if (!branchId) {
+      log.warn('[sso] auto-provision failed: no branch found', { provider, orgId: configRow.organization_id });
+      return res.redirect(`${frontendUrl}/login?sso_error=provisioning_error`);
+    }
 
-    const passwordHash = await bcrypt.hash(crypto.randomUUID(), 12);
+    const passwordHash = await pwHash.hash(crypto.randomUUID());
     const firstName = claims.given_name || claims.name?.split(' ')[0] || 'SSO';
     const lastName = claims.family_name || claims.name?.split(' ').slice(1).join(' ') || provider.toUpperCase();
 
@@ -1203,6 +1493,7 @@ async function ssoCallback(req, res) {
 
 module.exports = {
   login, refresh, logout, logoutAll, me,
+  syncRecentRevocations,
   requestPasswordReset, confirmPasswordReset, changePassword,
   listSessions, revokeSession,
   listApiKeys, createApiKey, deleteApiKey,

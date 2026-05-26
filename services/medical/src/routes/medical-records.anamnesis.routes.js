@@ -1,14 +1,38 @@
 'use strict';
 
-const { Router, body, db, R, validate, logMedicalError, encryptFields, ANAMNESIS_FIELDS } = require('./medical-records.sections.common');
+const {
+  Router,
+  body,
+  db,
+  R,
+  validate,
+  logMedicalError,
+  encryptFields,
+  ANAMNESIS_FIELDS,
+  ensureMedicalRecordInScope,
+} = require('./medical-records.sections.common');
 
 const router = Router();
 
 router.post('/:id/anamnesis',
-  body('currentIllnessHistory').notEmpty(),
+  body('currentIllnessHistory').notEmpty().isString().isLength({ max: 8000 }),
+  body('illnessDuration').optional({ nullable: true }).isString().isLength({ max: 200 }),
+  body('illnessOnset').optional({ nullable: true }).isString().isLength({ max: 200 }),
+  body('otherSigns').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  body('vaccinationHistory').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  body('dewormingHistory').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  body('previousIllnesses').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  body('previousSurgeries').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  body('currentMedications').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  body('feedingBrand').optional({ nullable: true }).isString().isLength({ max: 500 }),
+  body('recentTravel').optional({ nullable: true }).isString().isLength({ max: 2000 }),
+  body('ownerObservations').optional({ nullable: true }).isString().isLength({ max: 4000 }),
   validate,
   async (req, res, next) => {
     try {
+      const scopedRecord = await ensureMedicalRecordInScope(req, req.params.id);
+      if (!scopedRecord) return R.notFound(res, 'Historia clinica no encontrada');
+
       const {
         currentIllnessHistory, illnessDuration, illnessOnset,
         appetite, thirst, urination, defecation, vomiting, coughing,

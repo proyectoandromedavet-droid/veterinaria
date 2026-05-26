@@ -10,16 +10,23 @@ const {
 
 const router = express.Router();
 
+const ALLOWED_CHANNELS_HISTORY = new Set(['sms', 'whatsapp', 'both', 'email', 'push_topic', 'template']);
+
 router.get('/', async (req, res, next) => {
   try {
     if (!requireUserContext(req, res)) return;
-    const { channel, page = 1, limit = 30 } = req.query;
+
+    // Cap en paginación: page máx 10000, limit entre 1 y 100
+    const page  = Math.min(Math.max(parseInt(`${req.query.page  || '1'}`,  10) || 1,  1), 10000);
+    const limit = Math.min(Math.max(parseInt(`${req.query.limit || '30'}`, 10) || 30, 1), 100);
     const offset = (page - 1) * limit;
+
     const conds = ['branch_id = :bid'];
-    const p = { bid: req.user.branchId, limit: parseInt(limit, 10), offset: parseInt(offset, 10) };
-    if (channel) {
+    const p = { bid: req.user.branchId, limit, offset };
+    if (req.query.channel) {
+      if (!ALLOWED_CHANNELS_HISTORY.has(req.query.channel)) return R.badRequest(res, 'channel inválido');
       conds.push('channel = :channel');
-      p.channel = channel;
+      p.channel = req.query.channel;
     }
 
     const rows = await db.query(

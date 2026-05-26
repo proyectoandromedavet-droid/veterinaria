@@ -153,8 +153,30 @@ async function getBillingPortalUrl(orgId, returnUrl) {
 
 /**
  * Valida y parsea un webhook de Stripe.
+ *
+ * IMPORTANTE: `payload` debe ser el body RAW (Buffer o string) — NO el objeto
+ * ya parseado por express.json(). La ruta del webhook debe usar:
+ *   express.raw({ type: 'application/json' })
+ * antes de llamar a este helper. Si se pasa un objeto, la firma HMAC de Stripe
+ * fallará silenciosamente y el evento será rechazado.
+ *
+ * @param {Buffer|string} payload  — raw request body
+ * @param {string}        signature — valor del header Stripe-Signature
  */
 function constructWebhookEvent(payload, signature) {
+  // Detectar si accidentalmente se pasó un objeto ya parseado
+  if (payload !== null && typeof payload === 'object' && !Buffer.isBuffer(payload)) {
+    throw Object.assign(
+      new Error(
+        'constructWebhookEvent: payload debe ser el body raw (Buffer/string), no un objeto parseado. ' +
+        'Asegurate de usar express.raw({ type: "application/json" }) en la ruta del webhook.'
+      ),
+      { http: 400, code: 'STRIPE_PAYLOAD_PARSED' }
+    );
+  }
+  if (!signature) {
+    throw Object.assign(new Error('Stripe-Signature header missing'), { http: 400, code: 'STRIPE_SIG_MISSING' });
+  }
   const stripe = getStripe();
   const secret = getSecret('STRIPE_WEBHOOK_SECRET');
   if (!secret) throw Object.assign(new Error('STRIPE_WEBHOOK_SECRET not configured'), { http: 500 });

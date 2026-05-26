@@ -2,7 +2,13 @@
 
 const { verifyAccess } = require('../../shared/jwt');
 const { getRedisSingleton } = require('../../shared/redis');
+const {
+  getDependencyMode,
+  recordDependencyDegradation,
+  logDependencyIssue,
+} = require('../../shared/dependencyPolicy');
 const { logger } = require('./middleware/logger');
+const { extractSlug, resolveSlug } = require('./middleware/subdomain');
 
 function isAllowedOrigin(origin) {
   if (!origin) return false;
@@ -23,7 +29,7 @@ function isAllowedOrigin(origin) {
 
   const allowed = allowedRaw.split(',').map((o) => o.trim().toLowerCase()).filter(Boolean);
   const originLower = origin.toLowerCase().replace(/\/$/, '');
-  return allowed.some((a) => originLower === a || originLower.startsWith(`${a}/`));
+  return allowed.some((a) => originLower === a);
 }
 
 function readCookie(req, name) {
@@ -47,12 +53,23 @@ function getTokenFromRequest(req) {
   try {
     const url = new URL(req.url, 'http://localhost');
     const token = url.searchParams.get('token');
-    if (token) return token;
+    // Log the path without the query string to avoid token leakage in log files
+    if (token) {
+      logger.debug('WS: token extracted from query string (dev only)', { path: url.pathname });
+      return token;
+    }
   } catch (error) {
-    logger.warn('WS: failed parsing request URL for token fallback', { error: error?.message, url: req.url });
+    logger.warn('WS: failed parsing request URL for token fallback', { error: error?.message, path: req.url?.split('?')[0] });
   }
 
   return null;
+}
+
+function getRevocationMode() {
+  return getDependencyMode(
+    'auth_revocation',
+    process.env.NODE_ENV === 'production' ? 'strict' : 'degraded'
+  );
 }
 
 async function verifyWsRequest(req) {
@@ -89,9 +106,22 @@ async function verifyWsRequest(req) {
   }
 
   if (user.jti) {
+    const revocationMode = getRevocationMode();
     try {
       const revokeCheck = await getRedisSingleton('gateway-auth', 'gateway-auth');
-      const revoked = revokeCheck.isReady ? await revokeCheck.get(`revoked:${user.jti}`) : null;
+      if (!revokeCheck.isReady) {
+        if (revocationMode === 'strict') {
+          recordDependencyDegradation('auth_revocation', revocationMode, 'blocked', { service: 'gateway-ws' });
+          return {
+            ok: false,
+            code: 1013,
+            reason: 'Token revocation backend unavailable',
+            log: { message: 'WS: connection rejected - revocation backend unavailable', meta: { userId: user.userId } },
+          };
+        }
+        return { ok: true, user };
+      }
+      const revoked = await revokeCheck.get(`revoked:${user.jti}`);
       if (revoked) {
         return {
           ok: false,
@@ -101,7 +131,44 @@ async function verifyWsRequest(req) {
         };
       }
     } catch (error) {
-      logger.warn('WS: revocation check failed - continuing', { error: error.message, userId: user.userId });
+      recordDependencyDegradation('auth_revocation', revocationMode, revocationMode === 'strict' ? 'blocked' : 'degraded', { service: 'gateway-ws' });
+      logDependencyIssue(logger, 'auth_revocation', revocationMode, 'WS: revocation check failed', error, { userId: user.userId });
+      if (revocationMode === 'strict') {
+        return {
+          ok: false,
+          code: 1013,
+          reason: 'Token revocation backend unavailable',
+          log: { message: 'WS: connection rejected - revocation check failed', meta: { userId: user.userId } },
+        };
+      }
+    }
+  }
+
+  if (origin) {
+    try {
+      const { hostname } = new URL(origin);
+      const slug = extractSlug(hostname);
+      if (slug) {
+        const tenantOrgId = await resolveSlug(slug);
+        if (!tenantOrgId) {
+          return {
+            ok: false,
+            code: 1013,
+            reason: 'Tenant temporarily unavailable',
+            log: { message: 'WS: connection rejected - tenant resolution failed', meta: { slug, userId: user.userId } },
+          };
+        }
+        if (!user.roles?.includes('superadmin') && String(user.orgId) !== String(tenantOrgId)) {
+          return {
+            ok: false,
+            code: 4003,
+            reason: 'Token does not belong to this tenant',
+            log: { message: 'WS: connection rejected - tenant mismatch', meta: { slug, userOrgId: user.orgId, tenantOrgId } },
+          };
+        }
+      }
+    } catch (error) {
+      logger.warn('WS: tenant validation error — continuing', { error: error?.message, origin });
     }
   }
 

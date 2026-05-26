@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const rateLimit = require('express-rate-limit');
 const ctrl = require('../../controllers/auth.controller');
 const {
   body,
@@ -10,6 +11,15 @@ const {
 } = require('./_common');
 
 const router = Router();
+
+// BUG-015: rate limit en password-reset/confirm para prevenir brute force de tokens
+const passwordResetConfirmLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { message: 'Demasiados intentos. Intente de nuevo en 1 hora.' } },
+});
 
 router.post('/login',
   captchaMiddleware,
@@ -31,6 +41,7 @@ router.post('/password-reset/request',
 );
 
 router.post('/password-reset/confirm',
+  passwordResetConfirmLimiter,
   body('token').notEmpty(),
   strongPasswordField('newPassword'),
   validateRequest,

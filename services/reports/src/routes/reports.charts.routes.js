@@ -5,13 +5,28 @@ const { R, db, dateRange, aggregateDiagnoses } = require('../reports.common');
 
 const router = Router();
 
+// SECURITY: helper para validar y clamp rangos de fecha en charts
+const ISO_DATE_RE_CHARTS = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_CHART_DAYS = 366;
+function chartDateRange(query, defaultFrom) {
+  const now = new Date();
+  const f = (query.from && ISO_DATE_RE_CHARTS.test(query.from)) ? query.from : defaultFrom || new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
+  const t = (query.to   && ISO_DATE_RE_CHARTS.test(query.to))   ? query.to   : now.toISOString().slice(0, 10);
+  const diffDays = (new Date(t) - new Date(f)) / 86_400_000;
+  if (diffDays < 0 || diffDays > MAX_CHART_DAYS) {
+    return { f, t: new Date(new Date(f).getTime() + MAX_CHART_DAYS * 86_400_000).toISOString().slice(0, 10) };
+  }
+  return { f, t };
+}
+
 router.get('/charts/revenue-trend', async (req, res, next) => {
   try {
-    const { from, to, groupBy = 'month' } = req.query;
-    const now = new Date();
-    const f = from || new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const t = to || now.toISOString().slice(0, 10);
-    const fmt = groupBy === 'day' ? '%Y-%m-%d' : groupBy === 'week' ? '%x-W%v' : '%Y-%m';
+    const { groupBy = 'month' } = req.query;
+    const { f, t } = chartDateRange(req.query);
+    // SECURITY: whitelist de groupBy para evitar valor libre en DATE_FORMAT
+    const VALID_GROUP_BY = new Set(['day', 'week', 'month']);
+    const safeGroupBy = VALID_GROUP_BY.has(groupBy) ? groupBy : 'month';
+    const fmt = safeGroupBy === 'day' ? '%Y-%m-%d' : safeGroupBy === 'week' ? '%x-W%v' : '%Y-%m';
 
     const rows = await db.query(
       `SELECT DATE_FORMAT(issued_date,:fmt) AS label,
@@ -23,6 +38,7 @@ router.get('/charts/revenue-trend', async (req, res, next) => {
        GROUP BY label ORDER BY label ASC`,
       { fmt, bid: req.user.branchId, from: f, to: t }
     );
+
 
     return R.ok(res, {
       labels: rows.map((r) => r.label),
@@ -37,17 +53,17 @@ router.get('/charts/revenue-trend', async (req, res, next) => {
 
 router.get('/charts/appointments-heatmap', async (req, res, next) => {
   try {
-    const { from, to } = req.query;
     const now = new Date();
-    const f = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    const t = to || now.toISOString().slice(0, 10);
+    const { f, t } = chartDateRange(req.query, new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10));
 
     const rows = await db.query(
       `SELECT DAYOFWEEK(scheduled_date) AS dow,
               HOUR(scheduled_date)       AS hour,
               COUNT(*) AS count
        FROM appointments
-       WHERE branch_id=:bid AND DATE(scheduled_date) BETWEEN :from AND :to
+       WHERE branch_id=:bid
+         AND scheduled_date >= :from
+         AND scheduled_date < DATE_ADD(:to, INTERVAL 1 DAY)
        GROUP BY dow, hour ORDER BY dow, hour`,
       { bid: req.user.branchId, from: f, to: t }
     );
@@ -82,11 +98,11 @@ router.get('/charts/species-distribution', async (req, res, next) => {
 
 router.get('/charts/top-diagnoses-bar', async (req, res, next) => {
   try {
-    const { from, to, limit = 10 } = req.query;
-    const now = new Date();
-    const f = from || new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const t = to || now.toISOString().slice(0, 10);
+    const { f, t } = chartDateRange(req.query);
+    // SECURITY: cap de limit para evitar dump masivo
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '10', 10) || 10, 1), 50);
 
+    // SECURITY: LIMIT en SQL para evitar carga masiva en memoria antes de agregar
     const rows = await db.query(
       `SELECT d.diagnosis_name, sp.common_name AS species
        FROM diagnoses d
@@ -94,21 +110,22 @@ router.get('/charts/top-diagnoses-bar', async (req, res, next) => {
        JOIN appointments a ON mr.appointment_id=a.id AND a.branch_id=:bid
        JOIN patients p ON mr.patient_id = p.id
        JOIN species sp ON p.species_id = sp.id
-       WHERE DATE(d.created_at) BETWEEN :from AND :to AND d.is_primary=TRUE
-       ORDER BY d.created_at DESC`,
+       WHERE d.created_at >= :from
+         AND d.created_at < DATE_ADD(:to, INTERVAL 1 DAY)
+         AND d.is_primary=TRUE
+       ORDER BY d.created_at DESC
+       LIMIT 5000`,
       { bid: req.user.branchId, from: f, to: t }
     );
-    const grouped = aggregateDiagnoses(rows, parseInt(limit, 10));
+    const grouped = aggregateDiagnoses(rows, limit);
     return R.ok(res, { labels: grouped.map((r) => r.diagnosis_name), values: grouped.map((r) => r.frequency) });
   } catch (e) { next(e); }
 });
 
 router.get('/charts/payment-methods', async (req, res, next) => {
   try {
-    const { from, to } = req.query;
     const now = new Date();
-    const f = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    const t = to || now.toISOString().slice(0, 10);
+    const { f, t } = chartDateRange(req.query, new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10));
 
     const rows = await db.query(
       `SELECT pm.name AS method, COUNT(p.id) AS transactions, ROUND(SUM(p.amount),2) AS total,
@@ -116,7 +133,8 @@ router.get('/charts/payment-methods', async (req, res, next) => {
        FROM payments p
        JOIN payment_methods pm ON p.payment_method_id=pm.id
        JOIN invoices i ON p.invoice_id=i.id AND i.branch_id=:bid
-       WHERE DATE(p.payment_date) BETWEEN :from AND :to
+       WHERE p.payment_date >= :from
+         AND p.payment_date < DATE_ADD(:to, INTERVAL 1 DAY)
        GROUP BY pm.name ORDER BY total DESC`,
       { bid: req.user.branchId, from: f, to: t }
     );

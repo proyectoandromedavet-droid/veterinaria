@@ -2,7 +2,7 @@
 
 const { Router } = require('express');
 const engine = require('../../../../shared/rulesEngine');
-const { body, param, db, validate, logMedicalError } = require('./medical.common');
+const { body, param, db, R, validate, logMedicalError } = require('./medical.common');
 
 const router = Router();
 
@@ -28,9 +28,12 @@ router.get('/', async (req, res, next) => {
 router.post('/',
   body('rule_type').isIn(VALID_TYPES),
   body('name').isString().notEmpty().isLength({ max: 120 }),
-  body('conditions').isArray({ min: 1 }),
-  body('conditions.*.field').isString().notEmpty(),
+  body('description').optional({ nullable: true }).isString().isLength({ max: 500 }),
+  body('action_message').optional({ nullable: true }).isString().isLength({ max: 500 }),
+  body('conditions').isArray({ min: 1, max: 20 }),
+  body('conditions.*.field').isString().notEmpty().isLength({ max: 100 }),
   body('conditions.*.operator').isIn(VALID_OPS),
+  body('conditions.*.value').optional().isLength({ max: 500 }),
   body('action').optional().isIn(['block', 'warn', 'alert']),
   validate,
   async (req, res, next) => {
@@ -38,6 +41,13 @@ router.post('/',
       const orgId = req.user?.orgId;
       const userId = req.user?.userId;
       const { rule_type, name, description, conditions, action, action_message, branch_id, priority } = req.body;
+      if (branch_id) {
+        const branch = await db.queryOne(
+          `SELECT id FROM branches WHERE id = :branchId AND organization_id = :orgId`,
+          { branchId: branch_id, orgId }
+        );
+        if (!branch) return R.forbidden(res, 'Sucursal fuera de organizacion');
+      }
 
       const result = await db.query(
         `INSERT INTO business_rules
@@ -68,8 +78,13 @@ router.post('/',
 
 router.put('/:id',
   param('id').isInt(),
-  body('name').optional().isString().notEmpty(),
-  body('conditions').optional().isArray({ min: 1 }),
+  body('name').optional().isString().notEmpty().isLength({ max: 120 }),
+  body('description').optional({ nullable: true }).isString().isLength({ max: 500 }),
+  body('action_message').optional({ nullable: true }).isString().isLength({ max: 500 }),
+  body('conditions').optional().isArray({ min: 1, max: 20 }),
+  body('conditions.*.field').optional().isString().notEmpty().isLength({ max: 100 }),
+  body('conditions.*.operator').optional().isIn(VALID_OPS),
+  body('conditions.*.value').optional().isLength({ max: 500 }),
   body('action').optional().isIn(['block', 'warn', 'alert']),
   body('is_active').optional().isBoolean(),
   validate,
@@ -91,10 +106,12 @@ router.put('/:id',
 
       if (!updates.length) return R.error(res, 400, 'No fields to update', null, 'VAL_009');
 
-      await db.query(
+      // SEC: verificar affectedRows para detectar regla inexistente o de otra org
+      const [result] = await db.query(
         `UPDATE business_rules SET ${updates.join(', ')} WHERE id = :id AND org_id = :orgId`,
         params
       );
+      if (!result.affectedRows) return R.notFound(res, 'Regla no encontrada');
 
       await engine.invalidateCache(orgId);
       res.json({ success: true });

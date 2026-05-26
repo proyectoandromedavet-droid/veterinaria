@@ -5,9 +5,10 @@
  * JWT RS256 asimétrico.
  *
  * Configuración de claves (en orden de prioridad):
- *   1. JWT_PRIVATE_KEY + JWT_PUBLIC_KEY  (env, PEM o base64)  ← producción
- *   2. JWT_KEY_FILE  (ruta a archivo PEM con clave privada)    ← staging
- *   3. Par de claves efímero RSA-2048 generado en memoria      ← dev/test
+ *   1. JWT_KEYRING_JSON  (current + claves activas por kid)    ← producción/rotación coordinada
+ *   2. JWT_PRIVATE_KEY + JWT_PUBLIC_KEY  (env, PEM o base64)  ← compatibilidad
+ *   3. JWT_KEY_FILE  (ruta a archivo PEM con clave privada)    ← staging
+ *   4. Par de claves efímero RSA-2048 generado en memoria      ← dev/test
  *
  * En NODE_ENV=production sin JWT_PRIVATE_KEY/JWT_PUBLIC_KEY → error al arrancar.
  */
@@ -36,18 +37,73 @@ const log = createLogger('jwt');
 let _privateKey    = null;
 let _publicKey     = null;
 let _keyId         = null;
-let _oldPublicKey  = null;  // clave anterior — solo para verificación durante rotación
+let _verifyKeys    = [];    // [{ kid, publicKey }]
+
+function _normalisePem(raw) {
+  if (!raw) return null;
+  const text = String(raw);
+  if (!text.includes('-----')) return Buffer.from(text, 'base64').toString('utf8');
+  return text;
+}
 
 function _loadPem(envVar) {
   const raw = getSecret(envVar, { trim: false });
   if (!raw) return null;
-  // Soporte para PEM en base64 (útil en variables de entorno sin saltos de línea)
-  if (!raw.includes('-----')) return Buffer.from(raw, 'base64').toString('utf8');
-  return raw;
+  return _normalisePem(raw);
+}
+
+function _kidForPublicKey(pubPem) {
+  return crypto.createHash('sha256').update(pubPem).digest('hex').slice(0, 16);
+}
+
+function _readKeyring() {
+  const raw = getSecret('JWT_KEYRING_JSON', { trim: false });
+  if (!raw) return null;
+
+  try {
+    const jsonText = String(raw).trim().startsWith('{')
+      ? raw
+      : Buffer.from(raw, 'base64').toString('utf8');
+    const parsed = JSON.parse(jsonText);
+    const keys = Array.isArray(parsed.keys) ? parsed.keys : [];
+    const currentKid = parsed.current || parsed.currentKid || null;
+
+    const normalised = keys.map((entry) => {
+      const publicKey = _normalisePem(entry.publicKey || entry.public || entry.pub);
+      const privateKey = _normalisePem(entry.privateKey || entry.private || entry.priv);
+      if (!publicKey) return null;
+      return {
+        kid: entry.kid || _kidForPublicKey(publicKey),
+        publicKey,
+        privateKey,
+      };
+    }).filter(Boolean);
+
+    if (!normalised.length) return null;
+    const current = normalised.find((entry) => entry.kid === currentKid && entry.privateKey)
+      || normalised.find((entry) => entry.privateKey);
+    if (!current) {
+      throw new Error('JWT_KEYRING_JSON must include one signing key with privateKey');
+    }
+
+    return { current, keys: normalised };
+  } catch (err) {
+    log.error('JWT keyring load failed', { error: err.message });
+    throw err;
+  }
 }
 
 function _initKeys() {
   if (_publicKey !== null) return;   // ya inicializadas
+
+  const keyring = _readKeyring();
+  if (keyring) {
+    _privateKey = keyring.current.privateKey;
+    _publicKey = keyring.current.publicKey;
+    _keyId = keyring.current.kid;
+    _verifyKeys = keyring.keys.map((entry) => ({ kid: entry.kid, publicKey: entry.publicKey }));
+    return;
+  }
 
   const privPem = _loadPem('JWT_PRIVATE_KEY');
   const pubPem  = _loadPem('JWT_PUBLIC_KEY');
@@ -55,9 +111,13 @@ function _initKeys() {
   if (privPem && pubPem) {
     _privateKey = privPem;
     _publicKey  = pubPem;
-    _keyId = crypto.createHash('sha256').update(pubPem).digest('hex').slice(0, 16);
+    _keyId = _kidForPublicKey(pubPem);
     // Cargar clave anterior si existe (rotación en curso)
-    _oldPublicKey = _loadPem('JWT_PUBLIC_KEY_OLD') || null;
+    const oldPublicKey = _loadPem('JWT_PUBLIC_KEY_OLD') || null;
+    _verifyKeys = [{ kid: _keyId, publicKey: _publicKey }];
+    if (oldPublicKey) {
+      _verifyKeys.push({ kid: _kidForPublicKey(oldPublicKey), publicKey: oldPublicKey });
+    }
     return;
   }
 
@@ -70,7 +130,8 @@ function _initKeys() {
       const pubObj   = crypto.createPublicKey(keyObj);
       _privateKey = privFile;
       _publicKey  = pubObj.export({ type: 'spki', format: 'pem' });
-      _keyId = crypto.createHash('sha256').update(_publicKey).digest('hex').slice(0, 16);
+      _keyId = _kidForPublicKey(_publicKey);
+      _verifyKeys = [{ kid: _keyId, publicKey: _publicKey }];
       return;
     } catch (err) {
       log.warn('JWT key file fallback failed', { error: err.message, keyFile });
@@ -93,7 +154,8 @@ function _initKeys() {
   });
   _privateKey = privateKey;
   _publicKey  = publicKey;
-  _keyId = crypto.createHash('sha256').update(publicKey).digest('hex').slice(0, 16);
+  _keyId = _kidForPublicKey(publicKey);
+  _verifyKeys = [{ kid: _keyId, publicKey }];
 }
 
 // ─── Configuración de expiración ──────────────────────────────────────────────
@@ -154,18 +216,31 @@ function _rejectUnsafeAlgorithm(token) {
  * Verifica un access token. Lanza si es inválido o expirado.
  * Durante rotación, intenta la clave actual y luego la anterior.
  */
-function verifyAccess(token) {
+function _verificationOrder(token) {
   _initKeys();
+  const decoded = jwt.decode(token, { complete: true });
+  const kid = decoded?.header?.kid || null;
+  if (!kid) return _verifyKeys.length ? _verifyKeys : [{ kid: _keyId, publicKey: _publicKey }];
+  const preferred = _verifyKeys.filter((entry) => entry.kid === kid);
+  const fallback = _verifyKeys.filter((entry) => entry.kid !== kid);
+  return [...preferred, ...fallback];
+}
+
+function _verifyWithKeyring(token) {
   _rejectUnsafeAlgorithm(token);   // protección alg:none antes de verify
-  try {
-    return jwt.verify(token, _publicKey, { algorithms: ['RS256'] });
-  } catch (err) {
-    // Durante key rotation: si el token fue firmado con la clave anterior, sigue siendo válido
-    if (_oldPublicKey && (err.name === 'JsonWebTokenError')) {
-      return jwt.verify(token, _oldPublicKey, { algorithms: ['RS256'] });
+  let lastError;
+  for (const entry of _verificationOrder(token)) {
+    try {
+      return jwt.verify(token, entry.publicKey, { algorithms: ['RS256'] });
+    } catch (err) {
+      lastError = err;
     }
-    throw err;
   }
+  throw lastError;
+}
+
+function verifyAccess(token) {
+  return _verifyWithKeyring(token);
 }
 
 /**
@@ -173,16 +248,7 @@ function verifyAccess(token) {
  * Durante rotación, intenta la clave actual y luego la anterior.
  */
 function verifyRefresh(token) {
-  _initKeys();
-  _rejectUnsafeAlgorithm(token);   // protección alg:none antes de verify
-  try {
-    return jwt.verify(token, _publicKey, { algorithms: ['RS256'] });
-  } catch (err) {
-    if (_oldPublicKey && (err.name === 'JsonWebTokenError')) {
-      return jwt.verify(token, _oldPublicKey, { algorithms: ['RS256'] });
-    }
-    throw err;
-  }
+  return _verifyWithKeyring(token);
 }
 
 /**
@@ -231,11 +297,7 @@ function _toJwk(pubPem, kid) {
  */
 function getJwks() {
   _initKeys();
-  const keys = [_toJwk(_publicKey, _keyId)];
-  if (_oldPublicKey) {
-    const oldKid = crypto.createHash('sha256').update(_oldPublicKey).digest('hex').slice(0, 16);
-    keys.push(_toJwk(_oldPublicKey, oldKid));
-  }
+  const keys = _verifyKeys.map((entry) => _toJwk(entry.publicKey, entry.kid));
   return { keys };
 }
 

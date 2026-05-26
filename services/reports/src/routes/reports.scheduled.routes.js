@@ -35,6 +35,27 @@ router.get('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get('/runs', async (req, res, next) => {
+  try {
+    // SECURITY: cap de limit y page para evitar dumps masivos
+    const limit  = Math.min(Math.max(parseInt(req.query.limit || '50', 10) || 50, 1), 200);
+    const page   = Math.max(parseInt(req.query.page  || '1',  10) || 1, 1);
+    const offset = (page - 1) * limit;
+    const rows = await db.query(
+      `SELECT rr.*, sr.name AS scheduled_name,
+              CONCAT(u.first_name,' ',u.last_name) AS triggered_by_name
+       FROM report_runs rr
+       LEFT JOIN scheduled_reports sr ON rr.scheduled_report_id = sr.id
+       LEFT JOIN users u ON rr.triggered_by = u.id
+       WHERE rr.org_id = :orgId
+       ORDER BY rr.created_at DESC
+       LIMIT :limit OFFSET :offset`,
+      { orgId: req.user.orgId, limit: parseInt(limit, 10), offset: parseInt(offset, 10) }
+    );
+    return R.ok(res, rows);
+  } catch (e) { next(e); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const row = await db.queryOne(
@@ -109,13 +130,25 @@ router.patch('/:id', async (req, res, next) => {
 
     const fields = [];
     const vals = { id: req.params.id };
-    const allowed = ['name', 'frequency', 'day_of_week', 'day_of_month', 'format', 'recipients', 'params', 'is_active', 'branch_id'];
+    // SECURITY: branch_id removido de allowed — tiene su propia validación de org más abajo
+    const allowed = ['name', 'frequency', 'day_of_week', 'day_of_month', 'format', 'recipients', 'params', 'is_active'];
 
     for (const [k, v] of Object.entries(req.body)) {
       const col = k.replace(/([A-Z])/g, '_$1').toLowerCase();
       if (!allowed.includes(col)) continue;
       fields.push(`${col} = :${col}`);
       vals[col] = Array.isArray(v) || typeof v === 'object' ? JSON.stringify(v) : v;
+    }
+
+    // SECURITY: si se solicita cambiar branch_id, verificar que pertenece a la org
+    if (req.body.branchId) {
+      const branch = await db.queryOne(
+        'SELECT id FROM branches WHERE id = :bid AND organization_id = :orgId',
+        { bid: req.body.branchId, orgId: req.user.orgId }
+      );
+      if (!branch) return R.forbidden(res, 'La sucursal no pertenece a la organizacion');
+      fields.push('branch_id = :branch_id');
+      vals.branch_id = branch.id;
     }
     if (!fields.length) return R.badRequest(res, 'Sin campos para actualizar');
 
@@ -223,25 +256,6 @@ router.post('/:id/run', async (req, res, next) => {
     });
 
     return R.accepted(res, { runId, message: 'Reporte en proceso. Se enviará por email al terminar.' });
-  } catch (e) { next(e); }
-});
-
-router.get('/runs', async (req, res, next) => {
-  try {
-    const { page = 1, limit = 50 } = req.query;
-    const offset = (page - 1) * limit;
-    const rows = await db.query(
-      `SELECT rr.*, sr.name AS scheduled_name,
-              CONCAT(u.first_name,' ',u.last_name) AS triggered_by_name
-       FROM report_runs rr
-       LEFT JOIN scheduled_reports sr ON rr.scheduled_report_id = sr.id
-       LEFT JOIN users u ON rr.triggered_by = u.id
-       WHERE rr.org_id = :orgId
-       ORDER BY rr.created_at DESC
-       LIMIT :limit OFFSET :offset`,
-      { orgId: req.user.orgId, limit: parseInt(limit, 10), offset: parseInt(offset, 10) }
-    );
-    return R.ok(res, rows);
   } catch (e) { next(e); }
 });
 

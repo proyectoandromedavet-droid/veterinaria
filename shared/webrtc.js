@@ -327,7 +327,9 @@ const builtinAdapter = {
 
   async generateToken ({ roomName, identity, role = 'guest', ttlSeconds = 3600 }) {
     const payload = { roomName, identity, role, exp: Math.floor(Date.now() / 1000) + ttlSeconds };
-    const secret  = process.env.WEBRTC_ROOM_SECRET || process.env.JWT_SECRET || 'vm_webrtc_secret';
+    // BUG-15: no usar JWT_SECRET como fallback ni secret hardcodeado
+    const secret  = process.env.WEBRTC_ROOM_SECRET;
+    if (!secret) throw new Error('WEBRTC_ROOM_SECRET must be configured');
     const token   = crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
     return {
       token,

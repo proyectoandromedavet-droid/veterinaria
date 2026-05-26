@@ -26,8 +26,12 @@ router.get('/search/patients', async (req, res, next) => {
   try {
     const { q, page = 1, limit = 20 } = req.query;
     if (!q || q.length < 2) return R.badRequest(res, 'q debe tener al menos 2 caracteres');
+    // OT-SEC: limitar q para evitar LIKE explosivo en búsquedas muy largas
+    if (q.length > 200) return R.badRequest(res, 'q no puede superar 200 caracteres');
 
-    const offset = (page - 1) * limit;
+    const parsedLimit  = Math.min(parseInt(`${limit}`, 10) || 20, 100);
+    const parsedPage   = Math.max(parseInt(`${page}`, 10) || 1, 1);
+    const offset = (parsedPage - 1) * parsedLimit;
     const search = `%${q}%`;
 
     const rows = await db.query(
@@ -47,7 +51,7 @@ router.get('/search/patients', async (req, res, next) => {
          AND p.is_active = TRUE
        ORDER BY p.name
        LIMIT :limit OFFSET :offset`,
-      { orgId: req.user.orgId, s: search, limit: Math.min(parseInt(limit, 10) || 20, 100), offset: parseInt(offset, 10) || 0 }
+      { orgId: req.user.orgId, s: search, limit: parsedLimit, offset }
     );
     const pii = hasPiiAccess(req);
     const safeRows = rows.map(r => ({
@@ -66,8 +70,12 @@ router.get('/search/clients', async (req, res, next) => {
   try {
     const { q, page = 1, limit = 20 } = req.query;
     if (!q || q.length < 2) return R.badRequest(res, 'q debe tener al menos 2 caracteres');
+    // OT-SEC: limitar q para evitar LIKE explosivo
+    if (q.length > 200) return R.badRequest(res, 'q no puede superar 200 caracteres');
 
-    const offset = (page - 1) * limit;
+    const parsedLimit  = Math.min(parseInt(`${limit}`, 10) || 20, 100);
+    const parsedPage   = Math.max(parseInt(`${page}`, 10) || 1, 1);
+    const offset = (parsedPage - 1) * parsedLimit;
     const search = `%${q}%`;
 
     const rows = await db.query(
@@ -83,7 +91,7 @@ router.get('/search/clients', async (req, res, next) => {
          AND cl.is_active = TRUE
        GROUP BY cl.id ORDER BY client_name
        LIMIT :limit OFFSET :offset`,
-      { orgId: req.user.orgId, s: search, limit: Math.min(parseInt(limit, 10) || 20, 100), offset: parseInt(offset, 10) || 0 }
+      { orgId: req.user.orgId, s: search, limit: parsedLimit, offset }
     );
     const pii = hasPiiAccess(req);
     const safeRows = rows.map(r => ({

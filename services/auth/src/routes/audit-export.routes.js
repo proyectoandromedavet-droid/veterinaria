@@ -24,6 +24,7 @@ const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
 const { fromHeaders, requireOrgContext } = require('../../../../shared/requestContext');
 const { requireAdminRole } = require('../../../../shared/adminAuth');
+const { requireInternalSig } = require('../../../../shared/internalAuth');
 
 const router = Router();
 let securityAlertsSchemaPromise;
@@ -40,6 +41,8 @@ async function getSecurityAlertsColumns() {
   return securityAlertsSchemaPromise;
 }
 
+// /export and /alerts/scan require internal signature (internal-only operations)
+// /alerts is accessible to admin users through the gateway without internal sig
 router.get('/export', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const orgId = req.user.orgId;
@@ -106,7 +109,7 @@ router.get('/alerts', fromHeaders, requireOrgContext, requireAdminRole, async (r
   } catch (e) { next(e); }
 });
 
-router.post('/alerts/scan', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
+router.post('/alerts/scan', requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const generated = await scanSuspiciousAccessPatterns(parseInt(req.body?.windowMinutes || '1', 10));
     return R.ok(res, { generated });

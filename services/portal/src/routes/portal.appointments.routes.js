@@ -11,8 +11,8 @@ router.get('/', portalAuth, async (req, res, next) => {
     const { status, upcoming, page = 1 } = req.query;
     const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
     const offset = (Math.max(parseInt(page, 10), 1) - 1) * limit;
-    const conds = ['i.client_id=:cid'];
-    const p = { cid: req.owner.clientId, limit, offset };
+    const conds = ['i.client_id=:cid', 'b.organization_id=:orgId'];
+    const p = { cid: req.owner.clientId, orgId: req.owner.orgId, limit, offset };
     if (status) { conds.push('a.status=:status'); p.status = status; }
     if (upcoming === 'true') conds.push('a.scheduled_date >= NOW()');
 
@@ -43,15 +43,17 @@ router.post('/',
   portalAuth,
   vBody('patientId').isInt(),
   vBody('appointmentDate').isISO8601(),
-  vBody('reason').notEmpty(),
+  vBody('reason').notEmpty().isLength({ max: 500 }),    // BUG-010
+  vBody('notes').optional().isLength({ max: 1000 }),    // BUG-010
   validate,
   async (req, res, next) => {
     try {
       const { patientId, appointmentDate, reason, notes, branchId } = req.body;
       const owned = await db.queryOne(
-        `SELECT p.branch_id, p.organization_id
+        `SELECT c.branch_id, p.organization_id
          FROM patient_owners po
          JOIN patients p ON p.id = po.patient_id
+         JOIN clients c ON c.id = po.client_id
          WHERE po.patient_id=:pid AND po.client_id=:cid`,
         { pid: patientId, cid: req.owner.clientId }
       );
@@ -115,15 +117,21 @@ router.patch('/:id/cancel', portalAuth, async (req, res, next) => {
     if (!apt) return R.notFound(res, 'Cita no encontrada');
     if (!['requested', 'confirmed'].includes(apt.status)) return R.conflict(res, 'Esta cita no puede cancelarse');
 
-    await db.query(
-      `UPDATE appointments SET status='cancelled', cancellation_reason=:reason, updated_at=NOW() WHERE id=:id`,
-      { reason: req.body.reason || 'Cancelado por el duenio', id: apt.id }
+    // BUG-010: limitar longitud del motivo de cancelación
+    const cancelReason = (req.body.reason || 'Cancelado por el duenio').slice(0, 500);
+
+    // BUG-005: fix TOCTOU — re-verificar el status en el WHERE del UPDATE
+    const [result] = await db.query(
+      `UPDATE appointments SET status='cancelled', cancellation_reason=:reason, updated_at=NOW()
+       WHERE id=:id AND status IN ('requested','confirmed')`,
+      { reason: cancelReason, id: apt.id }
     );
+    if (!result.affectedRows) return R.conflict(res, 'La cita ya fue modificada por otro proceso');
     publishPortalEvent('portal.appointment.cancelled', {
       appointmentId: apt.id,
       clientId: req.owner.clientId,
       orgId: req.owner.orgId || null,
-      reason: req.body.reason || 'Cancelado por el duenio',
+      reason: cancelReason,
     }, req);
     return R.noContent(res);
   } catch (e) { next(e); }

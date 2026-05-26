@@ -23,6 +23,13 @@ router.get('/', httpCacheHeaders({ maxAge: 300, scope: 'private' }), async (req,
 
 router.get('/:id/items', httpCacheHeaders({ maxAge: 300, scope: 'private' }), async (req, res, next) => {
   try {
+    // IDOR fix: verify price_list belongs to the authenticated user's branch before returning items
+    const priceList = await db.queryOne(
+      `SELECT id FROM price_lists WHERE id = :pid AND branch_id = :bid AND is_active = TRUE`,
+      { pid: req.params.id, bid: req.user.branchId }
+    );
+    if (!priceList) return R.notFound(res, 'Lista de precios no encontrada');
+
     const rows = await db.query(
       `SELECT pli.*, sc.name AS service_name, cat.name AS category
        FROM price_list_items pli
@@ -34,7 +41,7 @@ router.get('/:id/items', httpCacheHeaders({ maxAge: 300, scope: 'private' }), as
     );
     return R.ok(res, rows);
   } catch (e) {
-    logBillingError('GET /price-lists/:id/items', e, { priceListId: req.params.id });
+    logBillingError('GET /price-lists/:id/items', e, { priceListId: req.params.id, branchId: req.user?.branchId });
     next(e);
   }
 });

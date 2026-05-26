@@ -27,6 +27,24 @@ function getClient() {
   return _client;
 }
 
+// ── Validación de número de teléfono ──────────────────────────────────────────
+/**
+ * Valida y normaliza un número de teléfono destino.
+ * Solo acepta formato E.164: + seguido de 7-15 dígitos.
+ * Previene header injection por números malformados pasados a la API de Twilio.
+ */
+function validatePhoneNumber(to) {
+  // Extraer solo dígitos y el signo +
+  const cleaned = String(to || '').trim();
+  if (!/^\+[1-9]\d{6,14}$/.test(cleaned)) {
+    throw Object.assign(
+      new Error(`Número de teléfono inválido: debe ser formato E.164 (ej: +5491112345678)`),
+      { code: 'INVALID_PHONE_NUMBER' }
+    );
+  }
+  return cleaned;
+}
+
 // ── SMS ───────────────────────────────────────────────────────────────────────
 /**
  * Enviar un SMS.
@@ -38,7 +56,10 @@ async function sendSms(to, body) {
   const from = process.env.TWILIO_PHONE_NUMBER;
   if (!from) throw new Error('TWILIO_PHONE_NUMBER no configurado');
 
-  const msg = await getClient().messages.create({ to, from, body });
+  // SEC: validar número destino para prevenir header injection en la API de Twilio
+  const toSafe = validatePhoneNumber(to);
+
+  const msg = await getClient().messages.create({ to: toSafe, from, body });
   return { sid: msg.sid, status: msg.status };
 }
 
@@ -52,7 +73,11 @@ async function sendSms(to, body) {
 async function sendWhatsApp(to, body) {
   const fromRaw = process.env.TWILIO_WHATSAPP_NUMBER || '';
   const from    = fromRaw.startsWith('whatsapp:') ? fromRaw : `whatsapp:${fromRaw}`;
-  const toFmt   = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
+
+  // SEC: extraer y validar número base antes de agregar prefijo whatsapp:
+  const toBase  = to.startsWith('whatsapp:') ? to.slice('whatsapp:'.length) : to;
+  const toSafe  = validatePhoneNumber(toBase);
+  const toFmt   = `whatsapp:${toSafe}`;
 
   const msg = await getClient().messages.create({ to: toFmt, from, body });
   return { sid: msg.sid, status: msg.status };

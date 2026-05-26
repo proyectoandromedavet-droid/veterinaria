@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20.18.3-alpine3.21
 
 WORKDIR /app
 
@@ -8,6 +8,6 @@ RUN npm install --omit=dev
 COPY services/documents/src ./services/documents/src
 COPY shared ./shared
 
-EXPOSE 3000
+EXPOSE 3012
 USER node
 CMD ["node", "services/documents/src/index.js"]

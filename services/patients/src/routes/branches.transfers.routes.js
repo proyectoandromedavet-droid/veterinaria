@@ -8,9 +8,11 @@ const router = Router();
 router.get('/transfers/patients', async (req, res, next) => {
   try {
     const { status, fromBranch, toBranch, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const parsedLimit = Math.min(parseInt(`${limit}`, 10) || 20, 100);
+    const parsedPage  = Math.max(parseInt(`${page}`, 10) || 1, 1);
+    const offset = (parsedPage - 1) * parsedLimit;
     const conds = ['bf.organization_id = :orgId'];
-    const p = { orgId: req.user.orgId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p = { orgId: req.user.orgId, limit: parsedLimit, offset };
 
     if (status) { conds.push('pt.status = :status'); p.status = status; }
     if (fromBranch) { conds.push('pt.from_branch_id = :from'); p.from = fromBranch; }
@@ -96,10 +98,15 @@ router.patch('/transfers/patients/:id',
       if (['approved', 'rejected'].includes(existing.status)) {
         return R.badRequest(res, `La transferencia ya fue ${existing.status} y no puede modificarse`);
       }
+      // CORRECCIÓN: UPDATE incluye JOIN con branches y chequea organization_id para evitar
+      // race-condition TOCTOU — sin esto, entre el SELECT y el UPDATE podría modificarse
+      // una transferencia de otra org si el ID coincide numéricamente.
       await db.query(
-        `UPDATE patient_transfers SET status=:status, approved_by=:uid, updated_at=NOW()
-         WHERE id=:id`,
-        { status: req.body.status, uid: req.user.userId, id: req.params.id }
+        `UPDATE patient_transfers pt
+         JOIN branches bf ON pt.from_branch_id = bf.id
+         SET pt.status=:status, pt.approved_by=:uid, pt.updated_at=NOW()
+         WHERE pt.id=:id AND bf.organization_id=:orgId`,
+        { status: req.body.status, uid: req.user.userId, id: req.params.id, orgId: req.user.orgId }
       );
       return R.noContent(res);
     } catch (e) {
@@ -112,9 +119,11 @@ router.patch('/transfers/patients/:id',
 router.get('/transfers/stock', async (req, res, next) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const parsedLimit = Math.min(parseInt(`${limit}`, 10) || 20, 100);
+    const parsedPage  = Math.max(parseInt(`${page}`, 10) || 1, 1);
+    const offset = (parsedPage - 1) * parsedLimit;
     const conds = ['bf.organization_id = :orgId'];
-    const p = { orgId: req.user.orgId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p = { orgId: req.user.orgId, limit: parsedLimit, offset };
     if (status) { conds.push('st.status = :status'); p.status = status; }
 
     const rows = await db.query(

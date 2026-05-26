@@ -9,6 +9,13 @@ const { db, R, requirePerm, uploadFile, BUCKETS, sha256, validate, isPdf, hasPdf
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
 
+// BUG-DOC-03: sanitizar nombres de archivo para prevenir XSS persistente y path traversal
+function sanitizeFilename(name) {
+  return path.basename(String(name || 'document.pdf'))
+    .replace(/[^\w\s.\-()]/g, '_')
+    .slice(0, 255) || 'document.pdf';
+}
+
 router.post('/manual',
   requirePerm('medical_records:update'),
   body('accountId').optional().isInt({ min: 1 }),
@@ -40,6 +47,9 @@ router.post('/manual',
 
       await db.transaction(async (conn) => {
         for (const attachment of attachments) {
+          if (attachment.storagePath) {
+            throw Object.assign(new Error('storagePath must be created by the server'), { http: 400, code: 'STORAGE_PATH_FORBIDDEN' });
+          }
           let associationStatus = 'unassociated';
           if (attachment.patientId) {
             const patient = await conn.queryOne(
@@ -76,7 +86,7 @@ router.post('/manual',
               mimeType: attachment.mimeType || 'application/pdf',
               fileSize: attachment.fileSize || 0,
               checksum: attachment.checksum || null,
-              storagePath: attachment.storagePath || null,
+              storagePath: null,
               documentCategory: attachment.documentCategory || 'external_lab',
               associationStatus,
               metadataJson: JSON.stringify(attachment.metadata || {}),
@@ -137,12 +147,14 @@ router.post('/upload',
               WHERE org_id = :orgId
                 AND checksum = :checksum
                 AND filename = :filename
-              LIMIT 1`,
+              LIMIT 1
+              FOR UPDATE`,
             { orgId: req.user.orgId, checksum, filename: file.originalname }
           );
           if (existing) continue;
 
-          const storagePath = await uploadFile(file.buffer, file.originalname, BUCKETS.documents, `documents/${req.user.orgId}/${accountId || 'manual'}`);
+          const safeFilename = sanitizeFilename(file.originalname);
+          const storagePath = await uploadFile(file.buffer, safeFilename, BUCKETS.documents, `documents/${req.user.orgId}/${accountId || 'manual'}`);
 
           const [result] = await conn.query(
             `INSERT INTO mail_document_inbox
@@ -163,7 +175,7 @@ router.post('/upload',
               fromEmail,
               subject: subject || null,
               receivedAt,
-              filename: file.originalname,
+              filename: safeFilename,
               mimeType: file.mimetype || 'application/pdf',
               fileSize: file.size || file.buffer.length,
               checksum,
@@ -173,7 +185,7 @@ router.post('/upload',
               metadataJson: JSON.stringify({
                 provider: 'upload',
                 uploadedBy: req.user.userId || null,
-                extension: path.extname(file.originalname).toLowerCase(),
+                extension: path.extname(safeFilename).toLowerCase(),
               }),
             }
           );

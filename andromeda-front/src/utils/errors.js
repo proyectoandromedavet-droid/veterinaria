@@ -5,7 +5,35 @@ function pickFirstString(...values) {
   return ''
 }
 
-export function getErrorInfo(error, fallback = 'Ocurrio un error inesperado.') {
+function sanitizeMeta(meta) {
+  if (!meta || typeof meta !== 'object') return {}
+  const blocked = /(authorization|password|token|secret|credential|email|name|search|query|settings|payload|body|data|patient|client|owner)/i
+  const output = {}
+
+  for (const [key, value] of Object.entries(meta)) {
+    if (blocked.test(key)) {
+      output[key] = '[redacted]'
+      continue
+    }
+    if (value == null || ['number', 'boolean'].includes(typeof value)) {
+      output[key] = value
+      continue
+    }
+    if (typeof value === 'string') {
+      output[key] = value.length > 120 ? `${value.slice(0, 117)}...` : value
+      continue
+    }
+    output[key] = '[redacted]'
+  }
+
+  return output
+}
+
+function isTransportMessage(message) {
+  return /^request failed with status code/i.test(String(message || '').trim())
+}
+
+export function getErrorInfo(error, fallback = 'Ocurrió un error inesperado.') {
   const response = error?.response
   const payload = response?.data
   const payloadError = payload?.error
@@ -21,12 +49,15 @@ export function getErrorInfo(error, fallback = 'Ocurrio un error inesperado.') {
     headers['x-trace-id'],
   )
   const code = pickFirstString(payloadError?.code, payload?.code)
-  const message = pickFirstString(
+  let message = pickFirstString(
     payloadError?.message,
     payload?.message,
-    error?.message,
     fallback,
+    error?.message,
   )
+  if (isTransportMessage(message)) {
+    message = fallback
+  }
 
   return {
     message,
@@ -38,7 +69,7 @@ export function getErrorInfo(error, fallback = 'Ocurrio un error inesperado.') {
   }
 }
 
-export function extractErrorMessage(error, fallback = 'Ocurrio un error inesperado.', options = {}) {
+export function extractErrorMessage(error, fallback = 'Ocurrió un error inesperado.', options = {}) {
   const { includeRequestId = false } = options
   const info = getErrorInfo(error, fallback)
   if (includeRequestId && info.requestId) {
@@ -47,20 +78,62 @@ export function extractErrorMessage(error, fallback = 'Ocurrio un error inespera
   return info.message
 }
 
+export function buildUserErrorMessage(errorInfoOrError, fallback = 'Ocurrió un error inesperado.', options = {}) {
+  const info = errorInfoOrError?.message && Object.prototype.hasOwnProperty.call(errorInfoOrError, 'status')
+    ? errorInfoOrError
+    : getErrorInfo(errorInfoOrError, fallback)
+
+  const cleanMessage = isTransportMessage(info.message) ? fallback : (info.message || fallback)
+  const parts = [cleanMessage]
+  const context = pickFirstString(options.context, options.operation)
+  if (context) parts.unshift(context)
+
+  const refs = []
+  if (info.status) refs.push(`HTTP ${info.status}`)
+  if (info.code) refs.push(`código ${info.code}`)
+  if (info.requestId) refs.push(`ref ${info.requestId}`)
+  if (info.traceId && !info.requestId) refs.push(`trace ${info.traceId}`)
+
+  return refs.length ? `${parts.join(': ')} (${refs.join(', ')})` : parts.join(': ')
+}
+
+export function extractDetailedErrorMessage(error, fallback = 'Ocurrió un error inesperado.', options = {}) {
+  return buildUserErrorMessage(error, fallback, options)
+}
+
 export function logError(scope, error, meta) {
   const prefix = `[frontend][${scope}]`
   const info = getErrorInfo(error)
-  const context = {
-    ...meta,
-    ...(info.code ? { code: info.code } : {}),
-    ...(info.status ? { status: info.status } : {}),
-    ...(info.requestId ? { requestId: info.requestId } : {}),
-    ...(info.traceId ? { traceId: info.traceId } : {}),
+
+  // OT-102: Never log the raw error object — it may contain PII from response payloads
+  // (e.g., email addresses in error messages, user data in axios response.config).
+  // Log only the sanitized fields extracted by getErrorInfo().
+  const sanitized = {
+    message:   info.message   || 'Unknown error',
+    code:      info.code      || undefined,
+    status:    info.status    || undefined,
+    requestId: info.requestId || undefined,
+    traceId:   info.traceId   || undefined,
+    ...sanitizeMeta(meta),
   }
 
-  if (Object.keys(context).length === 0) {
-    console.error(prefix, error)
-    return
+  // Remove undefined keys to keep the log entry clean
+  for (const key of Object.keys(sanitized)) {
+    if (sanitized[key] === undefined) delete sanitized[key]
   }
-  console.error(prefix, error, context)
+
+  const entry = {
+    scope,
+    ...sanitized,
+    at: new Date().toISOString(),
+  }
+
+  const diagnostics = globalThis.__ANDROMEDA_DIAGNOSTICS__ ||= []
+  diagnostics.push(entry)
+  if (diagnostics.length > 100) diagnostics.shift()
+
+  const severity = meta?.severity || (scope === 'app' || scope === 'unhandledrejection' || scope === 'bootstrap' ? 'fatal' : 'handled')
+  if (severity === 'fatal') {
+    console.error(prefix, sanitized)
+  }
 }

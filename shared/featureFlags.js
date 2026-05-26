@@ -88,13 +88,19 @@ function requireFeature(flag) {
         error:   { message: `Feature '${flag}' is not enabled for your organization`, code: 'FEATURE_DISABLED' },
       });
     } catch (err) {
-      log.warn('Feature gate check failed, allowing request', {
+      // SEC: fail-closed — si no se puede verificar el flag, denegar acceso.
+      // El comportamiento anterior (fail-open) permitía acceso a features deshabilitadas
+      // cuando Redis fallaba, lo que podría exponer módulos de pago no contratados.
+      log.warn('Feature gate check failed, denying request (fail-closed)', {
         flag,
         orgId: req.user?.orgId,
         message: err?.message,
         code: err?.code,
       });
-      next();
+      res.status(503).json({
+        success: false,
+        error: { message: 'Feature availability check temporarily unavailable', code: 'SVC_001' },
+      });
     }
   };
 }

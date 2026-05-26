@@ -3,7 +3,7 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji" aria-hidden="true">✂️</span>
+        <span class="page-emoji" aria-hidden="true">&#x1F43E;</span>
         <div>
           <h2 class="page-title">{{ t('grooming.title') }}</h2>
           <p class="page-sub">{{ t('grooming.subtitle') }}</p>
@@ -15,16 +15,16 @@
     <!-- KPIs -->
     <div class="kpi-row">
       <div class="kpi" style="--c:#FFE4D6;--ct:#c0392b">
-        <span aria-hidden="true">✂️</span><div><strong>{{ kpis.today }}</strong><span>{{ t('common.today') }}</span></div>
+        <span aria-hidden="true">&#x1F43E;</span><div><strong>{{ kpis.today }}</strong><span>{{ t('common.today') }}</span></div>
       </div>
       <div class="kpi" style="--c:#FFF3CC;--ct:#8A6200">
-        <span aria-hidden="true">⏳</span><div><strong>{{ kpis.pending }}</strong><span>{{ t('common.pending') }}</span></div>
+        <span aria-hidden="true">&#x2713;</span><div><strong>{{ kpis.pending }}</strong><span>{{ t('common.pending') }}</span></div>
       </div>
       <div class="kpi" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span aria-hidden="true">✅</span><div><strong>{{ kpis.completed }}</strong><span>{{ t('grooming.completed') }}</span></div>
+        <span aria-hidden="true">&#x2713;</span><div><strong>{{ kpis.completed }}</strong><span>{{ t('grooming.completed') }}</span></div>
       </div>
       <div class="kpi" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span aria-hidden="true">💰</span><div><strong>{{ kpis.revenue }}</strong><span>{{ t('grooming.revenueToday') }}</span></div>
+        <span aria-hidden="true">&#x1F43E;</span><div><strong>{{ kpis.revenue }}</strong><span>{{ t('grooming.revenueToday') }}</span></div>
       </div>
     </div>
 
@@ -46,7 +46,7 @@
     <div v-if="loading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('grooming.loading') }}</div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji" aria-hidden="true">🐩</span>
+      <span class="empty-state__emoji" aria-hidden="true">&#x1F43E;</span>
       <p>{{ t('grooming.emptyState') }}</p>
     </div>
 
@@ -136,24 +136,26 @@
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
                   </div>
-                  <div v-if="form.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
+                  <div v-if="form.patientId" class="selected-patient">&#x2713; {{ selectedPatientLabel }}</div>
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
                   <label>{{ t('grooming.services') }}</label>
                   <div class="services-check">
-                    <label v-for="svc in SERVICES_LIST" :key="svc" class="check-item">
-                      <input type="checkbox" v-model="form.services" :value="svc" :disabled="saving" />
-                      <span>{{ svc }}</span>
+                    <label v-for="svc in serviceTypesList" :key="svc.id" class="check-item">
+                      <input type="checkbox" v-model="form.selectedServiceIds" :value="svc.id" :disabled="saving" />
+                      <span>{{ svc.name }}</span>
                     </label>
                   </div>
+                  <span v-if="serviceTypesError" class="field-error">{{ serviceTypesError }}</span>
+                  <span v-if="fe.services" class="field-error">{{ fe.services }}</span>
                 </div>
                 <div class="field">
                   <label for="groom-m-price">{{ t('grooming.estimatedPrice') }}</label>
                   <input id="groom-m-price" name="groom-m-price" v-model.number="form.price" type="number" min="0" step="0.01" :placeholder="t('grooming.pricePlaceholder')" :disabled="saving" />
                 </div>
                 <div class="field">
-                  <label for="groom-m-duration">Duracion estimada</label>
+                  <label for="groom-m-duration">Duración estimada</label>
                   <input id="groom-m-duration" name="groom-m-duration" v-model.number="form.estimatedDurationMinutes" type="number" min="0" step="1" placeholder="ej: 90" :disabled="saving" />
                 </div>
                 <div class="field field--full">
@@ -197,10 +199,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import http from '../api/client'
+import { ref, reactive, onMounted } from 'vue'
+import { groomingApi, patientsApi } from '../api'
 import { t } from '../i18n'
-import { extractErrorMessage, logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
+
+const { notifyError, success } = useUiFeedback()
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -281,14 +286,18 @@ const STATUS = {
 
 // Tipos de servicio desde DB
 const serviceTypesList = ref([])
+const serviceTypesError = ref('')
 async function loadServiceTypes() {
+  serviceTypesError.value = ''
   try {
-    const { data } = await http.get('/grooming/service-types')
+    const { data } = await groomingApi.services()
     serviceTypesList.value = asArray(data?.data || data?.serviceTypes || data).map(normalizeServiceType).filter(Boolean)
-  } catch (error) { logError('grooming.loadServiceTypes', error); serviceTypesList.value = [] }
+  } catch (error) {
+    logError('grooming.loadServiceTypes', error)
+    serviceTypesList.value = []
+    serviceTypesError.value = extractDetailedErrorMessage(error, 'No se pudo cargar el catálogo de servicios.', { context: 'Catálogo de grooming' })
+  }
 }
-
-const SERVICES_LIST = computed(() => serviceTypesList.value.map((svc) => svc.name).filter(Boolean))
 
 function petEmoji(s) {
   const sl = String(s || '').toLowerCase()
@@ -327,7 +336,7 @@ async function load() {
     const params = {}
     if (dateFilter.value)   params.date   = dateFilter.value
     if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await http.get('/grooming/appointments', { params })
+    const { data } = await groomingApi.appointments.list(params)
     const rows = asArray(data?.data || data?.sessions || data).map(normalizeGrooming).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     items.value = needle
@@ -342,7 +351,7 @@ async function load() {
     const total = all.filter(g => g.status === 'completed').reduce((s, g) => s + (parseFloat(g.price) || 0), 0)
     kpis.value.revenue = '$' + total.toLocaleString('es-AR')
   } catch (e) {
-    error.value = extractErrorMessage(e, t('grooming.loadError'), { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, t('grooming.loadError'), { context: 'Carga de grooming' })
   } finally { loading.value = false }
 }
 
@@ -351,12 +360,13 @@ function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 
 async function changeStatus(g, status) {
   try {
-    await http.patch(`/grooming/appointments/${g.id}/status`, { status })
+    await groomingApi.appointments.updateStatus(g.id, status)
     g.status = status
     kpis.value.pending   = items.value.filter(x => x.status === 'scheduled').length
     kpis.value.completed = items.value.filter(x => x.status === 'completed').length
+    success('Sesión de grooming actualizada correctamente.')
   } catch (e) {
-    alert(e.response?.data?.message || t('grooming.updateError'))
+    notifyError('grooming.changeStatus', e, t('grooming.updateError'), { context: 'Actualización de grooming' })
   }
 }
 
@@ -364,7 +374,7 @@ async function changeStatus(g, status) {
 const groomerList = ref([])
 async function loadGroomers() {
   try {
-    const { data } = await http.get('/grooming/groomers')
+    const { data } = await groomingApi.groomers()
     groomerList.value = asArray(data?.data || data?.groomers || data).map(normalizeGroomer).filter(Boolean)
   } catch (error) { logError('grooming.loadGroomers', error); groomerList.value = [] }
 }
@@ -381,7 +391,7 @@ async function searchPatients() {
   if (patientSearch.value.length < 2) { patientResults.value = []; return }
   patientTimer = setTimeout(async () => {
     try {
-      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
+      const { data } = await patientsApi.list({ search: patientSearch.value, limit: 8 })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch (error) { logError('grooming.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
@@ -434,26 +444,26 @@ async function handleCreate() {
     const services = form.selectedServiceIds.map(id => ({ serviceTypeId: id }))
     const payload = {
       scheduledAt: form.scheduledAt,
-      patientId:   parseInt(form.patientId),
-      clientId:    parseInt(form.clientId),
-      groomerId:   parseInt(form.groomerId),
+      patientId:   parseInt(form.patientId, 10),
+      clientId:    parseInt(form.clientId, 10),
+      groomerId:   parseInt(form.groomerId, 10),
       services,
     }
     if (form.price) payload.estimatedPrice = parseFloat(form.price)
-    if (form.estimatedDurationMinutes) payload.estimatedDurationMinutes = parseInt(form.estimatedDurationMinutes)
+    if (form.estimatedDurationMinutes) payload.estimatedDurationMinutes = parseInt(form.estimatedDurationMinutes, 10)
     if (form.pickupRequired) payload.pickupRequired = true
     if (form.pickupAddress) payload.pickupAddress = form.pickupAddress
     if (form.deliveryRequired) payload.deliveryRequired = true
     if (form.deliveryAddress) payload.deliveryAddress = form.deliveryAddress
     if (form.notes) payload.notes          = form.notes
-    await http.post('/grooming/appointments', payload)
+    await groomingApi.appointments.create(payload)
     closeModal(); await load()
   } catch (e) {
-    saveError.value = extractErrorMessage(e, t('grooming.createError'), { includeRequestId: true })
+    saveError.value = extractDetailedErrorMessage(e, t('grooming.createError'), { context: 'Creación de sesión de grooming' })
   } finally { saving.value = false }
 }
 
-// â”€â”€ Registro de resultado (grooming_records) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Registro de resultado (grooming_records)
 const showRecordModal  = ref(false)
 const recordApptId     = ref(null)
 const recordSaving     = ref(false)
@@ -496,11 +506,11 @@ async function handleRecord() {
     }
     if (recordForm.finalPrice)  payload.finalPrice  = parseFloat(recordForm.finalPrice)
     if (recordForm.productsUsed) payload.productsUsed = recordForm.productsUsed.split(',').map(s => s.trim()).filter(Boolean)
-    await http.post(`/grooming/appointments/${recordApptId.value}/record`, payload)
+    await groomingApi.appointments.record(recordApptId.value, payload)
     showRecordModal.value = false
     await load()
   } catch (e) {
-    recordError.value = extractErrorMessage(e, t('grooming.saveRecordError'), { includeRequestId: true })
+    recordError.value = extractDetailedErrorMessage(e, t('grooming.saveRecordError'), { context: 'Registro de grooming' })
   } finally { recordSaving.value = false }
 }
 
@@ -614,5 +624,3 @@ onMounted(() => { load(); loadGroomers(); loadServiceTypes() })
 .selected-patient { margin-top: 6px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
 .field { position: relative; }
 </style>
-
-

@@ -234,9 +234,14 @@ router.get('/security-alerts', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/security-alerts/:id/acknowledge', async (req, res, next) => {
+router.post('/security-alerts/:id/acknowledge',
+  param('id').isInt({ min: 1 }),
+  validateRequest,
+  async (req, res, next) => {
   try {
-    const [alert] = await db.query(
+    // BUG-FIX: usar queryOne en lugar de destructuring de array vacío (evita
+    // que `alert` sea undefined sin lanzar error cuando no hay resultados).
+    const alert = await db.queryOne(
       'SELECT org_id FROM security_alerts WHERE id = :id',
       { id: req.params.id }
     );

@@ -7,6 +7,12 @@ function isAdminRole(user) {
 }
 
 function requireAdminRole(req, res, next) {
+  if (req.user?.authType === 'api_key') {
+    return res.status(403).json({
+      success: false,
+      error: { message: 'Admin endpoints require an interactive user session', code: 'FORBIDDEN' },
+    });
+  }
   if (isAdminRole(req.user)) return next();
   return res.status(403).json({
     success: false,

@@ -175,7 +175,7 @@ async function getActiveLabTestsByName(conn) {
   return map;
 }
 
-async function createLabOrderFromDocument({ conn, document, pdfBuffer, user }) {
+async function extractLabPayloadFromPdf(pdfBuffer) {
   const parsed = await pdfParse(pdfBuffer);
   let text = compact(parsed.text);
   let extractionSource = 'pdf-text';
@@ -189,16 +189,24 @@ async function createLabOrderFromDocument({ conn, document, pdfBuffer, user }) {
   if (!hasUsefulText(text)) {
     throw new Error('The PDF does not contain extractable text or OCR-readable content');
   }
+
+  const payload = detectLabPayload(text);
+  if (!payload.extractedTests.length) {
+    throw new Error('No supported laboratory analytes were detected in the PDF');
+  }
+
+  return { text, extractionSource, payload };
+}
+
+async function createLabOrderFromDocument({ conn, document, pdfBuffer, extraction, user }) {
+  const prepared = extraction || await extractLabPayloadFromPdf(pdfBuffer);
+  const { text, extractionSource, payload } = prepared;
+
   if (!user.branchId) {
     throw new Error('Current user branch is required to create lab orders');
   }
   if (!document.patient_id) {
     throw new Error('Document must be associated to a patient before ingestion');
-  }
-
-  const payload = detectLabPayload(text);
-  if (!payload.extractedTests.length) {
-    throw new Error('No supported laboratory analytes were detected in the PDF');
   }
 
   const testsByName = await getActiveLabTestsByName(conn);
@@ -216,7 +224,7 @@ async function createLabOrderFromDocument({ conn, document, pdfBuffer, user }) {
   const [nextRow] = await conn.query(
     `SELECT COALESCE(MAX(CAST(SUBSTRING(order_number,4) AS UNSIGNED)),0)+1 AS nextNum
        FROM lab_orders
-      WHERE branch_id = :bid`,
+      WHERE branch_id = :bid FOR UPDATE`,
     { bid: user.branchId }
   );
   const orderNumber = `LAB${String(nextRow.nextNum || 1).padStart(6, '0')}`;
@@ -285,5 +293,6 @@ async function createLabOrderFromDocument({ conn, document, pdfBuffer, user }) {
 
 module.exports = {
   createLabOrderFromDocument,
+  extractLabPayloadFromPdf,
   detectLabPayload,
 };

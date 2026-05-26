@@ -11,6 +11,41 @@ const OCR_LANGS = ['spa', 'eng'];
 const OCR_TESSDATA_DIR = path.resolve(__dirname, '../../../../.cache/tessdata');
 const OCR_MIN_LENGTH = 80;
 
+// ── Worker singleton ──────────────────────────────────────────────────────────
+// Tesseract worker carga ~300ms y consume ~150MB. Se inicializa una sola vez
+// y se reutiliza entre requests. Si falla, se descarta y el próximo request
+// crea uno nuevo.
+
+let _worker = null;
+let _initPromise = null;
+
+async function _initWorker() {
+  const tessdataDir = await ensureLanguageData();
+  const w = await createWorker(OCR_LANGS, 1, { langPath: tessdataDir, gzip: true });
+  await w.setParameters({
+    tessedit_pageseg_mode: PSM.AUTO,
+    preserve_interword_spaces: '1',
+  });
+  _worker = w;
+  return w;
+}
+
+async function getWorker() {
+  if (_worker) return _worker;
+  if (!_initPromise) {
+    _initPromise = _initWorker().catch((err) => {
+      _initPromise = null; // permite reintentar en el próximo request
+      throw err;
+    });
+  }
+  return _initPromise;
+}
+
+function resetWorker() {
+  _worker = null;
+  _initPromise = null;
+}
+
 class NodeCanvasFactory {
   create(width, height) {
     if (!(width > 0 && height > 0)) {
@@ -117,38 +152,28 @@ async function renderPdfPages(pdfBuffer, maxPages = 3) {
 }
 
 async function extractTextWithOcr(pdfBuffer, options = {}) {
-  const maxPages = Math.max(Number(options.maxPages) || 3, 1);
-  const tessdataDir = await ensureLanguageData();
-  const worker = await createWorker(OCR_LANGS, 1, {
-    langPath: tessdataDir,
-    gzip: true,
-  });
+  const maxPages = Math.min(Math.max(Number(options.maxPages) || 3, 1), 50);
+  const pages = await renderPdfPages(pdfBuffer, maxPages);
+  const texts = [];
 
+  const worker = await getWorker();
   try {
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.AUTO,
-      preserve_interword_spaces: '1',
-    });
-
-    const pages = await renderPdfPages(pdfBuffer, maxPages);
-    const texts = [];
-
     for (const page of pages) {
       const result = await worker.recognize(page.image);
       const text = compact(result?.data?.text);
-      if (text) {
-        texts.push(`--- page ${page.pageNumber} ---\n${text}`);
-      }
+      if (text) texts.push(`--- page ${page.pageNumber} ---\n${text}`);
     }
-
-    return {
-      text: compact(texts.join('\n\n')),
-      source: 'ocr',
-      pagesProcessed: pages.length,
-    };
-  } finally {
-    await worker.terminate();
+  } catch (err) {
+    // Worker en estado inválido — resetear para que el próximo request lo recree
+    resetWorker();
+    throw err;
   }
+
+  return {
+    text: compact(texts.join('\n\n')),
+    source: 'ocr',
+    pagesProcessed: pages.length,
+  };
 }
 
 module.exports = {

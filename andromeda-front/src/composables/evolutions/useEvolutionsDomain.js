@@ -1,6 +1,6 @@
-import http from '../../api/client'
+import { labApi, medicalApi, patientsApi, vaccinationsApi } from '../../api'
 import { adminUsersApi } from '../../api/adminUsers'
-import { extractErrorMessage } from '../../utils/errors'
+import { extractDetailedErrorMessage } from '../../utils/errors'
 
 export function asArray(value) {
   if (Array.isArray(value)) return value
@@ -598,31 +598,40 @@ export function prefillProfessionalFields(form, hospitalizationProfessionals, su
 }
 
 export async function listMedicalRecords(params = {}) {
-  const query = {}
+  const query = {
+    page: params.page || 1,
+    limit: params.limit || 25,
+  }
+  if (params.search) query.search = params.search
   if (params.from) query.from = params.from
   if (params.to) query.to = params.to
-  const { data } = await http.get('/medical-records', { params: query })
+  const { data } = await medicalApi.list(query)
+  const meta = data?.meta || data?.pagination || {}
   return {
     rows: asArray(data?.data || data).map(normalizeMedicalRecord).filter(Boolean),
-    meta: data?.meta || { page: params.page || 1, totalPages: 1 },
+    meta: {
+      page: meta.page || params.page || 1,
+      totalPages: meta.totalPages || meta.total_pages || meta.pages || 1,
+      total: meta.total || 0,
+    },
   }
 }
 
 export async function getMedicalRecordDetail(recordId) {
-  const { data } = await http.get(`/medical-records/${recordId}`)
+  const { data } = await medicalApi.get(recordId)
   return normalizeMedicalRecord(data?.data || data)
 }
 
 export async function searchPatients(query) {
-  const { data } = await http.get('/patients', { params: { search: query, limit: 8 } })
+  const { data } = await patientsApi.list({ search: query, limit: 8 })
   return asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
 }
 
 export async function loadPatientHistoryForEvolutions(patientId) {
   const [vacRes, dewRes, surgRes] = await Promise.allSettled([
-    http.get('/vaccinations', { params: { patientId, limit: 50 } }),
-    http.get('/vaccinations/deworming', { params: { patientId, limit: 50 } }),
-    http.get('/surgeries', { params: { patientId, limit: 20 } }),
+    vaccinationsApi.list({ patientId, limit: 50 }),
+    vaccinationsApi.deworming.list({ patientId, limit: 50 }),
+    labApi.surgeries.list({ patientId, limit: 20 }),
   ])
 
   const takeRows = (result) => (result.status === 'fulfilled' ? asArray(result.value?.data?.data || result.value?.data) : [])
@@ -638,36 +647,37 @@ export async function loadPatientHistoryForEvolutions(patientId) {
   return {
     vaccinationHistory: vaccines.length
       ? vaccines
-        .map((v) => `${formatDate(v.vaccination_date)} — ${v.vaccine_name}${v.disease_covered ? ` (${v.disease_covered})` : ''}${v.next_due_date ? ` · próximo: ${formatDate(v.next_due_date)}` : ''}`)
+        .map((v) => `${formatDate(v.vaccination_date)} - ${v.vaccine_name}${v.disease_covered ? ` (${v.disease_covered})` : ''}${v.next_due_date ? ` | próximo: ${formatDate(v.next_due_date)}` : ''}`)
         .join('\n')
       : '',
     dewormingHistory: deworming.length
       ? deworming
-        .map((d) => `${formatDate(d.deworming_date)} — ${d.product_name}${d.parasite_type ? ` (${d.parasite_type})` : ''}${d.next_due_date ? ` · próximo: ${formatDate(d.next_due_date)}` : ''}`)
+        .map((d) => `${formatDate(d.deworming_date)} - ${d.product_name}${d.parasite_type ? ` (${d.parasite_type})` : ''}${d.next_due_date ? ` | próximo: ${formatDate(d.next_due_date)}` : ''}`)
         .join('\n')
       : '',
     previousSurgeries: surgeries.length
       ? surgeries
         .filter((s) => s.status === 'completed')
-        .map((s) => `${formatDate(s.scheduled_date)} — ${s.surgery_type} (${s.surgery_category}) · ${s.lead_surgeon}`)
+        .map((s) => `${formatDate(s.scheduled_date)} - ${s.surgery_type} (${s.surgery_category}) | ${s.lead_surgeon}`)
         .join('\n')
       : '',
   }
 }
 
 export async function loadOrderCatalogs() {
-  const [labTestsRes, imagingTypesRes, surgeryTypesRes, wardsRes] = await Promise.all([
-    http.get('/lab/tests'),
-    http.get('/imaging/types'),
-    http.get('/surgeries/types/all'),
-    http.get('/hospitalizations/wards/availability'),
+  const [labTestsRes, imagingTypesRes, surgeryTypesRes, wardsRes] = await Promise.allSettled([
+    labApi.tests(),
+    labApi.imaging.types(),
+    labApi.surgeries.types(),
+    labApi.hospitalizations.wardsAvailability(),
   ])
+  const dataFrom = (result) => result.status === 'fulfilled' ? result.value?.data : null
 
   return {
-    labTests: asArray(labTestsRes.data?.data || labTestsRes.data).map(normalizeLabTest).filter(Boolean),
-    imagingTypes: asArray(imagingTypesRes.data?.data || imagingTypesRes.data).map(normalizeImagingType).filter(Boolean),
-    surgeryTypes: asArray(surgeryTypesRes.data?.data || surgeryTypesRes.data).map(normalizeSurgeryType).filter(Boolean),
-    availableWards: normalizeWardAvailability(wardsRes.data?.data || wardsRes.data?.wards || wardsRes.data),
+    labTests: asArray(dataFrom(labTestsRes)?.data || dataFrom(labTestsRes)).map(normalizeLabTest).filter(Boolean),
+    imagingTypes: asArray(dataFrom(imagingTypesRes)?.data || dataFrom(imagingTypesRes)).map(normalizeImagingType).filter(Boolean),
+    surgeryTypes: asArray(dataFrom(surgeryTypesRes)?.data || dataFrom(surgeryTypesRes)).map(normalizeSurgeryType).filter(Boolean),
+    availableWards: normalizeWardAvailability(dataFrom(wardsRes)?.data || dataFrom(wardsRes)?.wards || dataFrom(wardsRes)),
   }
 }
 
@@ -694,10 +704,10 @@ export async function loadRelatedOrders(record) {
   const patientId = record.patient_id
   const recordId = record.id
   const [labRes, imagingRes, surgeryRes, hospRes] = await Promise.allSettled([
-    http.get('/lab/orders', { params: { patientId, limit: 100 } }),
-    http.get('/imaging/orders', { params: { patientId, limit: 100 } }),
-    http.get('/surgeries', { params: { patientId, limit: 100 } }),
-    http.get('/hospitalizations', { params: { limit: 100 } }),
+    labApi.orders.list({ patientId, limit: 100 }),
+    labApi.imaging.list({ patientId, limit: 100 }),
+    labApi.surgeries.list({ patientId, limit: 100 }),
+    labApi.hospitalizations.list({ limit: 100 }),
   ])
 
   const takeData = (result) => result.status === 'fulfilled' ? (result.value?.data?.data || result.value?.data?.orders || result.value?.data) : []
@@ -722,51 +732,51 @@ export async function createMedicalRecordWithAttachments(form) {
 
 async function _doCreateMedicalRecordWithAttachments(form) {
   const payload = buildMedicalRecordPayload(form)
-  const { data } = await http.post('/medical-records', payload)
+  const { data } = await medicalApi.create(payload)
   const recordId = data.data?.id || data.id
 
   if (form.currentIllnessHistory || form.illnessDuration || form.illnessOnset || form.appetite || form.thirst || form.urination || form.defecation || form.vaccinationHistory || form.dewormingHistory || form.previousIllnesses || form.previousSurgeries || form.currentMedications || form.ownerObservations || form.otherSigns || form.feedingType || form.feedingBrand || form.environment || form.recentTravel || form.vomiting || form.coughing || form.sneezing || form.pruritus || form.locomotionIssues || form.contactWithAnimals) {
-    await http.post(`/medical-records/${recordId}/anamnesis`, buildAnamnesisPayload(form))
+    await medicalApi.anamnesis(recordId, buildAnamnesisPayload(form))
   }
 
   const pe = buildPhysicalExamPayload(form)
   if (Object.keys(pe).length) {
-    await http.post(`/medical-records/${recordId}/physical-exam`, pe)
+    await medicalApi.physicalExam(recordId, pe)
   }
 
   if (form.diagnosisName) {
-    await http.post(`/medical-records/${recordId}/diagnoses`, buildDiagnosisPayload(form))
+    await medicalApi.diagnoses(recordId, buildDiagnosisPayload(form))
   }
 
   if (form.treatment.treatmentType) {
-    await http.post(`/medical-records/${recordId}/treatments`, buildTreatmentPayload(form))
+    await medicalApi.treatments(recordId, buildTreatmentPayload(form))
   }
 
   if (form.labOrder.tests.length > 0) {
-    await http.post('/lab/orders', buildLabOrderPayload(form, recordId))
+    await labApi.orders.create(buildLabOrderPayload(form, recordId))
   }
 
   if (form.imagingOrder.imagingTypeId) {
-    await http.post('/imaging/orders', buildImagingOrderPayload(form, recordId))
+    await labApi.imaging.create(buildImagingOrderPayload(form, recordId))
   }
 
   if (form.hospitalizationOrder.hospitalizationReason && form.hospitalizationOrder.responsibleVetId) {
-    await http.post('/hospitalizations', buildHospitalizationOrderPayload(form, recordId))
+    await labApi.hospitalizations.create(buildHospitalizationOrderPayload(form, recordId))
   }
 
   if (form.surgeryOrder.surgeryTypeId && form.surgeryOrder.leadSurgeonId && form.surgeryOrder.scheduledDate) {
-    await http.post('/surgeries', buildSurgeryOrderPayload(form, recordId))
+    await labApi.surgeries.create(buildSurgeryOrderPayload(form, recordId))
   }
 
   if (form.prescriptionItems.length > 0) {
-    await http.post(`/medical-records/${recordId}/prescriptions`, buildPrescriptionPayload(form))
+    await medicalApi.prescriptions.create(recordId, buildPrescriptionPayload(form))
   }
 
   return recordId
 }
 
 export async function submitDetailLabOrder(detailRecord, detailOrders) {
-  await http.post('/lab/orders', {
+  await labApi.orders.create({
     patientId: parseInt(detailRecord.patient_id, 10),
     medicalRecordId: detailRecord.id,
     priority: detailOrders.lab.priority,
@@ -776,7 +786,7 @@ export async function submitDetailLabOrder(detailRecord, detailOrders) {
 }
 
 export async function submitDetailImagingOrder(detailRecord, detailOrders) {
-  await http.post('/imaging/orders', {
+  await labApi.imaging.create({
     patientId: parseInt(detailRecord.patient_id, 10),
     medicalRecordId: detailRecord.id,
     imagingTypeId: parseInt(detailOrders.imaging.imagingTypeId, 10),
@@ -788,7 +798,7 @@ export async function submitDetailImagingOrder(detailRecord, detailOrders) {
 }
 
 export async function submitDetailHospitalization(detailRecord, detailOrders) {
-  await http.post('/hospitalizations', {
+  await labApi.hospitalizations.create({
     patientId: parseInt(detailRecord.patient_id, 10),
     medicalRecordId: detailRecord.id,
     responsibleVetId: parseInt(detailOrders.hospitalization.responsibleVetId, 10),
@@ -817,16 +827,16 @@ export async function submitDetailSurgery(detailRecord, detailOrders) {
   if (detailOrders.surgery.preoperativeDiagnosis) payload.preoperativeDiagnosis = detailOrders.surgery.preoperativeDiagnosis
   if (detailOrders.surgery.surgicalApproach) payload.surgicalApproach = detailOrders.surgery.surgicalApproach
   if (detailOrders.surgery.notes) payload.notes = detailOrders.surgery.notes
-  await http.post('/surgeries', payload)
+  await labApi.surgeries.create(payload)
 }
 
 export async function refreshDetailRecord(recordId) {
-  const { data } = await http.get(`/medical-records/${recordId}`)
+  const { data } = await medicalApi.get(recordId)
   return normalizeMedicalRecord(data?.data || data)
 }
 
 export function extractEvolutionError(error, fallback) {
-  return extractErrorMessage(error, fallback, { includeRequestId: true })
+  return extractDetailedErrorMessage(error, fallback, { context: 'Evoluciones' })
 }
 
 export default function useEvolutionsDomain() {

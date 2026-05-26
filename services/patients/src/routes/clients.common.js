@@ -3,6 +3,8 @@
 const { body, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
+const { createLogger } = require('../../../../shared/logger');
+const log = createLogger('patients.clients');
 
 function deletedPredicate(cols, alias) {
   return cols.has('deleted_at') ? `${alias}.deleted_at IS NULL` : '1 = 1';
@@ -15,7 +17,7 @@ function validate(req, res, next) {
 }
 
 function logClientsError(scope, error, meta = {}) {
-  console.error(`[patients.clients] ${scope}`, {
+  log.error(`${scope}`, {
     message: error?.message,
     stack: error?.stack,
     ...meta,
@@ -42,6 +44,33 @@ async function getClientSchema() {
   return _clientSchemaPromise;
 }
 
+// OT-098: PII masking helpers — used when the caller lacks 'clients:pii' permission.
+function maskEmail(email) {
+  if (!email) return null;
+  const at = email.indexOf('@');
+  if (at < 0) return '***';
+  return `${email[0]}***@${email.slice(at + 1)}`;
+}
+
+function maskPhone(phone) {
+  if (!phone) return null;
+  const digits = String(phone).replace(/\D/g, '');
+  return digits.length >= 4 ? `****${digits.slice(-4)}` : '****';
+}
+
+/**
+ * Returns true when the request user is allowed to see full PII fields
+ * (email, phone, document_number, tax_id).
+ * Requires the 'clients:pii' permission or the 'admin' role.
+ */
+function hasPiiAccess(req) {
+  const perms = req.user?.permissions;
+  if (Array.isArray(perms) && perms.includes('clients:pii')) return true;
+  const roles = req.user?.roles;
+  if (Array.isArray(roles) && (roles.includes('admin') || roles.includes('superadmin'))) return true;
+  return false;
+}
+
 module.exports = {
   body,
   db,
@@ -50,4 +79,7 @@ module.exports = {
   validate,
   logClientsError,
   getClientSchema,
+  maskEmail,
+  maskPhone,
+  hasPiiAccess,
 };

@@ -100,12 +100,21 @@ router.post('/',
   async (req, res, next) => {
     try {
       const { patientId, clientId, groomerId, scheduledAt, services, estimatedDurationMinutes = 90, pickupRequired, pickupAddress, deliveryRequired, deliveryAddress, notes } = req.body;
-      const [ownerCheck] = await Promise.all([
-        db.queryOne('SELECT id FROM patients WHERE id = :pid AND branch_id = :bid', { pid: patientId, bid: req.user.branchId }),
+      const [patient, client, groomer] = await Promise.all([
+        db.queryOne(
+          `SELECT p.id
+             FROM patients p
+             JOIN patient_owners po ON po.patient_id = p.id AND po.client_id = :cid AND po.deleted_at IS NULL
+             JOIN clients c ON c.id = po.client_id
+            WHERE p.id = :pid
+              AND p.organization_id = :orgId
+              AND c.branch_id = :bid`,
+          { pid: patientId, cid: clientId, orgId: req.user.orgId, bid: req.user.branchId }
+        ),
         db.queryOne('SELECT id FROM clients WHERE id = :cid AND branch_id = :bid', { cid: clientId, bid: req.user.branchId }),
-        db.queryOne('SELECT id FROM users WHERE id = :gid AND branch_id = :bid', { gid: groomerId, bid: req.user.branchId }),
-      ]).then(([p, c, g]) => p && c && g);
-      if (!ownerCheck) return R.forbidden(res, 'Paciente, cliente o groomer no pertenecen a la sucursal');
+        db.queryOne('SELECT id FROM groomers WHERE id = :gid AND branch_id = :bid AND is_active = TRUE', { gid: groomerId, bid: req.user.branchId }),
+      ]);
+      if (!patient || !client || !groomer) return R.forbidden(res, 'Paciente, cliente o groomer no pertenecen a la sucursal');
 
       const serviceTypeIds = services.map((s) => s.serviceTypeId).filter(Boolean);
       const serviceTypes = serviceTypeIds.length
@@ -163,6 +172,12 @@ router.patch('/:id/status', body('status').isIn(['scheduled', 'confirmed', 'in_p
 
 router.post('/:id/record', body('servicesPerformed').isArray({ min: 1 }), validate, async (req, res, next) => {
   try {
+    const appt = await db.queryOne(
+      `SELECT id FROM grooming_appointments WHERE id=:id AND branch_id=:bid`,
+      { id: req.params.id, bid: req.user.branchId }
+    );
+    if (!appt) return R.notFound(res, 'Turno de grooming no encontrado');
+
     const { servicesPerformed, productsUsed, beforePhotoUrl, afterPhotoUrl, behaviorObservations, coatCondition, skinCondition, vetReferralRequired, vetReferralReason, finalPrice, groomingNotes } = req.body;
     const [r] = await db.query(
       `INSERT INTO grooming_records
@@ -178,7 +193,7 @@ router.post('/:id/record', body('servicesPerformed').isArray({ min: 1 }), valida
       }
     );
     if (finalPrice) {
-      await db.query(`UPDATE grooming_appointments SET final_price=:price, status='completed', updated_at=NOW() WHERE id=:id`, { price: finalPrice, id: req.params.id });
+      await db.query(`UPDATE grooming_appointments SET final_price=:price, status='completed', updated_at=NOW() WHERE id=:id AND branch_id=:bid`, { price: finalPrice, id: req.params.id, bid: req.user.branchId });
     }
     return R.created(res, { id: r.insertId });
   } catch (e) { next(e); }
@@ -186,6 +201,12 @@ router.post('/:id/record', body('servicesPerformed').isArray({ min: 1 }), valida
 
 router.post('/:id/rating', body('overallScore').isInt({ min: 1, max: 5 }), validate, async (req, res, next) => {
   try {
+    const appt = await db.queryOne(
+      `SELECT id FROM grooming_appointments WHERE id=:id AND branch_id=:bid`,
+      { id: req.params.id, bid: req.user.branchId }
+    );
+    if (!appt) return R.notFound(res, 'Turno de grooming no encontrado');
+
     const { overallScore, qualityScore, timelinessScore, grooomerFriendlinessScore, comment, recommendGroomer } = req.body;
     await db.query(
       `INSERT INTO grooming_ratings

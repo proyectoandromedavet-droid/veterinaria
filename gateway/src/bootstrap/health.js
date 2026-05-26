@@ -1,6 +1,7 @@
 'use strict';
 
 const { listKnownServiceTargets, resolveRuntimeServiceTarget } = require('../../../shared/serviceTargets');
+const { validateUrl } = require('../../../shared/ssrf');
 const { logger } = require('../middleware/logger');
 
 async function getRedisHealth() {
@@ -70,6 +71,12 @@ function registerHealthRoutes(app, version) {
         const t0 = Date.now();
         try {
           const baseUrl = await resolveRuntimeServiceTarget(name) || fallbackUrl;
+          // SSRF guard: reject non-HTTP/HTTPS or private/loopback targets
+          try { validateUrl(`${baseUrl}/health`); } catch (ssrfErr) {
+            results[name] = { status: 'blocked', latency: 0, source, target: baseUrl, error: ssrfErr.message };
+            allOk = false;
+            return;
+          }
           const ctrl = new AbortController();
           const tid = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
           const resp = await fetch(`${baseUrl}/health`, { signal: ctrl.signal });

@@ -44,6 +44,11 @@ function registerCoreMiddleware(app, { morganMiddleware }) {
 
 function registerApiMiddleware(app, { config }) {
   app.get('/csrf-token', csrfToken);
+  app.use('/api/:version/payments/stripe/webhook', express.raw({
+    type: 'application/json',
+    limit: config.jsonBodyLimit,
+    verify: (req, _res, buf) => { req.rawBody = buf; },
+  }));
   app.use(express.json({ limit: config.jsonBodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: config.jsonBodyLimit }));
   app.use(hppMiddleware);

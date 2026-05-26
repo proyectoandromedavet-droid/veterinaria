@@ -3,6 +3,8 @@
 const { validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
+const { createLogger } = require('../../../../shared/logger');
+const log = createLogger('lab-imaging.vaccination');
 
 const validate = (req, res, next) => {
   const e = validationResult(req);
@@ -21,26 +23,31 @@ const getInsertResult = async (sql, params = {}) => {
 };
 
 async function resolveBranchFromPatient(req, patientId) {
-  let userBranchId = req.user?.branchId || null;
+  // branchId y orgId SIEMPRE deben venir del token — nunca del body
+  const userBranchId = req.user?.branchId || null;
+  const userOrgId    = req.user?.orgId    || null;
 
-  if (!userBranchId && req.user?.userId) {
-    const users = await getRows(
-      `SELECT branch_id
-       FROM users
-       WHERE id = :userId
-       LIMIT 1`,
-      { userId: req.user.userId }
-    );
-
-    userBranchId = users[0]?.branch_id || null;
+  if (!userBranchId) {
+    return { error: 'Usuario sin sucursal asignada' };
   }
 
+  // Verifica tenancy usando el mismo patrón que el resto del servicio:
+  // patient_owners → clients → branch_id (no confiar en patients.branch_id)
   const patients = await getRows(
-    `SELECT id
-     FROM patients
-     WHERE id = :patientId
-     LIMIT 1`,
-    { patientId }
+    `SELECT p.id, p.organization_id
+       FROM patients p
+      WHERE p.id = :patientId
+        AND p.organization_id = :orgId
+        AND EXISTS (
+          SELECT 1
+            FROM patient_owners po
+            JOIN clients c ON c.id = po.client_id
+           WHERE po.patient_id = p.id
+             AND c.branch_id = :branchId
+             AND po.deleted_at IS NULL
+        )
+      LIMIT 1`,
+    { patientId, orgId: userOrgId, branchId: userBranchId }
   );
 
   const patient = patients[0];
@@ -49,15 +56,11 @@ async function resolveBranchFromPatient(req, patientId) {
     return { error: 'Paciente no encontrado' };
   }
 
-  if (!userBranchId) {
-    return { error: 'Usuario sin sucursal asignada' };
-  }
-
   return { patient, branchId: userBranchId };
 }
 
 function logVaccinationError(scope, error, meta = {}) {
-  console.error(`[lab-imaging:vaccination] ${scope}`, {
+  log.error(`${scope}`, {
     message: error?.message,
     code: error?.code,
     errno: error?.errno,

@@ -4,6 +4,11 @@ metadata:
   name: vetmanager-ai
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: vetmanager-ai
@@ -12,11 +17,34 @@ spec:
       labels:
         app: vetmanager-ai
     spec:
+      serviceAccountName: vetmanager-ai
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: ai
-          image: ghcr.io/ajpfox10/veterinaria-ai:latest
+          image: ghcr.io/ajpfox10/veterinaria-ai:81c52c17
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: vetmanager-config
+            - secretRef:
+                name: vetmanager-secrets
           ports:
             - containerPort: 4061
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
           livenessProbe:
             httpGet:
               path: /health/live

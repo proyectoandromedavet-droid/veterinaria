@@ -1,5 +1,5 @@
-import http from '../../api/client'
-import { extractErrorMessage } from '../../utils/errors'
+import { clientsApi, patientsApi } from '../../api'
+import { extractDetailedErrorMessage } from '../../utils/errors'
 
 export function asArray(value) {
   return Array.isArray(value) ? value : []
@@ -88,7 +88,7 @@ export function formatPatientDate(value) {
 }
 
 export async function loadSpeciesCatalog() {
-  const { data } = await http.get('/patients/species/all')
+  const { data } = await patientsApi.species()
   return asArray(data?.data || data)
 }
 
@@ -96,7 +96,7 @@ export async function listPatients(filters = {}) {
   const params = { page: filters.page ?? 1, limit: filters.limit ?? 12 }
   if (filters.search) params.search = filters.search
   if (filters.species) params.species = filters.species
-  const { data } = await http.get('/patients', { params })
+  const { data } = await patientsApi.list(params)
   const meta = data.meta || data.pagination || {}
   return {
     rows: asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean),
@@ -108,7 +108,7 @@ export async function listPatients(filters = {}) {
 }
 
 export async function getPatientDetail(patientId) {
-  const { data } = await http.get(`/patients/${patientId}`)
+  const { data } = await patientsApi.get(patientId)
   return normalizePatient(data?.data || data)
 }
 
@@ -129,8 +129,8 @@ export function buildPatientUpdatePayload(form) {
   if (form.birthDate) payload.birthDate = form.birthDate
   if (form.weight) payload.weightKg = parseFloat(form.weight)
   if (form.microchip) payload.microchipNumber = form.microchip
-  if (form.breedId) payload.breedId = parseInt(form.breedId)
-  if (form.coatColorId) payload.coatColorId = parseInt(form.coatColorId)
+  if (form.breedId) payload.breedId = parseInt(form.breedId, 10)
+  if (form.coatColorId) payload.coatColorId = parseInt(form.coatColorId, 10)
   if (form.tattooNumber) payload.tattooNumber = form.tattooNumber
   if (form.passportNumber) payload.passportNumber = form.passportNumber
   if (form.bodyConditionScore) payload.bodyConditionScore = parseFloat(form.bodyConditionScore)
@@ -153,15 +153,15 @@ export function buildOwnerPayload(form) {
 export function buildPatientCreatePayload(form, clientId) {
   const payload = {
     name: form.name,
-    speciesId: parseInt(form.speciesId),
+    speciesId: parseInt(form.speciesId, 10),
     primaryOwnerId: clientId,
     sex: form.sex || 'unknown',
   }
   if (form.birthDate) payload.birthDate = form.birthDate
   if (form.weight) payload.weightKg = parseFloat(form.weight)
   if (form.microchip) payload.microchipNumber = form.microchip
-  if (form.breedId) payload.breedId = parseInt(form.breedId)
-  if (form.coatColorId) payload.coatColorId = parseInt(form.coatColorId)
+  if (form.breedId) payload.breedId = parseInt(form.breedId, 10)
+  if (form.coatColorId) payload.coatColorId = parseInt(form.coatColorId, 10)
   if (form.tattooNumber) payload.tattooNumber = form.tattooNumber
   if (form.passportNumber) payload.passportNumber = form.passportNumber
   if (form.bodyConditionScore) payload.bodyConditionScore = parseFloat(form.bodyConditionScore)
@@ -173,17 +173,20 @@ export function buildPatientCreatePayload(form, clientId) {
 }
 
 export async function createOwnerAndPatient(form) {
-  const clientRes = await http.post('/clients', buildOwnerPayload(form))
+  const clientRes = await clientsApi.create(buildOwnerPayload(form))
   const clientId = clientRes.data?.data?.id || clientRes.data?.id
-  await http.post('/patients', buildPatientCreatePayload(form, clientId))
+  await patientsApi.create(buildPatientCreatePayload(form, clientId))
 }
 
 export async function updatePatient(patientId, form) {
-  await http.put(`/patients/${patientId}`, buildPatientUpdatePayload(form))
+  await patientsApi.update(patientId, buildPatientUpdatePayload(form))
 }
 
 export function extractPatientError(error, fallback) {
-  return extractErrorMessage(error, fallback, { includeRequestId: true })
+  const message = extractDetailedErrorMessage(error, fallback, { context: 'Pacientes' })
+  return /request failed with status code/i.test(message)
+    ? extractDetailedErrorMessage({ response: error?.response }, fallback, { context: 'Pacientes' })
+    : message
 }
 
 export function formatPatientSaveError(error) {

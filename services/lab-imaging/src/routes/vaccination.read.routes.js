@@ -8,8 +8,10 @@ const router = Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const { patientId, upcoming, page = 1, limit = 30 } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
+    const { patientId, upcoming } = req.query;
+    const safePage  = Math.max(1, parseInt(req.query.page  || 1, 10));
+    const safeLimit = Math.min(Math.max(1, parseInt(req.query.limit || 30, 10)), 100);
+    const offset = (safePage - 1) * safeLimit;
 
     let branchId = req.user?.branchId || null;
 
@@ -26,8 +28,8 @@ router.get('/', async (req, res, next) => {
     const conds = ['v.branch_id = :bid'];
     const p = {
       bid: branchId,
-      limit: Number(limit),
-      offset: Number(offset),
+      limit: safeLimit,
+      offset,
     };
 
     if (patientId) {
@@ -106,10 +108,28 @@ router.get('/vaccines', async (req, res, next) => {
   }
 });
 
+const MAX_VACCINE_FUTURE_DAYS = 1; // vaccination_date no puede ser futura
+const MAX_NEXT_DUE_YEARS = 5;      // next_due_date max 5 años en el futuro
+
 router.post('/',
   body('patientId').isInt(),
   body('vaccineId').isInt(),
-  body('vaccinationDate').isISO8601(),
+  body('vaccinationDate').isISO8601().custom((val) => {
+    const d = new Date(val);
+    const now = new Date();
+    now.setHours(23, 59, 59, 999); // tolerar zona horaria del mismo día
+    if (d > now) throw new Error('La fecha de vacunación no puede ser futura');
+    return true;
+  }),
+  body('nextDueDate').optional().isISO8601().custom((val) => {
+    const d = new Date(val);
+    const maxFuture = new Date();
+    maxFuture.setFullYear(maxFuture.getFullYear() + MAX_NEXT_DUE_YEARS);
+    if (d > maxFuture) throw new Error(`La próxima fecha no puede ser más de ${MAX_NEXT_DUE_YEARS} años en el futuro`);
+    return true;
+  }),
+  body('notes').optional().isString().trim().isLength({ max: 1000 }),
+  body('batchNumber').optional().isString().trim().isLength({ max: 100 }),
   validate,
   async (req, res, next) => {
     try {

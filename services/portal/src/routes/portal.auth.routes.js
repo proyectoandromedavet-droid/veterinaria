@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const crypto = require('crypto');
 const pwHash = require('../../../../shared/passwordHash');
 const {
   db,
@@ -16,65 +17,82 @@ const {
   publishPortalEvent,
   PASSWORD_POLICY,
   vBody,
+  jwt,
 } = require('../portal.common');
 const { formatDateTime } = require('../../../../shared/locale');
 
 const router = Router();
 
+function sameEmailConstantTime(a, b) {
+  const left = Buffer.from(String(a || '').toLowerCase().padEnd(320, '\0'));
+  const right = Buffer.from(String(b || '').toLowerCase().padEnd(320, '\0'));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+async function loadActivation(token) {
+  if (!token) return null;
+  return db.queryOne(
+    `SELECT id, client_id, org_id, email
+     FROM portal_activation_tokens
+     WHERE token_hash = :hash
+       AND used_at IS NULL
+       AND expires_at > NOW()
+     LIMIT 1`,
+    { hash: jwt.hashToken(token) }
+  ).catch((err) => {
+    log.warn('portal activation lookup failed', { err: err.message });
+    return null;
+  });
+}
+
 router.post('/register',
   authLimiter,
   vBody('email').isEmail().normalizeEmail(),
   vBody('password').isLength({ min: 10 }).matches(PASSWORD_POLICY),
-  vBody('firstName').notEmpty(),
-  vBody('lastName').notEmpty(),
+  vBody('firstName').notEmpty().isString().trim().isLength({ max: 100 }),
+  vBody('lastName').notEmpty().isString().trim().isLength({ max: 100 }),
+  vBody('phone').optional().isString().trim().isLength({ max: 30 }),
   validate,
   async (req, res, next) => {
     try {
-      const { email, password, firstName, lastName, phone, activationToken } = req.body;
-      const orgId = req.headers['x-org-id'] || null;
+      const { email, password, firstName, lastName, activationToken } = req.body;
+      const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
+      const rawOrgId = req.headers['x-org-id'];
+      const orgId = rawOrgId && /^\d{1,10}$/.test(String(rawOrgId)) ? String(rawOrgId) : null;
       const allowSelfRegistration = process.env.NODE_ENV !== 'production'
         && process.env.PORTAL_ALLOW_SELF_REGISTRATION !== 'false';
 
-      const existingOrgCond = orgId ? 'AND (c.organization_id = :orgId OR b.organization_id = :orgId)' : '';
+      const activation = await loadActivation(activationToken);
+      if (activationToken && !activation) return R.unauthorized(res, 'Token de activacion invalido o expirado');
+      if (activation?.email && !sameEmailConstantTime(activation.email, email)) {
+        return R.forbidden(res, 'Token de activacion no corresponde al email');
+      }
+      if (activation?.org_id && orgId && Number(activation.org_id) !== Number(orgId)) {
+        return R.forbidden(res, 'Token de activacion no corresponde a la organizacion');
+      }
+
+      const scopeOrgId = activation?.org_id || orgId || null;
+      const existingOrgCond = scopeOrgId ? 'AND (c.organization_id = :scopeOrgId OR b.organization_id = :scopeOrgId)' : '';
       const existing = await db.queryOne(
-        `SELECT c.id FROM clients c
+        `SELECT c.id
+         FROM clients c
          LEFT JOIN branches b ON c.branch_id = b.id
-         WHERE c.email=:email AND c.portal_password_hash IS NOT NULL ${existingOrgCond}`,
-        { email, ...(orgId ? { orgId } : {}) }
+         WHERE c.email=:email
+           AND c.portal_password_hash IS NOT NULL
+           ${existingOrgCond}`,
+        { email, ...(scopeOrgId ? { scopeOrgId } : {}) }
       );
       if (existing) return R.conflict(res, 'Ya existe una cuenta con ese email');
 
       const hash = await pwHash.hash(password);
-      let activation = null;
-      if (activationToken) {
-        activation = await db.queryOne(
-          `SELECT id, client_id, org_id, email
-           FROM portal_activation_tokens
-           WHERE token_hash = :hash
-             AND used_at IS NULL
-             AND expires_at > NOW()
-           LIMIT 1`,
-          { hash: require('../portal.common').jwt.hashToken(activationToken) }
-        ).catch((err) => {
-          log.warn('portal activation lookup failed', { err: err.message });
-          return null;
-        });
-        if (!activation) return R.unauthorized(res, 'Token de activacion invalido o expirado');
-        if (activation.email) {
-          const a = Buffer.from(activation.email.toLowerCase().padEnd(320, '\0'));
-          const b = Buffer.from(email.toLowerCase().padEnd(320, '\0'));
-          const same = a.length === b.length && require('crypto').timingSafeEqual(a, b);
-          if (!same) return R.forbidden(res, 'Token de activacion no corresponde al email');
-        }
-      }
-      const clientOrgCond = orgId ? 'AND (c.organization_id = :orgId OR b.organization_id = :orgId)' : '';
+      const clientOrgCond = scopeOrgId ? 'AND (c.organization_id = :scopeOrgId OR b.organization_id = :scopeOrgId)' : '';
       const client = await db.queryOne(
         `SELECT c.id, COALESCE(c.organization_id, b.organization_id) AS organization_id
          FROM clients c
          LEFT JOIN branches b ON c.branch_id = b.id
          WHERE c.email=:email ${clientOrgCond}
          LIMIT 1`,
-        { email, ...(orgId ? { orgId } : {}) }
+        { email, ...(scopeOrgId ? { scopeOrgId } : {}) }
       );
 
       if (client) {
@@ -87,13 +105,25 @@ router.post('/register',
             return R.forbidden(res, 'Token de activacion no corresponde a la organizacion del cliente');
           }
         }
-        await db.query(
-          `UPDATE clients SET portal_password_hash=:hash, updated_at=NOW() WHERE id=:id`,
-          { hash, id: client.id }
-        );
-        if (activation) {
-          await db.query(`UPDATE portal_activation_tokens SET used_at=NOW() WHERE id=:id`, { id: activation.id });
-        }
+
+        await db.transaction(async (conn) => {
+          if (activation) {
+            const [activationUpdate] = await conn.query(
+              `UPDATE portal_activation_tokens
+               SET used_at=NOW()
+               WHERE id=:id AND used_at IS NULL`,
+              { id: activation.id }
+            );
+            if (!activationUpdate.affectedRows) {
+              throw Object.assign(new Error('Token de activacion ya utilizado'), { http: 409, code: 'PORTAL_ACTIVATION_USED' });
+            }
+          }
+          await conn.query(
+            `UPDATE clients SET portal_password_hash=:hash, updated_at=NOW() WHERE id=:id`,
+            { hash, id: client.id }
+          );
+        });
+
         const accessToken = buildOwnerToken({ ...client, email });
         const refreshToken = buildOwnerRefresh(client);
         sendWelcome({ to: email, name: firstName, orgName: 'VetManager Pro' }).catch((err) => log.warn('welcome email failed', { err: err.message }));
@@ -102,8 +132,9 @@ router.post('/register',
       }
 
       if (!allowSelfRegistration && !activation) return R.unauthorized(res, 'Se requiere invitacion para registrar una cuenta portal');
-      const effectiveOrgId = activation?.org_id || orgId;
+      const effectiveOrgId = scopeOrgId;
       if (!effectiveOrgId) return R.badRequest(res, 'Se requiere organizacion para registrar una cuenta portal');
+
       const branch = await db.queryOne(
         `SELECT id
          FROM branches
@@ -114,21 +145,30 @@ router.post('/register',
       );
       if (!branch) return R.notFound(res, 'No hay sucursales disponibles para la organizacion');
 
-      const [r] = await db.query(
-        `INSERT INTO clients (branch_id, first_name, last_name, email, phone, portal_password_hash, organization_id)
-         VALUES (:branchId, :fn, :ln, :email, :phone, :hash, :orgId)`,
-        { branchId: branch.id, fn: firstName, ln: lastName, email, phone: phone || null, hash, orgId: effectiveOrgId }
-      );
-      if (activation) {
-        await db.query(`UPDATE portal_activation_tokens SET used_at=NOW(), client_id=COALESCE(client_id, :clientId) WHERE id=:id`, {
-          id: activation.id,
-          clientId: r.insertId,
-        });
-      }
-      const accessToken = buildOwnerToken({ id: r.insertId, organization_id: effectiveOrgId, email });
-      const refreshToken = buildOwnerRefresh({ id: r.insertId });
+      const created = await db.transaction(async (conn) => {
+        const [r] = await conn.query(
+          `INSERT INTO clients (branch_id, first_name, last_name, email, phone, portal_password_hash, organization_id)
+           VALUES (:branchId, :fn, :ln, :email, :phone, :hash, :orgId)`,
+          { branchId: branch.id, fn: firstName, ln: lastName, email, phone: phone || null, hash, orgId: effectiveOrgId }
+        );
+        if (activation) {
+          const [activationUpdate] = await conn.query(
+            `UPDATE portal_activation_tokens
+             SET used_at=NOW(), client_id=COALESCE(client_id, :clientId)
+             WHERE id=:id AND used_at IS NULL`,
+            { id: activation.id, clientId: r.insertId }
+          );
+          if (!activationUpdate.affectedRows) {
+            throw Object.assign(new Error('Token de activacion ya utilizado'), { http: 409, code: 'PORTAL_ACTIVATION_USED' });
+          }
+        }
+        return { insertId: r.insertId };
+      });
+
+      const accessToken = buildOwnerToken({ id: created.insertId, organization_id: effectiveOrgId, email });
+      const refreshToken = buildOwnerRefresh({ id: created.insertId });
       sendWelcome({ to: email, name: firstName, orgName: 'VetManager Pro' }).catch((err) => log.warn('welcome email failed', { err: err.message }));
-      publishPortalEvent('portal.owner.registered', { clientId: r.insertId, email, orgId: effectiveOrgId }, req);
+      publishPortalEvent('portal.owner.registered', { clientId: created.insertId, email, orgId: effectiveOrgId }, req);
       return R.created(res, { accessToken, refreshToken });
     } catch (e) { next(e); }
   }
@@ -142,7 +182,11 @@ router.post('/login',
   async (req, res, next) => {
     try {
       const { email, password } = req.body;
-      const orgId = req.headers['x-org-id'] || null;
+      const rawOrgIdLogin = req.headers['x-org-id'];
+      const orgId = rawOrgIdLogin && /^\d{1,10}$/.test(String(rawOrgIdLogin)) ? String(rawOrgIdLogin) : null;
+      if (!orgId && process.env.NODE_ENV === 'production') {
+        return R.unauthorized(res, 'Email o contrasena incorrectos');
+      }
       const orgCond = orgId ? 'AND (c.organization_id = :orgId OR b.organization_id = :orgId)' : '';
       const client = await db.queryOne(
         `SELECT c.id, c.first_name, c.last_name, c.email, c.portal_password_hash,
@@ -154,7 +198,8 @@ router.post('/login',
         { email, ...(orgId ? { orgId } : {}) }
       );
       if (!client || !client.portal_password_hash) return R.unauthorized(res, 'Email o contrasena incorrectos');
-      if (!client.is_active) return R.forbidden(res, 'Cuenta desactivada');
+      // Usar el mismo mensaje genérico para cuentas inactivas — evita enumeración de estado de cuenta
+      if (!client.is_active) return R.unauthorized(res, 'Email o contrasena incorrectos');
 
       const ok = await pwHash.verify(password, client.portal_password_hash);
       if (!ok) return R.unauthorized(res, 'Email o contrasena incorrectos');
@@ -202,7 +247,7 @@ router.post('/refresh',
   validate,
   async (req, res, next) => {
     try {
-      const decoded = require('../portal.common').jwt.verifyRefresh(req.body.refreshToken);
+      const decoded = jwt.verifyRefresh(req.body.refreshToken);
       if (decoded.role !== 'owner') return R.unauthorized(res, 'Token invalido');
 
       const client = await db.queryOne(
@@ -223,21 +268,40 @@ router.post('/refresh',
 );
 
 router.post('/forgot-password',
+  authLimiter,
   vBody('email').isEmail().normalizeEmail(),
   validate,
   async (req, res, next) => {
     try {
       const { email } = req.body;
-      const client = await db.queryOne(`SELECT id FROM clients WHERE email=:email`, { email });
+      const rawOrgIdFp = req.headers['x-org-id'];
+      const orgId = rawOrgIdFp && /^\d{1,10}$/.test(String(rawOrgIdFp)) ? String(rawOrgIdFp) : null;
+      let client = null;
+
+      if (orgId || process.env.NODE_ENV !== 'production') {
+        const orgCond = orgId ? 'AND (c.organization_id = :orgId OR b.organization_id = :orgId)' : '';
+        client = await db.queryOne(
+          `SELECT c.id, COALESCE(c.organization_id, b.organization_id) AS organization_id
+           FROM clients c
+           LEFT JOIN branches b ON c.branch_id = b.id
+           WHERE c.email=:email ${orgCond}
+           LIMIT 1`,
+          { email, ...(orgId ? { orgId } : {}) }
+        );
+      }
 
       if (client) {
-        const token = require('../portal.common').jwt.generateOpaqueToken();
-        const hash = require('../portal.common').jwt.hashToken(token);
+        const token = jwt.generateOpaqueToken();
+        const hash = jwt.hashToken(token);
         await db.query(
-          `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
-           VALUES (:id, :hash, DATE_ADD(NOW(), INTERVAL 1 HOUR))
-           ON DUPLICATE KEY UPDATE token_hash=:hash, expires_at=DATE_ADD(NOW(), INTERVAL 1 HOUR), used_at=NULL`,
-          { id: client.id, hash }
+          `INSERT INTO portal_password_reset_tokens (client_id, org_id, token_hash, expires_at)
+           VALUES (:clientId, :orgId, :hash, DATE_ADD(NOW(), INTERVAL 1 HOUR))
+           ON DUPLICATE KEY UPDATE
+             org_id=:orgId,
+             token_hash=:hash,
+             expires_at=DATE_ADD(NOW(), INTERVAL 1 HOUR),
+             used_at=NULL`,
+          { clientId: client.id, orgId: client.organization_id || orgId || null, hash }
         );
         sendPasswordReset({ to: email, token, expiresInMinutes: 60 }).catch((err) => log.warn('password reset email failed', { err: err.message }));
       }
@@ -245,6 +309,59 @@ router.post('/forgot-password',
       return R.ok(res, { message: 'Si ese email existe, recibira un enlace de recuperacion.' });
     } catch (e) { next(e); }
   }
+);
+
+async function confirmPasswordReset(req, res, next) {
+  try {
+    const hash = jwt.hashToken(req.body.token);
+    const newHash = await pwHash.hash(req.body.newPassword);
+
+    const updated = await db.transaction(async (conn) => {
+      const reset = await conn.queryOne(
+        `SELECT prt.id, prt.client_id, c.email
+         FROM portal_password_reset_tokens prt
+         JOIN clients c ON c.id = prt.client_id
+         WHERE prt.token_hash = :hash
+           AND prt.expires_at > NOW()
+           AND prt.used_at IS NULL
+           AND c.is_active = 1
+         FOR UPDATE`,
+        { hash }
+      );
+      if (!reset) return false;
+
+      await conn.query(
+        `UPDATE clients
+         SET portal_password_hash=:passwordHash, updated_at=NOW()
+         WHERE id=:clientId`,
+        { passwordHash: newHash, clientId: reset.client_id }
+      );
+      await conn.query(
+        `UPDATE portal_password_reset_tokens SET used_at=NOW() WHERE id=:id`,
+        { id: reset.id }
+      );
+      return true;
+    });
+
+    if (!updated) return R.badRequest(res, 'Token invalido o expirado');
+    return R.ok(res, { message: 'Contrasena actualizada' });
+  } catch (e) { next(e); }
+}
+
+router.post('/password-reset/confirm',
+  authLimiter,
+  vBody('token').notEmpty(),
+  vBody('newPassword').isLength({ min: 10 }).matches(PASSWORD_POLICY),
+  validate,
+  confirmPasswordReset
+);
+
+router.post('/reset-password',
+  authLimiter,
+  vBody('token').notEmpty(),
+  vBody('newPassword').isLength({ min: 10 }).matches(PASSWORD_POLICY),
+  validate,
+  confirmPasswordReset
 );
 
 module.exports = router;

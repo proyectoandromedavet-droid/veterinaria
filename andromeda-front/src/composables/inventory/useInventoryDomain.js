@@ -1,4 +1,4 @@
-import http from '../../api/client'
+import { inventoryApi } from '../../api'
 
 export function asArray(value) {
   if (Array.isArray(value)) return value
@@ -76,7 +76,7 @@ export async function loadInventory(params = {}) {
   if (params.search) query.search = params.search
   if (params.itemType) query.itemType = params.itemType
   if (params.stockStatus) query.stockStatus = params.stockStatus
-  const { data } = await http.get('/inventory', { params: query })
+  const { data } = await inventoryApi.list(query)
   return {
     rows: asArray(data?.data || data?.items || data).map(normalizeInventoryItem).filter(Boolean),
     meta: data?.meta || { page: query.page, totalPages: 1 },
@@ -91,19 +91,19 @@ export async function createInventoryItem(form) {
   }
   if (form.sku) payload.sku = form.sku
   if (form.unitCost !== '') payload.unitCost = parseFloat(form.unitCost)
-  if (form.minStock !== '') payload.minimumStock = parseInt(form.minStock)
-  if (form.reorderPoint !== '') payload.reorderPoint = parseInt(form.reorderPoint)
+  if (form.minStock !== '') { const v = parseInt(form.minStock, 10); if (!isNaN(v)) payload.minimumStock = v }
+  if (form.reorderPoint !== '') { const v = parseInt(form.reorderPoint, 10); if (!isNaN(v)) payload.reorderPoint = v }
   if (form.description) payload.description = form.description
-  if (form.supplierId) payload.supplierId = parseInt(form.supplierId)
+  if (form.supplierId) payload.supplierId = parseInt(form.supplierId, 10)
   payload.requiresPrescription = !!form.requiresPrescription
   payload.isActive = !!form.isActive
 
-  const { data: created } = await http.post('/inventory/items', payload)
-  if (parseInt(form.stock) > 0 && created?.id) {
-    await http.post('/inventory/batches', {
+  const { data: created } = await inventoryApi.items.create(payload)
+  if (parseInt(form.stock, 10) > 0 && created?.id) {
+    await inventoryApi.batches.create({
       itemId: created.id,
       lotNumber: 'INICIAL',
-      quantityReceived: parseInt(form.stock),
+      quantityReceived: parseInt(form.stock, 10),
       expiryDate: form.expirationDate || undefined,
     })
   }
@@ -111,16 +111,16 @@ export async function createInventoryItem(form) {
 }
 
 export async function loadInventoryAlerts() {
-  const { data } = await http.get('/inventory/alerts')
+  const { data } = await inventoryApi.alerts()
   return asArray(data?.data || data?.alerts || data).map(normalizeAlert).filter(Boolean)
 }
 
 export async function resolveInventoryAlert(id) {
-  return http.patch(`/inventory/alerts/${id}/resolve`)
+  return inventoryApi.resolveAlert(id)
 }
 
 export async function loadSuppliers() {
-  const { data } = await http.get('/suppliers')
+  const { data } = await inventoryApi.suppliers.list()
   return asArray(data?.data || data?.suppliers || data).map(normalizeSupplier).filter(Boolean)
 }
 
@@ -136,17 +136,17 @@ export async function saveSupplier(supplierForm, editingSupplierId) {
     notes: supplierForm.notes || undefined,
   }
   if (editingSupplierId) {
-    return http.put(`/suppliers/${editingSupplierId}`, payload)
+    return inventoryApi.suppliers.update(editingSupplierId, payload)
   }
-  return http.post('/suppliers', payload)
+  return inventoryApi.suppliers.create(payload)
 }
 
 export async function deleteSupplierById(id) {
-  return http.delete(`/suppliers/${id}`)
+  return inventoryApi.suppliers.delete(id)
 }
 
 export async function loadPurchaseOrders() {
-  const { data } = await http.get('/purchase-orders')
+  const { data } = await inventoryApi.purchaseOrders.list()
   return asArray(data?.data || data?.orders || data).map(normalizeOrder).filter(Boolean)
 }
 
@@ -162,15 +162,15 @@ export async function createPurchaseOrder(orderForm) {
       unitCost: item.unitCost !== '' ? parseFloat(item.unitCost) : undefined,
     })),
   }
-  return http.post('/purchase-orders', payload)
+  return inventoryApi.purchaseOrders.create(payload)
 }
 
 export async function sendPurchaseOrder(id) {
-  return http.patch(`/purchase-orders/${id}/send`)
+  return inventoryApi.purchaseOrders.send(id)
 }
 
 export async function cancelPurchaseOrder(id) {
-  return http.patch(`/purchase-orders/${id}/cancel`)
+  return inventoryApi.purchaseOrders.cancel(id)
 }
 
 export default function useInventoryDomain() {

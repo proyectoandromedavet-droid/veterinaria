@@ -1,20 +1,51 @@
 'use strict';
 
+const fs   = require('fs');
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
-const YAML = require('yamljs');
+const yaml = require('js-yaml');  // OT-085: replaced abandoned yamljs with js-yaml
 const { logger } = require('../middleware/logger');
 const { config } = require('../config');
 
 const openApiPath = path.join(__dirname, '../../docs/openapi.yaml');
 
+/**
+ * Basic-auth guard for Swagger UI in production.
+ * Credentials are read from SWAGGER_USER / SWAGGER_PASSWORD env vars.
+ * If not set in production, access is denied entirely.
+ */
+function swaggerAuthGuard(req, res, next) {
+  if (config.env !== 'production') return next();
+
+  const user = process.env.SWAGGER_USER;
+  const pass = process.env.SWAGGER_PASSWORD;
+  if (!user || !pass) {
+    return res.status(403).json({ success: false, error: { message: 'API docs disabled', code: 'DOCS_DISABLED' } });
+  }
+
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="API Docs"');
+    return res.status(401).json({ success: false, error: { message: 'Authentication required', code: 'DOCS_AUTH_REQUIRED' } });
+  }
+
+  const [credUser, ...credRest] = Buffer.from(authHeader.slice(6), 'base64').toString().split(':');
+  const credPass = credRest.join(':');
+  if (credUser !== user || credPass !== pass) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="API Docs"');
+    return res.status(401).json({ success: false, error: { message: 'Invalid credentials', code: 'DOCS_AUTH_FAILED' } });
+  }
+
+  next();
+}
+
 function registerDocsRoutes(app, version) {
   const supportedVersions = config.supportedApiVersions || [version];
   if (config.swaggerEnabled) {
     try {
-      const swaggerDoc = YAML.load(openApiPath);
+      const swaggerDoc = yaml.load(fs.readFileSync(openApiPath, 'utf8'));
       for (const supportedVersion of supportedVersions) {
-        app.use(`/api/${supportedVersion}/docs`, swaggerUi.serve, swaggerUi.setup({
+        app.use(`/api/${supportedVersion}/docs`, swaggerAuthGuard, swaggerUi.serve, swaggerUi.setup({
           ...swaggerDoc,
           servers: (swaggerDoc.servers || []).map((server) => ({
             ...server,
@@ -25,7 +56,7 @@ function registerDocsRoutes(app, version) {
           swaggerOptions: { persistAuthorization: false },
         }));
       }
-      app.get('/api/docs', (_req, res) => res.redirect(302, `/api/${config.defaultApiVersion}/docs`));
+      app.get('/api/docs', swaggerAuthGuard, (_req, res) => res.redirect(302, `/api/${config.defaultApiVersion}/docs`));
       logger.info(`Swagger UI at /api/${version}/docs`);
     } catch (error) {
       logger.warn('openapi.yaml not found - Swagger UI disabled', { error: error?.message });

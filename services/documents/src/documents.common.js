@@ -4,6 +4,8 @@ const path = require('path');
 const { validationResult } = require('express-validator');
 const db = require('../../../shared/db');
 const R = require('../../../shared/response');
+const { createLogger } = require('../../../shared/logger');
+const log = createLogger('documents');
 const { requirePerm } = require('../../../shared/serviceBase');
 const { uploadFile, getPresignedUrl, getObjectBuffer, BUCKETS } = require('../../../shared/minio');
 const { sha256 } = require('./lib/sync');
@@ -59,7 +61,7 @@ async function ensurePatientInOrg(patientId, orgId) {
 }
 
 function logDocumentsError(scope, error, meta = {}) {
-  console.error(`[documents] ${scope}`, {
+  log.error(`${scope}`, {
     message: error?.message,
     code: error?.code,
     errno: error?.errno,

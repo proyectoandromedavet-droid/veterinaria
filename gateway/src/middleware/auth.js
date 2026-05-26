@@ -18,7 +18,10 @@ async function getRedis() {
 }
 
 function getRevocationMode() {
-  return getDependencyMode('auth_revocation', 'degraded');
+  return getDependencyMode(
+    'auth_revocation',
+    process.env.NODE_ENV === 'production' ? 'strict' : 'degraded'
+  );
 }
 
 function extractToken(req) {
@@ -77,14 +80,23 @@ async function authenticateApiKey(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return next();
 
+  // Validar longitud mínima para evitar llamadas internas con valores triviales
+  if (typeof apiKey !== 'string' || apiKey.length < 16) {
+    return R.unauthorized(res, 'Invalid API key', 'AUTH_012');
+  }
+
+  let networkError = false;
   try {
     const path = '/internal/validate-api-key';
+    // El API key se envía como header X-Api-Key-Value en vez de en el body
+    // para evitar que sea capturado en logs de body por el servicio interno.
     const response = await callInternalService('auth', {
       method: 'POST',
       path,
-      body: { apiKey },
+      body: {},
       headers: {
-        'X-Trace-Id': req.traceId || '',
+        'X-Trace-Id':    req.traceId || '',
+        'X-Api-Key-Value': apiKey,
         ...buildSignedInternalHeaders('POST', path, ''),
       },
       traceContext: { traceId: req.traceId, spanId: req.spanId, serviceName: 'gateway' },
@@ -97,8 +109,20 @@ async function authenticateApiKey(req, res, next) {
       req.isApiKey = true;
       return next();
     }
+
+    // El servicio auth respondió pero rechazó la clave → 401
+    return R.unauthorized(res, 'Invalid API key', 'AUTH_012');
   } catch (err) {
+    networkError = true;
     logger.error('API key validation error', { error: err.message, traceId: req.traceId });
+  }
+
+  // Error de red/timeout → 503 para no confundir con credenciales incorrectas
+  if (networkError) {
+    return res.status(503).json({
+      success: false,
+      error: { message: 'Authentication service temporarily unavailable', code: 'AUTH_014' },
+    });
   }
 
   return R.unauthorized(res, 'Invalid API key', 'AUTH_012');
@@ -113,9 +137,51 @@ async function optionalAuth(req, res, next) {
   const token = extractToken(req);
   if (!token) return next();
   try {
-    req.user = verifyAccess(token);
+    const decoded = verifyAccess(token);
+    if (decoded.jti) {
+      try {
+        const redis = await getRedis();
+        if (redis.isReady) {
+          const revoked = await redis.get(`revoked:${decoded.jti}`);
+          if (!revoked) req.user = decoded;
+        } else {
+          req.user = decoded;
+        }
+      } catch (err) {
+        logDependencyIssue(logger, 'auth_revocation', getRevocationMode(), 'optionalAuth revocation check failed', err, {});
+        req.user = decoded;
+      }
+    }
+    // Tokens sin jti no se aceptan en optionalAuth — no hay forma de revocarlos.
   } catch (_) {}
   next();
 }
 
-module.exports = { authMiddleware, authenticate, optionalAuth, getRedis };
+/**
+ * OT-103: Gateway-level permission enforcement (defense-in-depth).
+ * Downstream services also enforce permissions via requirePerm, but this
+ * prevents even reaching them when the user clearly lacks the base permission.
+ *
+ * Checks req.user.permissions (expanded in JWT) and supports wildcards:
+ *   'resource:*'  → any action on that resource
+ *   '*'           → all permissions (superadmin)
+ *
+ * Must be placed AFTER authMiddleware so req.user is populated.
+ *
+ * @param {string} perm — e.g. 'reports:read', 'users:*', 'audit:read'
+ */
+function requireGatewayPerm(perm) {
+  return (req, res, next) => {
+    const perms = req.user?.permissions;
+    if (!Array.isArray(perms)) return R.forbidden(res, 'Insufficient gateway permissions', 'AUTH_PERM_DENIED');
+
+    if (perms.includes('*') || perms.includes(perm)) return next();
+
+    const [resource] = perm.split(':');
+    if (perms.includes(`${resource}:*`)) return next();
+
+    return R.forbidden(res, 'Insufficient gateway permissions', 'AUTH_PERM_DENIED');
+  };
+}
+
+module.exports = { authMiddleware, authenticate, optionalAuth, getRedis, requireGatewayPerm };

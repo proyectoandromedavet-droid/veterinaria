@@ -1,4 +1,4 @@
-import http from '../../api/client'
+import { labApi, patientsApi } from '../../api'
 
 export function asArray(value) {
   if (Array.isArray(value)) return value
@@ -62,8 +62,8 @@ export function buildAdmitPayload(form) {
   const payload = {
     patientId: form.patientId,
     wardId: form.wardId,
-    attendingVetId: form.attendingVetId,
-    admissionReason: form.admissionReason,
+    responsibleVetId: form.attendingVetId,
+    hospitalizationReason: form.admissionReason,
   }
   if (form.kennelId) payload.kennelId = form.kennelId
   if (form.admissionDiagnosis) payload.admissionDiagnosis = form.admissionDiagnosis
@@ -74,14 +74,14 @@ export function buildAdmitPayload(form) {
 }
 
 export function buildMonitoringPayload(form) {
-  const payload = {}
+  const payload = { recordedAt: new Date().toISOString() }
   if (form.heartRate) payload.heartRate = form.heartRate
   if (form.respiratoryRate) payload.respiratoryRate = form.respiratoryRate
   if (form.temperature) payload.temperature = form.temperature
   if (form.systolicBp) payload.systolicBp = form.systolicBp
   if (form.mucousMembranes) payload.mucousMembranes = form.mucousMembranes
-  if (form.hydrationStatus) payload.hydrationStatus = form.hydrationStatus
-  if (form.consciousnessLevel) payload.consciousnessLevel = form.consciousnessLevel
+  if (form.hydrationStatus) payload.hydration = form.hydrationStatus
+  if (form.consciousnessLevel) payload.consciousness = form.consciousnessLevel
   if (form.notes) payload.notes = form.notes
   return payload
 }
@@ -92,17 +92,23 @@ export function buildMedicationPayload(form) {
     dose: form.dose,
     frequency: form.frequency,
     route: form.route,
-    startDatetime: form.startDatetime,
+    startDate: form.startDatetime,
   }
   if (form.doseUnit) payload.doseUnit = form.doseUnit
-  if (form.durationHours) payload.durationHours = form.durationHours
-  if (form.notes) payload.notes = form.notes
+  if (form.durationHours) {
+    const end = new Date(form.startDatetime)
+    if (!Number.isNaN(end.getTime())) {
+      end.setHours(end.getHours() + Number(form.durationHours))
+      payload.endDate = end.toISOString()
+    }
+  }
+  if (form.notes) payload.instructions = form.notes
   return payload
 }
 
 export function buildDischargePayload(form) {
-  const payload = {}
-  if (form.dischargeNotes) payload.dischargeNotes = form.dischargeNotes
+  const payload = { dischargeDate: new Date().toISOString() }
+  if (form.dischargeNotes) payload.dischargeInstructions = form.dischargeNotes
   if (form.followUpDate) payload.followUpDate = form.followUpDate
   return payload
 }
@@ -110,44 +116,44 @@ export function buildDischargePayload(form) {
 export async function loadHospitalizations(params = {}) {
   const query = {}
   if (params.status) query.status = params.status
-  const { data } = await http.get('/hospitalizations', { params: query })
+  const { data } = await labApi.hospitalizations.list(query)
   return asArray(data?.data || data?.hospitalizations || data).map(normalizeHospitalization).filter(Boolean)
 }
 
 export async function loadHospitalizationsBoard() {
-  const { data } = await http.get('/hospitalizations/board')
+  const { data } = await labApi.hospitalizations.board()
   return asArray(data?.data || data?.board || data).map(normalizeHospitalization).filter(Boolean)
 }
 
 export async function loadAvailableWards() {
-  const { data } = await http.get('/hospitalizations/wards/availability')
+  const { data } = await labApi.hospitalizations.wardsAvailability()
   return asArray(data?.data || data?.wards || data).map(normalizeWard).filter(Boolean)
 }
 
 export async function searchPatients(query) {
-  const { data } = await http.get('/patients', { params: { search: query, limit: 8 } })
+  const { data } = await patientsApi.list({ search: query, limit: 8 })
   return asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
 }
 
 export async function admitPatient(form) {
-  return http.post('/hospitalizations', buildAdmitPayload(form))
+  return labApi.hospitalizations.create(buildAdmitPayload(form))
 }
 
 export async function getHospitalizationDetail(id) {
-  const { data } = await http.get(`/hospitalizations/${id}`)
+  const { data } = await labApi.hospitalizations.get(id)
   return data?.data || data
 }
 
 export async function addMonitoringRecord(hospitalizationId, form) {
-  return http.post(`/hospitalizations/${hospitalizationId}/monitoring`, buildMonitoringPayload(form))
+  return labApi.hospitalizations.monitoring(hospitalizationId, buildMonitoringPayload(form))
 }
 
 export async function addMedication(hospitalizationId, form) {
-  return http.post(`/hospitalizations/${hospitalizationId}/medications`, buildMedicationPayload(form))
+  return labApi.hospitalizations.medications(hospitalizationId, buildMedicationPayload(form))
 }
 
 export async function dischargeHospitalization(hospitalizationId, form) {
-  return http.patch(`/hospitalizations/${hospitalizationId}/discharge`, buildDischargePayload(form))
+  return labApi.hospitalizations.discharge(hospitalizationId, buildDischargePayload(form))
 }
 
 export default function useHospitalizationsDomain() {

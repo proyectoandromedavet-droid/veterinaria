@@ -2,8 +2,13 @@
   <div class="dashboard" aria-live="polite">
     <div class="welcome">
       <div>
-        <h2 class="welcome__title">{{ t('dashboard.greeting') }}, {{ firstName }} 👋</h2>
+        <h2 class="welcome__title">{{ t('dashboard.greeting') }}, {{ firstName }} <span aria-hidden="true">&#x1F44B;</span></h2>
         <p class="welcome__sub">{{ today }}</p>
+      </div>
+      <div class="welcome__summary" aria-label="Resumen operativo">
+        <span>Agenda {{ kpis[0].value }}</span>
+        <span>Pendientes {{ kpis[2].value }}</span>
+        <span>Pacientes {{ kpis[1].value }}</span>
       </div>
     </div>
 
@@ -17,11 +22,11 @@
       </div>
     </div>
 
-    <div class="section">
+    <div class="section appointments-section">
       <div class="section__head">
         <h3>{{ t('dashboard.todayAppointments') }}</h3>
         <RouterLink to="/turnos" class="section__link" :aria-label="t('dashboard.todayAppointments')">
-          {{ t('common.viewAll') }} →
+          {{ t('common.viewAll') }} &rarr;
         </RouterLink>
       </div>
       <div v-if="loadingAppts" class="loading-placeholder" role="status" :aria-label="t('dashboard.loadingAppointments')">
@@ -31,7 +36,7 @@
         {{ appointmentsError }}
       </div>
       <div v-else-if="todayAppointments.length === 0" class="empty-state">
-        <span aria-hidden="true">📅</span> {{ t('dashboard.noAppointments') }}
+        <span aria-hidden="true">&#x1F4C5;</span> {{ t('dashboard.noAppointments') }}
       </div>
       <div v-else class="appt-list">
         <div
@@ -53,10 +58,12 @@
     </div>
 
     <div class="section">
-      <h3 class="section__head">{{ t('dashboard.quickAccess') }}</h3>
+      <div class="section__head">
+        <h3>{{ t('dashboard.quickAccess') }}</h3>
+      </div>
       <div class="quick-grid">
         <RouterLink
-          v-for="item in auth.allowedMenu.slice(1, 7)"
+          v-for="item in quickItems"
           :key="item.key"
           :to="item.to"
           class="quick-card"
@@ -67,16 +74,31 @@
         </RouterLink>
       </div>
     </div>
+
+    <div class="section clinical-section">
+      <div class="section__head">
+        <h3>Flujo clínico</h3>
+      </div>
+      <div class="flow-grid">
+        <RouterLink v-for="step in clinicalFlow" :key="step.key" :to="step.to" class="flow-step">
+          <span class="flow-step__index">{{ step.index }}</span>
+          <span class="flow-step__body">
+            <strong>{{ step.label }}</strong>
+            <small>{{ step.description }}</small>
+          </span>
+        </RouterLink>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import http from '../api/client'
+import { appointmentsApi, patientsApi } from '../api'
 import { t } from '../i18n'
 import { useAuthStore } from '../stores/auth'
-import { extractErrorMessage, logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
 
 type AppointmentStatus = 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show'
 
@@ -98,6 +120,22 @@ type KpiCard = {
 
 const auth = useAuthStore()
 
+const DEFAULT_QUICK_ITEMS = [
+  { key: 'appointments', label: 'Turnos', icon: '\u{1F4C5}', to: '/turnos' },
+  { key: 'patients', label: 'Pacientes', icon: '\u{1F43E}', to: '/pacientes' },
+  { key: 'medical', label: 'Evoluciones', icon: '\u{1F4CB}', to: '/evoluciones' },
+  { key: 'laboratorio', label: 'Laboratorio', icon: '\u{1F9EA}', to: '/laboratorio' },
+  { key: 'imagenes', label: 'Imágenes', icon: '\u{1FA7B}', to: '/imagenes' },
+  { key: 'billing', label: 'Facturación', icon: '\u{1F4B0}', to: '/facturacion' },
+]
+
+const clinicalFlow = [
+  { key: 'medical', index: '01', label: 'Evolución', description: 'Origen clínico y criterio médico', to: '/evoluciones' },
+  { key: 'laboratorio', index: '02', label: 'Laboratorio', description: 'Órdenes vinculadas a una ficha', to: '/laboratorio' },
+  { key: 'imagenes', index: '03', label: 'Imágenes', description: 'Estudios con trazabilidad clínica', to: '/imagenes' },
+  { key: 'billing', index: '04', label: 'Cierre', description: 'Facturación y seguimiento', to: '/facturacion' },
+]
+
 const firstName = computed(() => {
   const user = auth.user
   const name = user?.name || user?.email?.split('@')[0] || 'Usuario'
@@ -111,6 +149,11 @@ const today = computed(() => new Date().toLocaleDateString('es-AR', {
   day: 'numeric',
 }))
 
+const quickItems = computed(() => {
+  const allowed = auth.allowedMenu?.length ? auth.allowedMenu : DEFAULT_QUICK_ITEMS
+  return allowed.filter((item) => item.key !== 'dashboard').slice(0, 6)
+})
+
 const STATUS_LABELS: Record<string, string> = {
   scheduled: t('dashboard.statusScheduled'),
   confirmed: t('dashboard.statusConfirmed'),
@@ -121,10 +164,10 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const kpis = ref<KpiCard[]>([
-  { label: t('dashboard.kpiAppointments'), icon: '📅', value: '—', color: 'var(--primary)' },
-  { label: t('dashboard.kpiPatients'), icon: '🐾', value: '—', color: 'var(--accent-blue)' },
-  { label: t('dashboard.kpiPending'), icon: '⏳', value: '—', color: 'var(--accent-yellow)' },
-  { label: t('dashboard.kpiCompleted'), icon: '✅', value: '—', color: 'var(--accent-mint)' },
+  { label: t('dashboard.kpiAppointments'), icon: '\u{1F4C5}', value: '-', color: 'var(--primary)' },
+  { label: t('dashboard.kpiPatients'), icon: '\u{1F43E}', value: '-', color: 'var(--accent-blue)' },
+  { label: t('dashboard.kpiPending'), icon: '\u23F3', value: '-', color: 'var(--accent-gold)' },
+  { label: t('dashboard.kpiCompleted'), icon: '\u2705', value: '-', color: 'var(--accent-mint)' },
 ])
 
 const todayAppointments = ref<AppointmentRow[]>([])
@@ -132,16 +175,14 @@ const loadingAppts = ref(true)
 const appointmentsError = ref('')
 
 function formatTime(dt?: string) {
-  if (!dt) return '—'
+  if (!dt) return '-'
   return new Date(dt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 }
 
 onMounted(async () => {
   try {
     const currentDay = new Date().toISOString().split('T')[0]
-    const { data } = await http.get('/appointments', {
-      params: { date: currentDay, limit: 20 },
-    })
+    const { data } = await appointmentsApi.list({ date: currentDay, limit: 20 })
     const list = (data.data || data.appointments || data || []) as AppointmentRow[]
     todayAppointments.value = list
     kpis.value[0].value = list.length
@@ -150,54 +191,82 @@ onMounted(async () => {
   } catch (error) {
     logError('dashboard.loadAppointments', error)
     todayAppointments.value = []
-    appointmentsError.value = extractErrorMessage(error, 'No se pudieron cargar los turnos de hoy.', { includeRequestId: true })
+    appointmentsError.value = extractDetailedErrorMessage(error, 'No se pudieron cargar los turnos de hoy.', { context: 'Dashboard' })
   } finally {
     loadingAppts.value = false
   }
 
   try {
-    const { data } = await http.get('/patients', { params: { limit: 1 } })
-    kpis.value[1].value = data.total ?? data.pagination?.total ?? '—'
+    const { data } = await patientsApi.list({ limit: 1 })
+    kpis.value[1].value = data.total ?? data.pagination?.total ?? '-'
   } catch (error) {
     logError('dashboard.loadPatientsKpi', error)
-    kpis.value[1].value = '???'
+    kpis.value[1].value = '-'
   }
 })
 </script>
 
 <style scoped>
-.dashboard { display: flex; flex-direction: column; gap: 28px; }
-.welcome { display: flex; align-items: center; justify-content: space-between; }
-.welcome__title { font-size: 1.4rem; font-weight: 700; color: var(--text); }
-.welcome__sub { font-size: 0.85rem; color: var(--text-3); margin-top: 2px; text-transform: capitalize; }
+.dashboard { display: flex; flex-direction: column; gap: 18px; }
+.welcome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+}
+.welcome__title { font-size: 1.32rem; font-weight: 800; color: var(--text); }
+.welcome__sub { font-size: 0.85rem; color: var(--text-3); margin-top: 3px; text-transform: capitalize; }
+.welcome__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.welcome__summary span {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
 
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .kpi-card {
   background: var(--white);
   border-radius: var(--radius-lg);
-  padding: 20px;
+  padding: 16px;
   display: flex;
   align-items: center;
   gap: 14px;
-  box-shadow: var(--shadow-sm);
-  border-top: 3px solid var(--accent);
-  transition: box-shadow var(--transition), transform var(--transition);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  transition: border-color var(--transition), background var(--transition);
 }
 
-.kpi-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
-.kpi-card__icon { font-size: 1.8rem; }
-.kpi-card__value { display: block; font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1; }
-.kpi-card__label { display: block; font-size: 0.78rem; color: var(--text-3); margin-top: 4px; }
+.kpi-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.kpi-card__icon { font-size: 1.55rem; }
+.kpi-card__value { display: block; font-size: 1.48rem; font-weight: 850; color: var(--text); line-height: 1; }
+.kpi-card__label { display: block; font-size: 0.78rem; color: var(--text-3); margin-top: 5px; font-weight: 700; }
 
-.section { background: var(--white); border-radius: var(--radius-lg); padding: 22px; box-shadow: var(--shadow-sm); }
+.section { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px; }
 .section__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.section__head h3 { font-size: 1rem; font-weight: 600; color: var(--text); }
-.section__link { font-size: 0.82rem; color: var(--primary); }
+.section__head h3 { font-size: 1rem; font-weight: 800; color: var(--text); }
+.section__link { font-size: 0.82rem; color: var(--primary); font-weight: 800; }
 
 .appt-list { display: flex; flex-direction: column; gap: 8px; }
 .appt-row {
@@ -206,13 +275,14 @@ onMounted(async () => {
   gap: 12px;
   padding: 10px 12px;
   border-radius: var(--radius);
-  background: var(--bg);
+  border: 1px solid var(--border);
+  background: var(--surface);
   transition: background var(--transition);
   outline: none;
 }
 
 .appt-row:hover,
-.appt-row:focus-visible { background: var(--primary-xlight); }
+.appt-row:focus-visible { background: var(--primary-xlight); border-color: rgba(15, 118, 110, 0.24); }
 .appt-row__time { font-size: 0.85rem; font-weight: 600; color: var(--primary); min-width: 50px; }
 .appt-row__info { flex: 1; min-width: 0; }
 .appt-row__patient { display: block; font-size: 0.9rem; font-weight: 600; color: var(--text); }
@@ -235,34 +305,87 @@ onMounted(async () => {
 
 .quick-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 12px;
 }
 
 .quick-card {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 16px 8px;
+  justify-content: flex-start;
+  min-height: 64px;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--surface);
   text-decoration: none;
   color: var(--text-2);
-  font-size: 0.8rem;
-  font-weight: 500;
-  text-align: center;
-  transition: background var(--transition), color var(--transition), transform var(--transition);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: left;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
 
 .quick-card:hover,
 .quick-card:focus-visible {
   background: var(--primary-xlight);
-  color: var(--primary);
-  transform: translateY(-2px);
+  border-color: rgba(15, 118, 110, 0.26);
+  color: var(--primary-hover);
 }
 
-.quick-card__icon { font-size: 1.6rem; }
+.quick-card__icon { font-size: 1.35rem; }
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.flow-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 76px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+  color: var(--text-2);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.flow-step:hover,
+.flow-step:focus-visible {
+  background: var(--primary-xlight);
+  border-color: rgba(15, 118, 110, 0.28);
+}
+
+.flow-step__index {
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.flow-step__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.flow-step__body strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.flow-step__body small {
+  color: var(--text-3);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .loading-placeholder { color: var(--text-3); font-size: 0.9rem; text-align: center; padding: 20px; }
 .alert--error {
   background: #FDEAEA;
@@ -280,5 +403,40 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+@media (max-width: 920px) {
+  .flow-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 680px) {
+  .welcome {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .welcome__summary {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .kpi-grid,
+  .quick-grid,
+  .flow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .appt-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .appt-row__time {
+    min-width: auto;
+  }
+
+  .appt-row__badge {
+    margin-left: auto;
+  }
 }
 </style>

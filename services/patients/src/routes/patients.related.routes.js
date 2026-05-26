@@ -128,8 +128,10 @@ router.post('/:id/owners',
 );
 
 router.post('/:id/allergies',
-  body('allergen').notEmpty(),
+  body('allergen').notEmpty().isString().trim().isLength({ max: 200 }),
   body('severity').isIn(['mild', 'moderate', 'severe']),
+  body('reaction').optional().isString().trim().isLength({ max: 500 }),
+  body('notes').optional().isString().trim().isLength({ max: 1000 }),
   validate,
   async (req, res, next) => {
     try {
@@ -147,7 +149,10 @@ router.post('/:id/allergies',
 );
 
 router.post('/:id/chronic-conditions',
-  body('conditionName').notEmpty(),
+  body('conditionName').notEmpty().isString().trim().isLength({ max: 200 }),
+  body('diagnosisCode').optional().isString().trim().isLength({ max: 50 }),
+  body('managedWith').optional().isString().trim().isLength({ max: 500 }),
+  body('notes').optional().isString().trim().isLength({ max: 1000 }),
   validate,
   async (req, res, next) => {
     try {

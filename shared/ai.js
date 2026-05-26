@@ -9,6 +9,9 @@
 const PROVIDER = process.env.AI_PROVIDER || 'openai';
 const DEFAULT_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '1024', 10);
 const HARD_MAX_TOKENS = parseInt(process.env.AI_HARD_MAX_TOKENS || '4096', 10);
+
+// SEC: máximo de caracteres permitidos en un prompt para evitar context stuffing
+const MAX_PROMPT_CHARS = parseInt(process.env.AI_MAX_PROMPT_CHARS || '8000', 10);
 const { getBreaker } = require('./circuitBreaker');
 const { getSecret } = require('./secrets');
 const aiBreaker = getBreaker('openai', {
@@ -22,6 +25,55 @@ const aiBreaker = getBreaker('openai', {
 // AbortSignal.timeout for cleaner async/await and built-in timeout support.
 
 const AI_HTTP_TIMEOUT_MS = parseInt(process.env.AI_HTTP_TIMEOUT_MS || '30000', 10);
+
+// SEC: lista de hostnames permitidos para analyzeImage con URL externa.
+// Evita SSRF al llamar al LLM con URLs arbitrarias controladas por el usuario.
+const ALLOWED_IMAGE_HOSTS = new Set(
+  (process.env.AI_ALLOWED_IMAGE_HOSTS || 'storage.googleapis.com,s3.amazonaws.com')
+    .split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
+);
+
+/**
+ * Sanitiza un string de prompt: trunca y elimina marcadores de inyección.
+ * Previene prompt-injection desde datos de BD que llegan al LLM.
+ */
+function sanitizePromptText(text, maxChars = MAX_PROMPT_CHARS) {
+  if (text == null) return '';
+  // Truncar al máximo permitido
+  let safe = String(text).slice(0, maxChars);
+  // SEC: eliminar caracteres de control ASCII (U+0000–U+001F y U+007F) que pueden
+  // usarse para prompt injection o para inyectar instrucciones ocultas al LLM.
+  // El regex anterior era incorrecto (rango mal formado eliminaba caracteres imprimibles
+  // en lugar de los caracteres de control reales).
+  // eslint-disable-next-line no-control-regex
+  safe = safe.replace(/[\x00-\x1f\x7f]/g, '');
+  return safe;
+}
+
+/**
+ * Valida que una URL de imagen apunte a un host permitido (anti-SSRF).
+ * Solo acepta https:// con hosts en la lista blanca.
+ */
+function validateImageUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') {
+      throw Object.assign(new Error('Image URL must use HTTPS'), { code: 'AI_INVALID_IMAGE_URL' });
+    }
+    const host = parsed.hostname.toLowerCase();
+    const allowed = ALLOWED_IMAGE_HOSTS.has(host)
+      || [...ALLOWED_IMAGE_HOSTS].some(h => host.endsWith('.' + h));
+    if (!allowed) {
+      throw Object.assign(
+        new Error(`Image host '${host}' is not in the allowed list`),
+        { code: 'AI_SSRF_BLOCKED' }
+      );
+    }
+  } catch (err) {
+    if (err.code === 'AI_INVALID_IMAGE_URL' || err.code === 'AI_SSRF_BLOCKED') throw err;
+    throw Object.assign(new Error('Invalid image URL'), { code: 'AI_INVALID_IMAGE_URL' });
+  }
+}
 
 async function _post(hostname, path, extraHeaders, body) {
   const controller = AbortSignal.timeout(AI_HTTP_TIMEOUT_MS);
@@ -59,6 +111,8 @@ const adapters = {
     },
 
     async analyzeImage(base64OrUrl, prompt, opts = {}) {
+      // SEC: validar URL externa para evitar SSRF — solo hosts permitidos vía HTTPS
+      if (base64OrUrl.startsWith('http')) validateImageUrl(base64OrUrl);
       const imgContent = base64OrUrl.startsWith('http')
         ? { type: 'image_url', image_url: { url: base64OrUrl, detail: 'high' } }
         : { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64OrUrl}`, detail: 'high' } };
@@ -109,6 +163,8 @@ const adapters = {
     },
 
     async analyzeImage(base64OrUrl, prompt, opts = {}) {
+      // SEC: validar URL externa para evitar SSRF — solo hosts permitidos vía HTTPS
+      if (base64OrUrl.startsWith('http')) validateImageUrl(base64OrUrl);
       const imgSource = base64OrUrl.startsWith('http')
         ? { type: 'url', url: base64OrUrl }
         : { type: 'base64', media_type: opts.mimeType || 'image/jpeg', data: base64OrUrl };
@@ -166,10 +222,21 @@ function getAdapter() {
 /**
  * Genera una respuesta de chat.
  * @param {Array<{role:string, content:string}>} messages
- * @param {object} [opts] — model, maxTokens, temperature, json
+ * @param {object} [opts] — model, maxTokens, temperature, json, skipSanitize
  * @returns {Promise<string>}
  */
 async function complete(messages, opts = {}) {
+  // SEC: sanitizar mensajes de usuario para prevenir prompt injection.
+  // Solo se sanitizan roles 'user' y 'function'; los mensajes 'system' los controla el código
+  // del servidor y no deben truncarse. Para desactivar (e.g. en tests): opts.skipSanitize=true
+  if (!opts.skipSanitize) {
+    messages = messages.map(m => {
+      if (m.role === 'user' || m.role === 'function') {
+        return { ...m, content: sanitizePromptText(m.content) };
+      }
+      return m;
+    });
+  }
   if (!aiBreaker.canRequest()) {
     throw Object.assign(new Error('AI provider temporarily unavailable'), { code: 'AI_CIRCUIT_OPEN' });
   }
@@ -223,4 +290,4 @@ async function embedText(text) {
   }
 }
 
-module.exports = { complete, analyzeImage, embedText, PROVIDER, adapters };
+module.exports = { complete, analyzeImage, embedText, PROVIDER, adapters, sanitizePromptText };

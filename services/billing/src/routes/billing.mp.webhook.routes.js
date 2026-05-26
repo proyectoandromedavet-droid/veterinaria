@@ -47,9 +47,10 @@ router.post('/', async (req, res, next) => {
 
         const invoice = await conn.queryOne(
           `SELECT i.id, i.branch_id, b.organization_id AS org_id,
-                  i.total_amount, i.paid_amount, i.status
+                  i.total_amount, i.paid_amount, i.status, cur.code AS currency
            FROM invoices i
            JOIN branches b ON b.id = i.branch_id
+           JOIN currencies cur ON cur.id = i.currency_id
            WHERE i.id = :id
            FOR UPDATE`,
           { id: invoiceId }
@@ -126,10 +127,10 @@ router.post('/', async (req, res, next) => {
     }
 
     if (status === 'refunded') {
-      let appliedRefund = false;
+      let appliedRefund = null;
       await db.transaction(async (conn) => {
         const invoice = await conn.queryOne(
-          `SELECT i.id, i.branch_id, b.organization_id AS org_id
+          `SELECT i.id, i.branch_id, b.organization_id AS org_id, i.paid_amount
            FROM invoices i
            JOIN branches b ON b.id = i.branch_id
            WHERE i.id = :id
@@ -141,17 +142,85 @@ router.post('/', async (req, res, next) => {
           log.warn('MP refund webhook: external_reference tenant mismatch', { invoiceId, mpPaymentId, extOrgId, extBranchId });
           return;
         }
-        await conn.query(
-          `UPDATE invoices SET status = 'refunded', updated_at = NOW() WHERE id = :id`,
-          { id: invoiceId }
+
+        const originalPayment = await conn.queryOne(
+          `SELECT id, amount
+           FROM payments
+           WHERE mp_payment_id = :mpid
+             AND invoice_id = :invoiceId
+             AND amount > 0
+           LIMIT 1`,
+          { mpid: String(mpPaymentId), invoiceId }
         );
-        appliedRefund = true;
+        if (!originalPayment) {
+          log.warn('MP refund webhook: original payment not found', { invoiceId, mpPaymentId });
+          return;
+        }
+
+        const mpRefunds = Array.isArray(paymentData.refunds) ? paymentData.refunds : [];
+        const totalRefundedByMp = Number(
+          paymentData.transaction_amount_refunded
+          || mpRefunds.reduce((sum, refund) => sum + Number(refund.amount || 0), 0)
+          || paymentData.transaction_amount
+          || originalPayment.amount
+        );
+        if (!totalRefundedByMp || totalRefundedByMp <= 0) {
+          log.warn('MP refund webhook: invalid refund amount', { invoiceId, mpPaymentId, totalRefundedByMp });
+          return;
+        }
+
+        const refundId = mpRefunds[mpRefunds.length - 1]?.id || 'full';
+        const refundRef = `refund:${mpPaymentId}:${refundId}`;
+        const existingRefund = await conn.queryOne(
+          `SELECT id FROM payments WHERE reference = :ref AND payment_status = 'refunded' LIMIT 1`,
+          { ref: refundRef }
+        );
+        if (existingRefund) return;
+
+        const refunded = await conn.queryOne(
+          `SELECT COALESCE(SUM(ABS(amount)), 0) AS total
+           FROM payments
+           WHERE invoice_id = :invoiceId
+             AND payment_method = 'mercadopago'
+             AND payment_status = 'refunded'
+             AND reference LIKE :prefix`,
+          { invoiceId, prefix: `refund:${mpPaymentId}:%` }
+        );
+        const remainingRefundable = Number(originalPayment.amount || 0) - Number(refunded?.total || 0);
+        const deltaFromWebhook = totalRefundedByMp - Number(refunded?.total || 0);
+        const amountToApply = Math.min(deltaFromWebhook, remainingRefundable, Number(invoice.paid_amount || 0));
+        if (!amountToApply || amountToApply <= 0) return;
+
+        await conn.query(
+          `INSERT INTO payments
+             (invoice_id, amount, payment_method, reference, payment_status, notes, paid_at, created_by)
+           VALUES (:iid, :amount, 'mercadopago', :reference, 'refunded', :notes, NOW(), NULL)`,
+          {
+            iid: invoiceId,
+            amount: -amountToApply,
+            reference: refundRef,
+            notes: 'Reembolso MercadoPago webhook',
+          }
+        );
+
+        await conn.query(
+          `UPDATE invoices
+           SET paid_amount = GREATEST(0, paid_amount - :amount),
+               status = CASE
+                 WHEN GREATEST(0, paid_amount - :amount) <= 0 THEN 'refunded'
+                 ELSE 'partial'
+               END,
+               updated_at = NOW()
+           WHERE id = :id`,
+          { id: invoiceId, amount: amountToApply }
+        );
+        appliedRefund = { invoiceId, mpPaymentId, amount: amountToApply, refundRef };
       });
       if (appliedRefund) {
-        enqueue({ event: 'payment.refunded', payload: { invoiceId, mpPaymentId } }).catch((err) => {
+        enqueue({ event: 'payment.refunded', payload: appliedRefund }).catch((err) => {
           log.warn('MP webhook enqueue failed', { error: err.message, invoiceId, mpPaymentId });
         });
-        eventBus.publish('billing.payment.refunded', { invoiceId, mpPaymentId }).catch((err) => {
+        eventBus.publish('billing.payment.refunded', appliedRefund).catch((err) => {
           log.warn('MP webhook event publish failed', { error: err.message, invoiceId, mpPaymentId });
         });
       }

@@ -1,5 +1,5 @@
 # ── Stage 1: build frontend ───────────────────────────────────────────────────
-FROM node:20-alpine AS frontend-build
+FROM node:20.18.3-alpine3.21 AS frontend-build
 WORKDIR /app/frontend
 COPY andromeda-front/package.json andromeda-front/package-lock.json ./
 RUN npm ci
@@ -8,25 +8,26 @@ COPY andromeda-front/ .
 RUN npm run build
 
 # ── Stage 2: backend + frontend dist ─────────────────────────────────────────
-FROM node:20-alpine
+FROM node:20.18.3-alpine3.21
 WORKDIR /app
 
-RUN npm install -g pm2
+RUN npm install -g pm2 && \
+    mkdir -p /app/logs/pm2 && \
+    chown -R node:node /app
 
-COPY package.json package-lock.json ./
+USER node
+
+COPY --chown=node:node package.json package-lock.json ./
 RUN npm install --omit=dev
 
-COPY shared ./shared
-COPY gateway ./gateway
-COPY services ./services
-COPY plugins ./plugins
-COPY ecosystem.railway.config.js ./
+COPY --chown=node:node shared ./shared
+COPY --chown=node:node gateway ./gateway
+COPY --chown=node:node services ./services
+COPY --chown=node:node plugins ./plugins
+COPY --chown=node:node ecosystem.railway.config.js ./
 
 # Copia el dist del frontend para que el gateway lo sirva
-COPY --from=frontend-build /app/frontend/dist ./andromeda-front/dist
+COPY --from=frontend-build --chown=node:node /app/frontend/dist ./andromeda-front/dist
 
-RUN mkdir -p /app/logs/pm2 && chown -R node:node /app
-
-EXPOSE 3000
-USER node
+EXPOSE 4050
 CMD ["pm2-runtime", "start", "ecosystem.railway.config.js"]

@@ -8,10 +8,12 @@ const router = Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const { status, supplierId, page = 1, limit = 20 } = req.query;
+    const page  = Math.max(parseInt(req.query.page  || '1',  10) || 1,  1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10) || 20, 1), 100);
+    const { status, supplierId } = req.query;
     const offset = (page - 1) * limit;
     const conds = ['po.branch_id = :bid'];
-    const p = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
+    const p = { bid: req.user.branchId, limit, offset };
     if (status) { conds.push('po.status = :status'); p.status = status; }
     if (supplierId) { conds.push('po.supplier_id = :supplierId'); p.supplierId = supplierId; }
 
@@ -57,20 +59,32 @@ router.get('/:id', async (req, res, next) => {
 });
 
 router.post('/',
-  body('supplierId').isInt(),
+  body('supplierId').isInt({ min: 1 }),
   body('items').isArray({ min: 1 }),
+  body('items.*.itemId').isInt({ min: 1 }),
+  body('items.*.quantity').isFloat({ min: 0.001 }),
+  body('items.*.unitCost').isFloat({ min: 0 }),
   validate,
   async (req, res, next) => {
     try {
       const { supplierId, items, orderedDate, expectedDate, notes } = req.body;
+
+      // Verify supplier belongs to org to prevent IDOR across organizations
+      const supplier = await db.queryOne(
+        `SELECT id FROM suppliers WHERE id = :sid AND org_id = :oid AND is_active = 1 AND deleted_at IS NULL`,
+        { sid: supplierId, oid: req.user.orgId }
+      );
+      if (!supplier) return R.notFound(res, 'Proveedor no encontrado');
+
       const [{ count }] = await db.query(
         `SELECT COUNT(*)+1 AS count FROM purchase_orders WHERE branch_id=:bid`,
         { bid: req.user.branchId }
       );
       const poNumber = `PO-${String(count).padStart(5, '0')}`;
-      const subtotal = items.reduce((s, i) => s + (i.quantity * i.unitCost), 0);
+      const r2 = (n) => Math.round(n * 100) / 100;
+      const subtotal = r2(items.reduce((s, i) => s + r2(Number(i.quantity) * Number(i.unitCost)), 0));
 
-      const r = await db.query(
+      const [r] = await db.query(
         `INSERT INTO purchase_orders (branch_id, supplier_id, po_number, status, ordered_date, expected_date, subtotal, total_amount, notes, created_by)
          VALUES (:bid, :sup, :poNum, 'draft', :ordered, :expected, :sub, :total, :notes, :uid)`,
         { bid: req.user.branchId, sup: supplierId, poNum: poNumber, ordered: orderedDate||null, expected: expectedDate||null, sub: subtotal, total: subtotal, notes: notes||null, uid: req.user.userId }
@@ -110,7 +124,7 @@ router.patch('/:id/send', async (req, res, next) => {
     );
 
     if (po.email) {
-      const { send } = require('../../../shared/email');
+      const { send } = require('../../../../shared/email');
       send({ to: po.email, subject: `Nueva orden de compra ${po.po_number}`, html: `<p>Se ha emitido la orden de compra <b>${po.po_number}</b>. Por favor confirme recepción.</p>` }).catch(() => {});
     }
 
@@ -123,20 +137,28 @@ router.patch('/:id/send', async (req, res, next) => {
 
 router.post('/:id/receive',
   body('items').isArray({ min: 1 }),
+  body('items.*.poItemId').isInt({ min: 1 }),
+  body('items.*.quantityReceived').isFloat({ min: 0.001 }),
   validate,
   async (req, res, next) => {
     try {
       const { items } = req.body;
-      const po = await db.queryOne(
-        `SELECT * FROM purchase_orders
-         WHERE id=:id AND branch_id=:bid AND status IN ('sent','partial') AND ${notDeleted('purchase_orders')}`,
-        { id: req.params.id, bid: req.user.branchId }
-      );
-      if (!po) return R.notFound(res, 'OC no encontrada o no está en estado enviada');
 
       await db.transaction(async (conn) => {
+        const po = await conn.queryOne(
+          `SELECT * FROM purchase_orders
+           WHERE id=:id AND branch_id=:bid AND status IN ('sent','partial') AND ${notDeleted('purchase_orders')}
+           FOR UPDATE`,
+          { id: req.params.id, bid: req.user.branchId }
+        );
+        if (!po) {
+          const err = new Error('OC no encontrada o no está en estado enviada');
+          err.http = 404;
+          throw err;
+        }
+
         for (const item of items) {
-          const poi = await db.queryOne(
+          const poi = await conn.queryOne(
             `SELECT * FROM purchase_order_items WHERE id=:id AND purchase_order_id=:poid`,
             { id: item.poItemId, poid: po.id }
           );
@@ -197,7 +219,7 @@ router.post('/:id/receive',
 
 router.patch('/:id/cancel', async (req, res, next) => {
   try {
-    const result = await db.query(
+    const [result] = await db.query(
       `UPDATE purchase_orders SET status='cancelled', updated_at=NOW()
        WHERE id=:id AND branch_id=:bid AND status IN ('draft','sent')`,
       { id: req.params.id, bid: req.user.branchId }

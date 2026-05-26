@@ -1,5 +1,10 @@
-<template>
+﻿<template>
   <div v-show="active">
+    <div class="orders-intro">
+      <strong>Órdenes vinculadas a esta evolución</strong>
+      <span>Todo pedido diagnóstico creado acá queda unido a la ficha clínica que estás guardando.</span>
+    </div>
+
     <div class="section-title">Laboratorio</div>
     <div class="form-grid">
       <div class="field">
@@ -16,7 +21,7 @@
       </div>
     </div>
     <div v-if="loadingLabTests" class="loading-state" style="padding:20px 0">
-      <span class="spin spin--dark" /> Cargando pruebas de laboratorio…
+      <span class="spin spin--dark" /> Cargando pruebas de laboratorio...
     </div>
     <div v-else class="tests-catalog">
       <div v-for="(tests, category) in groupedLabTests" :key="category" class="test-category">
@@ -38,9 +43,9 @@
       <div class="field">
         <label>Tipo de estudio</label>
         <select v-model="form.imagingOrder.imagingTypeId" :disabled="saving || loadingImagingTypes">
-          <option value="">{{ loadingImagingTypes ? 'Cargando tipos…' : 'Seleccionar estudio' }}</option>
+          <option value="">{{ loadingImagingTypes ? 'Cargando tipos...' : 'Seleccionar estudio' }}</option>
           <option v-for="type in imagingTypes" :key="type.id" :value="type.id">
-            {{ type.name }}{{ type.modality ? ' · ' + type.modality : '' }}
+            {{ type.name }}{{ type.modality ? ' | ' + type.modality : '' }}
           </option>
         </select>
       </div>
@@ -71,7 +76,7 @@
       <div class="field">
         <label>Veterinario responsable</label>
         <select v-model="form.hospitalizationOrder.responsibleVetId" :disabled="saving || loadingProfessionals">
-          <option value="">{{ loadingProfessionals ? 'Cargando profesionales…' : 'Seleccionar veterinario' }}</option>
+          <option value="">{{ loadingProfessionals ? 'Cargando profesionales...' : 'Seleccionar veterinario' }}</option>
           <option v-for="professional in hospitalizationProfessionals" :key="professional.id" :value="String(professional.id)">
             {{ professional.label }}
           </option>
@@ -80,7 +85,7 @@
       <div class="field">
         <label>Sala</label>
         <select v-model="form.hospitalizationOrder.wardId" :disabled="saving || wardsLoading" @change="form.hospitalizationOrder.kennelId = ''">
-          <option value="">{{ wardsLoading ? 'Cargando salas…' : 'Seleccionar sala' }}</option>
+          <option value="">{{ wardsLoading ? 'Cargando salas...' : 'Seleccionar sala' }}</option>
           <option v-for="ward in availableWards" :key="ward.id" :value="ward.id">
             {{ ward.name }}{{ ward.available_kennels != null ? ' (' + ward.available_kennels + ' libres)' : '' }}
           </option>
@@ -122,10 +127,10 @@
       <div class="field">
         <label>Tipo de cirugía</label>
         <select v-model="form.surgeryOrder.surgeryTypeId" :disabled="saving || loadingSurgeryTypes">
-          <option value="">{{ loadingSurgeryTypes ? 'Cargando tipos…' : 'Seleccionar cirugía' }}</option>
+          <option value="">{{ loadingSurgeryTypes ? 'Cargando tipos...' : 'Seleccionar cirugía' }}</option>
           <optgroup v-for="(types, category) in groupedSurgeryTypes" :key="category" :label="category">
             <option v-for="type in types" :key="type.id" :value="type.id">
-              {{ type.name }}{{ type.estimated_duration_minutes ? ' · ' + type.estimated_duration_minutes + ' min est.' : '' }}
+              {{ type.name }}{{ type.estimated_duration_minutes ? ' | ' + type.estimated_duration_minutes + ' min est.' : '' }}
             </option>
           </optgroup>
         </select>
@@ -133,7 +138,7 @@
       <div class="field">
         <label>Cirujano responsable</label>
         <select v-model="form.surgeryOrder.leadSurgeonId" :disabled="saving || loadingProfessionals">
-          <option value="">{{ loadingProfessionals ? 'Cargando profesionales…' : 'Seleccionar cirujano' }}</option>
+          <option value="">{{ loadingProfessionals ? 'Cargando profesionales...' : 'Seleccionar cirujano' }}</option>
           <option v-for="professional in surgeryProfessionals" :key="professional.id" :value="String(professional.id)">
             {{ professional.label }}
           </option>
@@ -190,3 +195,27 @@ defineProps({
   wardsLoading: Boolean,
 })
 </script>
+
+<style scoped>
+.orders-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius);
+  background: #eff6ff;
+}
+
+.orders-intro strong {
+  color: #1e3a8a;
+  font-size: 0.9rem;
+}
+
+.orders-intro span {
+  color: var(--text-2);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+</style>

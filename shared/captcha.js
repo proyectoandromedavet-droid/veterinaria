@@ -5,6 +5,8 @@
  * Feature flag: 'captcha_login' en featureFlags.js
  */
 const HCAPTCHA_URL = 'https://hcaptcha.com/siteverify';
+const { createLogger } = require('./logger');
+const captchaLog = createLogger('captcha');
 
 async function verifyCaptcha(token, remoteip) {
   const secret = process.env.HCAPTCHA_SECRET;
@@ -16,11 +18,18 @@ async function verifyCaptcha(token, remoteip) {
       method: 'POST',
       body: params,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      // SEC: timeout para evitar que una respuesta lenta de hCaptcha bloquee indefinidamente
+      signal: AbortSignal.timeout(5000),
     });
     const data = await resp.json();
     return data.success === true;
-  } catch {
-    // Si hCaptcha no responde, no bloquear (fail open para no romper login)
+  } catch (err) {
+    // SEC: fail-open para no bloquear logins legítimos durante downtime de hCaptcha.
+    // Se loguea como warning para que sea detectable en caso de abuso o bloqueo sistemático.
+    captchaLog.warn('hCaptcha verification request failed — allowing through (fail-open)', {
+      error: err?.message,
+      remoteip: remoteip ? remoteip.slice(0, 15) : null,
+    });
     return true;
   }
 }

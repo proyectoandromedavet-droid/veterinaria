@@ -8,9 +8,11 @@ const router = Router();
 router.get('/orders', async (req, res, next) => {
   try {
     const { patientId, status, from, to, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const safePage   = Math.max(1, parseInt(page, 10)  || 1);
+    const safeLimit  = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
+    const offset = (safePage - 1) * safeLimit;
     const conds = ['lo.branch_id = :bid'];
-    const p = { bid: req.user.branchId, limit: parseInt(limit, 10), offset: parseInt(offset, 10) };
+    const p = { bid: req.user.branchId, limit: safeLimit, offset };
 
     if (patientId) { conds.push('lo.patient_id = :pid'); p.pid = patientId; }
     if (status) { conds.push('lo.status = :status'); p.status = status; }
@@ -43,7 +45,7 @@ router.get('/orders', async (req, res, next) => {
       { bid: req.user.branchId, ...(patientId && { pid: patientId }), ...(status && { status }), ...(from && { from }), ...(to && { to }) }
     );
 
-    return R.paginated(res, rows, total, page, limit);
+    return R.paginated(res, rows, total, safePage, safeLimit);
   } catch (e) {
     logLabError('GET /lab/orders', e, { branchId: req.user?.branchId, query: req.query });
     next(e);

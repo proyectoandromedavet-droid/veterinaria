@@ -542,7 +542,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import { t } from '../i18n'
-import { logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
 import {
   addAnesthesiaRecord as addAnesthesiaRecordRequest,
   createSurgery as createSurgeryRequest,
@@ -580,7 +580,8 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las cirugías'
+    logError('cirugias.load', e)
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las cirugias', { context: 'Carga de cirugias' })
   } finally { loading.value = false }
 }
 
@@ -732,7 +733,7 @@ async function handleCreate() {
     showNew.value = false
     await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || 'No se pudo programar la cirugía.'
+    saveError.value = extractDetailedErrorMessage(e, 'No se pudo programar la cirugia.', { context: 'Programacion de cirugia' })
   } finally { saving.value = false }
 }
 
@@ -781,7 +782,7 @@ async function handleAnesthesia() {
     showAnesthesia.value = false
     await load()
   } catch (e) {
-    aneError.value = e.response?.data?.message || 'No se pudo registrar la anestesia.'
+    aneError.value = extractDetailedErrorMessage(e, 'No se pudo registrar la anestesia.', { context: 'Registro de anestesia' })
   } finally { aneSaving.value = false }
 }
 
@@ -803,7 +804,7 @@ async function changeStatus(newStatus) {
     showStatus.value = false
     await load()
   } catch (e) {
-    statusError.value = e.response?.data?.message || 'No se pudo cambiar el estado.'
+    statusError.value = extractDetailedErrorMessage(e, 'No se pudo cambiar el estado.', { context: 'Cambio de estado quirurgico' })
   } finally { statusSaving.value = false }
 }
 

@@ -10,8 +10,8 @@ router.get('/', portalAuth, async (req, res, next) => {
     const { status, page = 1 } = req.query;
     const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
     const offset = (Math.max(parseInt(page, 10), 1) - 1) * limit;
-    const conds = ['i.client_id=:cid'];
-    const p = { cid: req.owner.clientId, limit, offset };
+    const conds = ['i.client_id=:cid', 'b.organization_id=:orgId'];
+    const p = { cid: req.owner.clientId, orgId: req.owner.orgId, limit, offset };
     if (status) { conds.push('i.status=:status'); p.status = status; }
 
     const rows = await db.query(
@@ -38,8 +38,8 @@ router.get('/:id', portalAuth, async (req, res, next) => {
        FROM invoices i
        JOIN currencies cur ON i.currency_id=cur.id
        JOIN branches b ON i.branch_id=b.id
-       WHERE i.id=:id AND i.client_id=:cid`,
-      { id: req.params.id, cid: req.owner.clientId }
+       WHERE i.id=:id AND i.client_id=:cid AND b.organization_id=:orgId`,
+      { id: req.params.id, cid: req.owner.clientId, orgId: req.owner.orgId }
     );
     if (!inv) return R.notFound(res, 'Factura no encontrada');
 
@@ -60,8 +60,10 @@ router.post('/:id/pay', portalAuth, async (req, res, next) => {
        FROM invoices i
        JOIN currencies cur ON i.currency_id=cur.id
        JOIN clients c ON i.client_id=c.id
-       WHERE i.id=:id AND i.client_id=:cid AND i.status IN ('pending','overdue')`,
-      { id: req.params.id, cid: req.owner.clientId }
+       JOIN branches b ON i.branch_id=b.id
+       WHERE i.id=:id AND i.client_id=:cid AND b.organization_id=:orgId
+         AND i.status IN ('pending','overdue','partial')`,
+      { id: req.params.id, cid: req.owner.clientId, orgId: req.owner.orgId }
     );
     if (!inv) return R.notFound(res, 'Factura no encontrada o ya pagada');
 
@@ -75,6 +77,7 @@ router.post('/:id/pay', portalAuth, async (req, res, next) => {
       description: `Factura ${inv.invoice_number}`,
       orgId: req.owner.orgId,
       branchId: inv.branch_id,
+      idempotencyKey: `inv-${inv.id}-org-${req.owner.orgId}-amount-${Math.round((inv.total_amount - inv.paid_amount) * 100)}`,
     });
     publishPortalEvent('portal.invoice.payment_requested', {
       invoiceId: inv.id,

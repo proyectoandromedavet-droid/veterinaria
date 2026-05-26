@@ -3,33 +3,41 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">🩻</span>
+        <span class="page-emoji">&#x1F43E;</span>
         <div>
-          <h2 class="page-title">{{ t('imaging.title') }}</h2>
-          <p class="page-sub">{{ t('imaging.subtitle') }}</p>
+          <h2 class="page-title">Bandeja de imágenes</h2>
+          <p class="page-sub">Estudios solicitados desde evoluciones clínicas, informes y trazabilidad.</p>
         </div>
       </div>
-      <BaseButton type="button" @click="openNewOrder()">+ {{ t('imaging.newOrder') }}</BaseButton>
+      <RouterLink class="btn-primary route-action" to="/evoluciones">Crear desde evolución</RouterLink>
     </div>
+
+    <section class="workflow-banner" aria-label="Flujo clínico de imágenes">
+      <div>
+        <strong>Flujo clínico</strong>
+        <span>Evolución → Solicitud de estudio → Informe → Seguimiento</span>
+      </div>
+      <p>Las nuevas solicitudes se originan en la evolución para que la indicación clínica quede atada a una ficha.</p>
+    </section>
 
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-        <span class="stat-card__icon">📋</span>
+        <span class="stat-card__icon">&#x1F43E;</span>
         <div>
           <strong>{{ stats.pendingReport }}</strong>
           <span>{{ t('imaging.pendingReport') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span class="stat-card__icon">✅</span>
+        <span class="stat-card__icon">&#x2713;</span>
         <div>
           <strong>{{ stats.completed }}</strong>
           <span>{{ t('imaging.completed') }}</span>
         </div>
       </div>
       <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span class="stat-card__icon">🩻</span>
+        <span class="stat-card__icon">&#x1F43E;</span>
         <div>
           <strong>{{ stats.topModality }}</strong>
           <span>{{ t('imaging.topModality') }}</span>
@@ -65,7 +73,7 @@
     </div>
     <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">🩻</span>
+      <span class="empty-state__emoji">&#x1F43E;</span>
       <p>{{ t('imaging.empty') }}</p>
     </div>
 
@@ -74,6 +82,7 @@
         <thead>
           <tr>
             <th>{{ t('imaging.patient') }}</th>
+            <th>Evolución</th>
             <th>{{ t('imaging.typeLabel') }}</th>
             <th>{{ t('imaging.status') }}</th>
             <th>{{ t('imaging.date') }}</th>
@@ -91,6 +100,10 @@
                   <span class="sub">{{ order.vet_name || '' }}</span>
                 </div>
               </div>
+            </td>
+            <td>
+              <span v-if="order.medical_record_id" class="record-link">Ficha #{{ order.medical_record_id }}</span>
+              <span v-else class="badge badge--yellow">Sin ficha</span>
             </td>
             <td>
               <div>
@@ -142,122 +155,13 @@
       <button type="button" :disabled="pagination.page >= pagination.totalPages" @click="load(pagination.page + 1)">{{ t('billing.next') }}</button>
     </div>
 
-    <!-- Modal {{ t('imaging.newOrder') }} -->
-    <Transition name="modal">
-      <div v-if="showNewOrder" class="modal-backdrop" @click.self="showNewOrder = false">
-        <div class="modal">
-          <div class="modal__header">
-            <h3>🩻 {{ t('imaging.newModalTitle') }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showNewOrder = false">✕</BaseButton>
-          </div>
-
-          <form @submit.prevent="handleCreateOrder" novalidate>
-            <div class="form-body">
-
-              <!-- Paciente autocomplete -->
-              <div class="field field--full" style="position:relative">
-                <label for="img-m-patient">{{ t('imaging.patientLabel') }} <span class="req">*</span></label>
-                <input
-                  id="img-m-patient"
-                  name="img-m-patient"
-                  v-model.trim="patientSearch"
-                  type="search"
-                  :placeholder="t('imaging.patientSearchPlaceholder')"
-                  :disabled="saving"
-                  @input="searchPatients"
-                  autocomplete="off"
-                />
-                <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
-                    <button
-                      v-for="pt in patientResults"
-                      :key="pt.id"
-                      type="button"
-                      class="autocomplete__item"
-                      role="option"
-                      :aria-label="`${t('imaging.selectPatient')} ${pt.name}`"
-                      @click="selectPatient(pt)"
-                    >
-                    {{ petEmoji(pt.species) }} <b>{{ pt.name }}</b>
-                    <span v-if="pt.hc_number" class="autocomplete__owner"> · HC {{ pt.hc_number }}</span>
-                    <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
-                    </button>
-                </div>
-                <div v-if="orderForm.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
-                <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
-              </div>
-
-              <div class="form-grid">
-                <!-- Tipo de imagen -->
-                <div class="field field--full">
-                  <label for="img-m-type">{{ t('imaging.typeLabel') }} <span class="req">*</span></label>
-                  <select id="img-m-type" name="img-m-type" v-model="orderForm.imagingTypeId" :disabled="saving || typesLoading">
-                    <option value="">{{ typesLoading ? t('imaging.typeLoading') : t('imaging.typePlaceholder') }}</option>
-                    <option v-for="t in imagingTypes" :key="t.id" :value="t.id">
-                      {{ t.name }} ({{ t.modality ? t.modality.toUpperCase() : '' }})
-                    </option>
-                  </select>
-                  <span v-if="fe.imagingTypeId" class="field-error">{{ fe.imagingTypeId }}</span>
-                </div>
-
-                <!-- Info del tipo seleccionado -->
-                <div v-if="selectedTypeInfo" class="field field--full type-info">
-                  <div v-if="selectedTypeInfo.description" class="type-info__desc">{{ selectedTypeInfo.description }}</div>
-                  <div v-if="selectedTypeInfo.preparation_required" class="type-info__prep">
-                    <strong>{{ t('imaging.prepRequired') }}:</strong> {{ selectedTypeInfo.preparation_instructions || t('common.yes') }}
-                  </div>
-                </div>
-
-                <div class="field">
-                  <label for="img-m-priority">{{ t('imaging.priorityLabel') }}</label>
-                  <select id="img-m-priority" name="img-m-priority" v-model="orderForm.priority" :disabled="saving">
-                    <option value="routine">{{ t('imaging.routine') }}</option>
-                    <option value="urgent">{{ t('imaging.urgent') }}</option>
-                    <option value="emergency">{{ t('imaging.emergency') }}</option>
-                  </select>
-                </div>
-
-                <div class="field" style="justify-content:flex-end;align-self:flex-end">
-                  <label class="checkbox-label">
-                    <input type="checkbox" v-model="orderForm.sedationRequired" :disabled="saving" />
-                    {{ t('imaging.sedationRequired') }}
-                  </label>
-                </div>
-
-                <div class="field field--full">
-                  <label for="img-m-notes">{{ t('imaging.clinicalNotes') }}</label>
-                  <textarea
-                    id="img-m-notes"
-                    name="img-m-notes"
-                    v-model.trim="orderForm.clinicalNotes"
-                    rows="3"
-                    :placeholder="t('imaging.clinicalNotes')"
-                    :disabled="saving"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div v-if="saveError" class="alert alert--error mx" role="alert">{{ saveError }}</div>
-
-            <div class="modal__actions">
-              <BaseButton type="button" variant="ghost" @click="showNewOrder = false" :disabled="saving">{{ t('common.cancel') }}</BaseButton>
-              <BaseButton type="submit" :disabled="saving">
-                <span v-if="saving" class="spin spin--sm" />
-                <span v-else>💾 {{ t('imaging.createOrder') }}</span>
-              </BaseButton>
-            </div>
-          </form>
-        </div>
-      </div>
-    </Transition>
-
     <!-- Modal informe -->
     <Transition name="modal">
       <div v-if="showReport" class="modal-backdrop" @click.self="showReport = false">
         <div class="modal modal--wide">
           <div class="modal__header">
-            <h3>📋 {{ t('imaging.reportTitle') }} — {{ selectedOrder?.patient_name }}</h3>
-            <BaseButton type="button" variant="ghost" class="modal__close" @click="showReport = false">✕</BaseButton>
+            <h3>&#x1F43E; {{ t('imaging.reportTitle') }} — {{ selectedOrder?.patient_name }}</h3>
+            <BaseButton type="button" variant="ghost" class="modal__close" @click="showReport = false">&times;</BaseButton>
           </div>
 
           <div v-if="detailLoading" class="loading-state" style="min-height:200px" role="status" aria-live="polite">
@@ -346,7 +250,7 @@
                 <BaseButton type="button" variant="ghost" @click="showReport = false" :disabled="savingReport">{{ t('common.cancel') }}</BaseButton>
                 <BaseButton type="submit" :disabled="savingReport">
                   <span v-if="savingReport" class="spin spin--sm" />
-                  <span v-else>💾 {{ t('imaging.saveReport') }}</span>
+                  <span v-else>&#x1F43E; {{ t('imaging.saveReport') }}</span>
                 </BaseButton>
               </div>
             </form>
@@ -359,13 +263,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import http from '../api/client'
+import { ref, reactive, onMounted } from 'vue'
+import { labApi } from '../api'
 import { t } from '../i18n'
-import { extractErrorMessage, logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
 import BaseButton from '../components/base/BaseButton.vue'
+import { useUiFeedback } from '../composables/useUiFeedback'
 
-// ── Lista de órdenes ────────────────────────────────────────────────────────
+const { success } = useUiFeedback()
+
+// -- Lista de órdenes --------------------------------------------------------
 function asArray(value) {
   if (Array.isArray(value)) return value
   if (value == null) return []
@@ -377,6 +284,7 @@ function normalizeImagingOrder(row) {
   return {
     ...row,
     id: row.id ?? row.order_id ?? row.orderId ?? null,
+    medical_record_id: row.medical_record_id ?? row.medicalRecordId ?? null,
     patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
     vet_name: row.vet_name ?? row.vet?.name ?? row.vetName ?? '',
     imaging_type: row.imaging_type ?? row.type_name ?? row.typeName ?? '',
@@ -386,29 +294,6 @@ function normalizeImagingOrder(row) {
     has_report: Boolean(row.has_report ?? row.report ?? row.report_id ?? row.reportId),
     study_count: Number(row.study_count ?? row.studyCount ?? 0) || 0,
     species: row.species ?? row.patient?.species ?? '',
-  }
-}
-
-function normalizeImagingType(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.type_id ?? row.typeId ?? null,
-    name: row.name ?? row.type_name ?? row.typeName ?? '',
-    modality: row.modality ?? row.modality_code ?? row.modalityCode ?? '',
-  }
-}
-
-function normalizePatient(row) {
-  if (!row || typeof row !== 'object') return null
-  return {
-    ...row,
-    id: row.id ?? row.patient_id ?? row.patientId ?? null,
-    name: row.name ?? row.full_name ?? row.fullName ?? '',
-    primary_owner: row.primary_owner ?? row.owner_name ?? row.ownerName ?? '',
-    owner_id: row.owner_id ?? row.ownerId ?? '',
-    species: row.species ?? row.pet_species ?? row.petSpecies ?? '',
-    hc_number: row.hc_number ?? row.hcNumber ?? '',
   }
 }
 
@@ -427,7 +312,7 @@ async function load(page = 1) {
     const pageSize = 15
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await http.get('/imaging/orders', { params })
+    const { data } = await labApi.imaging.list(params)
     const rows = asArray(data?.data || data?.orders || data).map(normalizeImagingOrder).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     const filtered = needle
@@ -441,7 +326,7 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
-    error.value = extractErrorMessage(e, 'No se pudieron cargar las órdenes.', { includeRequestId: true })
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las órdenes.', { context: 'Carga de órdenes de imágenes' })
   } finally { loading.value = false }
 }
 
@@ -462,11 +347,11 @@ function computeStats() {
 let loadTimer = null
 function debouncedLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(load, 350) }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// -- Helpers -----------------------------------------------------------------
 function petEmoji(s) {
-  if (!s) return '🐾'
-  const m = { perro:'🐶', dog:'🐶', gato:'🐱', cat:'🐱', conejo:'🐰', rabbit:'🐰', loro:'🦜', bird:'🦜', pez:'🐟', fish:'🐟', tortuga:'🐢', reptile:'🦎', hamster:'🐹' }
-  return m[s.toLowerCase()] || '🐾'
+  if (!s) return '\u{1F43E}'
+  const m = { perro:'\u{1F43E}', dog:'\u{1F43E}', gato:'\u{1F43E}', cat:'\u{1F43E}', conejo:'\u{1F43E}', rabbit:'\u{1F43E}', loro:'\u{1F43E}', bird:'\u{1F43E}', pez:'\u{1F43E}', fish:'\u{1F43E}', tortuga:'\u{1F43E}', reptile:'\u{1F43E}', hamster:'\u{1F43E}' }
+  return m[s.toLowerCase()] || '\u{1F43E}'
 }
 
 function formatDate(iso) {
@@ -507,102 +392,7 @@ function statusLabel(s) {
   return map[s] || s || '—'
 }
 
-// ── Tipos de imagen ──────────────────────────────────────────────────────────
-const imagingTypes = ref([])
-const typesLoading = ref(false)
-
-async function loadImagingTypes() {
-  typesLoading.value = true
-  try {
-    const { data } = await http.get('/imaging/types')
-    imagingTypes.value = asArray(data?.data || data).map(normalizeImagingType).filter(Boolean)
-  } catch (error) { logError('imagenes.loadTypes', error); imagingTypes.value = [] }
-  finally { typesLoading.value = false }
-}
-
-// ── Modal {{ t('imaging.newOrder') }} ────────────────────────────────────────────────────────
-const showNewOrder = ref(false)
-const saving       = ref(false)
-const saveError    = ref('')
-const fe           = reactive({})
-
-const orderForm = reactive({
-  patientId: '',
-  imagingTypeId: '',
-  clinicalNotes: '',
-  priority: 'routine',
-  sedationRequired: false,
-})
-
-const selectedTypeInfo = computed(() => {
-  if (!orderForm.imagingTypeId) return null
-  return imagingTypes.value.find(t => t.id === orderForm.imagingTypeId) || null
-})
-
-// Autocomplete paciente
-const patientSearch        = ref('')
-const patientResults       = ref([])
-const selectedPatientLabel = ref('')
-let patientTimer = null
-
-async function searchPatients() {
-  clearTimeout(patientTimer)
-  orderForm.patientId = ''
-  selectedPatientLabel.value = ''
-  if (patientSearch.value.length < 2) { patientResults.value = []; return }
-  patientTimer = setTimeout(async () => {
-    try {
-      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
-      patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
-    } catch (error) { logError('imagenes.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
-  }, 300)
-}
-
-function selectPatient(pt) {
-  orderForm.patientId = pt.id
-  selectedPatientLabel.value = `${pt.name}${pt.hc_number ? ' · HC ' + pt.hc_number : ''}${pt.primary_owner ? ' — ' + pt.primary_owner : ''}`
-  patientSearch.value = pt.name
-  patientResults.value = []
-}
-
-function openNewOrder() {
-  Object.assign(orderForm, { patientId: '', imagingTypeId: '', clinicalNotes: '', priority: 'routine', sedationRequired: false })
-  patientSearch.value = ''
-  patientResults.value = []
-  selectedPatientLabel.value = ''
-  saveError.value = ''
-  Object.keys(fe).forEach(k => delete fe[k])
-  showNewOrder.value = true
-  if (imagingTypes.value.length === 0) loadImagingTypes()
-}
-
-function validateOrder() {
-  Object.keys(fe).forEach(k => delete fe[k])
-  if (!orderForm.patientId)     fe.patientId     = 'Seleccioná un paciente'
-  if (!orderForm.imagingTypeId) fe.imagingTypeId = 'Seleccioná un tipo de estudio'
-  return Object.keys(fe).length === 0
-}
-
-async function handleCreateOrder() {
-  if (!validateOrder()) return
-  saving.value = true; saveError.value = ''
-  try {
-    const payload = {
-      patientId:    parseInt(orderForm.patientId),
-      imagingTypeId: parseInt(orderForm.imagingTypeId),
-      priority:     orderForm.priority,
-      sedationRequired: orderForm.sedationRequired,
-    }
-    if (orderForm.clinicalNotes) payload.clinicalNotes = orderForm.clinicalNotes
-    await http.post('/imaging/orders', payload)
-    showNewOrder.value = false
-    await load()
-  } catch (e) {
-    saveError.value = extractErrorMessage(e, 'No se pudo crear la orden.', { includeRequestId: true })
-  } finally { saving.value = false }
-}
-
-// ── Modal informe ────────────────────────────────────────────────────────────
+// -- Modal informe ------------------------------------------------------------
 const showReport    = ref(false)
 const selectedOrder = ref(null)
 const detailLoading = ref(false)
@@ -622,12 +412,12 @@ async function openReport(order) {
   Object.assign(reportForm, { findings: '', conclusion: '', recommendations: '', radiologistName: '' })
   Object.keys(rfe).forEach(k => delete rfe[k])
   try {
-    const { data } = await http.get(`/imaging/orders/${order.id}`)
+    const { data } = await labApi.imaging.get(order.id)
     const detail = data?.data || data
     existingReport.value = detail?.report || null
     // Pre-rellenar si ya tiene informe para edición futura (solo lectura en este caso)
   } catch (e) {
-    reportError.value = extractErrorMessage(e, 'No se pudo cargar el detalle.', { includeRequestId: true })
+    reportError.value = extractDetailedErrorMessage(e, 'No se pudo cargar el detalle.', { context: 'Detalle de orden de imágenes' })
   } finally { detailLoading.value = false }
 }
 
@@ -645,11 +435,12 @@ async function handleSubmitReport() {
     const payload = { findings: reportForm.findings, conclusion: reportForm.conclusion }
     if (reportForm.recommendations)  payload.recommendations  = reportForm.recommendations
     if (reportForm.radiologistName)  payload.radiologistName  = reportForm.radiologistName
-    await http.post(`/imaging/orders/${selectedOrder.value.id}/report`, payload)
+    await labApi.imaging.report(selectedOrder.value.id, payload)
+    success('Informe de imágenes guardado.')
     showReport.value = false
     await load()
   } catch (e) {
-    reportError.value = extractErrorMessage(e, 'No se pudo guardar el informe.', { includeRequestId: true })
+    reportError.value = extractDetailedErrorMessage(e, 'No se pudo guardar el informe.', { context: 'Guardado de informe de imágenes' })
   } finally { savingReport.value = false }
 }
 
@@ -664,6 +455,21 @@ onMounted(load)
 .page-emoji { font-size: 2rem; }
 .page-title { font-size: 1.35rem; font-weight: 700; color: var(--text); }
 .page-sub   { font-size: 0.82rem; color: var(--text-2); margin-top: 2px; }
+.route-action { white-space: nowrap; }
+.workflow-banner {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) 1.4fr;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.workflow-banner div { display: flex; flex-direction: column; gap: 4px; }
+.workflow-banner strong { color: var(--primary-hover); font-size: 0.86rem; }
+.workflow-banner span { color: var(--text); font-weight: 800; font-size: 0.9rem; }
+.workflow-banner p { color: var(--text-2); font-size: 0.86rem; line-height: 1.45; }
 
 /* Stats */
 .stats-row { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -693,6 +499,7 @@ onMounted(load)
 .pet-cell div { display: flex; flex-direction: column; gap: 1px; }
 .pet-cell strong { font-size: 0.88rem; color: var(--text); }
 .sub { font-size: 0.75rem; color: var(--text-3); }
+.record-link { font-size: 0.78rem; font-weight: 800; color: #1d4ed8; white-space: nowrap; }
 .modality-name { font-size: 0.88rem; color: var(--text); display: block; }
 
 /* Badges */
@@ -792,6 +599,7 @@ onMounted(load)
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
 @media (max-width: 700px) {
+  .workflow-banner { grid-template-columns: 1fr; }
   .stats-row { gap: 10px; }
   .stat-card { min-width: 130px; }
   .form-grid { grid-template-columns: 1fr; }

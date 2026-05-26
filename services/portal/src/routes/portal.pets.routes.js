@@ -29,7 +29,9 @@ router.get('/', portalAuth, async (req, res, next) => {
 router.get('/:id', portalAuth, async (req, res, next) => {
   try {
     const pet = await db.queryOne(
-      `SELECT p.*, sp.common_name AS species, br.name AS breed
+      `SELECT p.id, p.name, p.birth_date, p.sex, p.color, p.microchip_number,
+              p.photo_url, p.is_active, p.is_deceased, p.weight_kg,
+              sp.common_name AS species, br.name AS breed
        FROM patients p
        JOIN patient_owners po ON po.patient_id=p.id AND po.client_id=:cid
        JOIN species sp ON p.species_id=sp.id
@@ -60,7 +62,8 @@ router.get('/:id/medical-history', portalAuth, async (req, res, next) => {
        FROM medical_records mr
        JOIN users u ON mr.vet_id = u.id
        WHERE mr.patient_id=:pid AND mr.status='signed'
-       ORDER BY mr.opened_at DESC`,
+       ORDER BY mr.opened_at DESC
+       LIMIT 100`,
       { pid: req.params.id }
     );
     return R.ok(res, decryptRows(records, ['reason_for_visit', 'chief_complaint']));
@@ -78,7 +81,8 @@ router.get('/:id/vaccinations', portalAuth, async (req, res, next) => {
        FROM vaccinations v
        LEFT JOIN users u ON v.administered_by = u.id
        WHERE v.patient_id=:pid
-       ORDER BY v.administered_date DESC`,
+       ORDER BY v.administered_date DESC
+       LIMIT 200`,
       { pid: req.params.id }
     );
     return R.ok(res, rows);
@@ -89,17 +93,21 @@ router.get('/:id/prescriptions', portalAuth, async (req, res, next) => {
   try {
     const owned = await requireOwnership(req.owner.clientId, req.params.id);
     if (!owned) return R.forbidden(res, 'Sin acceso a esta mascota');
+    // SECURITY: join patient_owners para garantizar que el paciente pertenece al cliente
+    // y evitar IDOR cross-org a través de medical_records
     const rows = await db.query(
       `SELECT p.id, p.created_at AS prescribed_date, pi.medication_name, pi.dose AS dosage, pi.frequency,
               pi.duration_days, pi.instructions, p.refills_allowed,
               CONCAT(u.first_name,' ',u.last_name) AS prescribed_by
        FROM prescriptions p
        JOIN medical_records mr ON p.medical_record_id = mr.id
+       JOIN patient_owners po ON po.patient_id = mr.patient_id AND po.client_id = :cid
        LEFT JOIN prescription_items pi ON pi.prescription_id = p.id
        JOIN users u ON p.prescribed_by = u.id
        WHERE mr.patient_id=:pid
-       ORDER BY p.created_at DESC`,
-      { pid: req.params.id }
+       ORDER BY p.created_at DESC
+       LIMIT 200`,
+      { pid: req.params.id, cid: req.owner.clientId }
     );
     return R.ok(res, decryptRows(rows, ['medication_name', 'instructions']));
   } catch (e) { next(e); }

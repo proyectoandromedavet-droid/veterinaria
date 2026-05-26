@@ -3,6 +3,8 @@
 const { body, validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
+const { createLogger } = require('../../../../shared/logger');
+const log = createLogger('patients.branches');
 const mb = require('../../../../shared/multibranch');
 const { enqueue } = require('../../../../shared/webhooks/dispatcher');
 const eventBus = require('../../../../shared/eventBus');
@@ -14,7 +16,7 @@ function validate(req, res, next) {
 }
 
 function logBranchesError(scope, error, meta = {}) {
-  console.error(`[patients.branches] ${scope}`, {
+  log.error(`${scope}`, {
     message: error?.message,
     stack: error?.stack,
     ...meta,

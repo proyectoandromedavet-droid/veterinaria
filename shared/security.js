@@ -185,12 +185,26 @@ async function getIdempotencyRedis() {
   return getRedisSingleton('idempotency', 'idempotency');
 }
 
+// Límite de tamaño para el body cacheado en Redis (256 KB)
+const IDEMPOTENCY_MAX_BODY_BYTES = parseInt(process.env.IDEMPOTENCY_MAX_BODY_BYTES || String(256 * 1024));
+
 async function idempotency(req, res, next) {
-  const key = req.headers['idempotency-key'];
-  if (!key) return next();
+  const rawKey = req.headers['idempotency-key'];
+  if (!rawKey) return next();
   if (!['POST','PUT','PATCH','DELETE'].includes(req.method)) return next();
 
-  const redisKey = `idempotency:${key}`;
+  // Sanitizar la clave: solo caracteres seguros para Redis keys, máximo 128 chars.
+  // Claves arbitrarias permiten colisiones entre tenants o Redis key injection.
+  if (typeof rawKey !== 'string' || !/^[\w\-.:@]{1,128}$/.test(rawKey)) {
+    return res.status(400).json({
+      success: false,
+      error: { message: 'Idempotency-Key inválida', code: 'IDEMPOTENCY_KEY_INVALID' },
+    });
+  }
+
+  // Aislar por tenant: prefixar con orgId del token para evitar colisiones cross-tenant
+  const orgId = req.user?.orgId || req.user?.organization_id || 'anon';
+  const redisKey = `idempotency:${orgId}:${rawKey}`;
   try {
     const redis  = await getIdempotencyRedis();
     const cached = await redis.get(redisKey);
@@ -204,8 +218,14 @@ async function idempotency(req, res, next) {
     // Intercept response to cache it
     const origJson = res.json.bind(res);
     res.json = function(body) {
-      redis.setEx(redisKey, 86400, JSON.stringify({ status: res.statusCode, body }))
-        .catch((err) => log.warn('Idempotency cache write failed', { error: err.message, key: redisKey }));
+      const serialised = JSON.stringify({ status: res.statusCode, body });
+      // No cachear respuestas que excedan el límite — previene memory exhaustion en Redis
+      if (Buffer.byteLength(serialised) <= IDEMPOTENCY_MAX_BODY_BYTES) {
+        redis.setEx(redisKey, 86400, serialised)
+          .catch((err) => log.warn('Idempotency cache write failed', { error: err.message, key: redisKey }));
+      } else {
+        log.warn('Idempotency body too large — not cached', { key: redisKey, bytes: Buffer.byteLength(serialised) });
+      }
       return origJson(body);
     };
   } catch (err) {

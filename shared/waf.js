@@ -19,6 +19,9 @@
  */
 
 const { randomUUID } = require('crypto');
+const { createLogger } = require('./logger');
+
+const wafLog = createLogger('waf');
 
 const MODE          = process.env.WAF_MODE || 'block';   // 'block' | 'log'
 const LOG_ONLY      = MODE === 'log';
@@ -146,11 +149,11 @@ function wafMiddleware(req, res, next) {
   };
 
   if (LOG_ONLY) {
-    console.warn('[WAF] threat detected (log-only)', meta);
+    wafLog.warn('WAF threat detected (log-only)', meta);
     return next();
   }
 
-  console.warn('[WAF] request blocked', meta);
+  wafLog.warn('WAF request blocked', meta);
   return res.status(400).json({
     success: false,
     error:   { message: 'Request blocked by security policy', code: 'WAF_BLOCKED', wafId },

@@ -250,7 +250,7 @@ async function exportPersonalData (clientId, orgId) {
  * @param {number} requestedBy
  */
 async function anonymizeClient (clientId, orgId, requestedBy) {
-  // Verificar que es del org correcto
+  // Verificar que es del org correcto (fuera de la transacción — no bloquea)
   const client = await db.queryOne(
     `SELECT c.id FROM clients c
      JOIN branches b ON c.branch_id = b.id AND b.organization_id = :orgId
@@ -261,55 +261,81 @@ async function anonymizeClient (clientId, orgId, requestedBy) {
 
   const anonPrefix = `ANON-${clientId}-${Date.now()}`;
 
-  // Anonimizar datos del cliente
-  await db.query(
-    `UPDATE clients SET
-       first_name     = 'Anonimizado',
-       last_name      = :prefix,
-       email          = :email,
-       phone          = NULL,
-       dni            = NULL,
-       document_number = NULL,
-       address        = NULL,
-       city           = NULL,
-       notes          = NULL,
-       birthdate      = NULL,
-       portal_password_hash = NULL,
-       is_active      = FALSE,
-       anonymized_at  = NOW(),
-       anonymized_by  = :uid
-     WHERE id = :cid`,
-    {
-      prefix : anonPrefix,
-      email  : `${anonPrefix}@deleted.vetmanager.com`,
-      uid    : requestedBy,
-      cid    : clientId,
-    }
-  );
+  // BUG-22: envolver toda la anonimización en una transacción para atomicidad
+  await db.transaction(async (conn) => {
+    // Anonimizar datos del cliente
+    await conn.query(
+      `UPDATE clients SET
+         first_name     = 'Anonimizado',
+         last_name      = :prefix,
+         email          = :email,
+         phone          = NULL,
+         dni            = NULL,
+         document_number = NULL,
+         address        = NULL,
+         city           = NULL,
+         notes          = NULL,
+         birthdate      = NULL,
+         portal_password_hash = NULL,
+         is_active      = FALSE,
+         anonymized_at  = NOW(),
+         anonymized_by  = :uid
+       WHERE id = :cid`,
+      {
+        prefix : anonPrefix,
+        email  : `${anonPrefix}@deleted.vetmanager.com`,
+        uid    : requestedBy,
+        cid    : clientId,
+      }
+    );
 
-  // Eliminar tokens FCM del cliente
-  await db.query(
-    `DELETE FROM user_fcm_tokens
-     WHERE user_id IN (SELECT user_id FROM clients WHERE id = :cid LIMIT 1)`,
-    { cid: clientId }
-  ).catch(() => {});  // silenciar si no existe
+    // Eliminar tokens FCM del cliente
+    await conn.query(
+      `DELETE FROM user_fcm_tokens
+       WHERE user_id IN (SELECT user_id FROM clients WHERE id = :cid LIMIT 1)`,
+      { cid: clientId }
+    ).catch(() => {});  // silenciar si no existe
 
-  // Retirar todos los consentimientos
-  await db.query(
-    `UPDATE gdpr_consents SET granted=0, updated_at=NOW() WHERE client_id=:cid`,
-    { cid: clientId }
-  );
+    // BUG-20: eliminar sesiones de portal activas
+    await conn.query(
+      `DELETE FROM client_sessions WHERE client_id = :cid`,
+      { cid: clientId }
+    ).catch(() => {});
 
-  // Registrar en audit trail
-  await db.query(
-    `INSERT INTO gdpr_audit_trail (client_id, action, performed_by, details)
-     VALUES (:cid, 'erasure.completed', :uid, :details)`,
-    {
-      cid    : clientId,
-      uid    : requestedBy,
-      details: JSON.stringify({ anonPrefix, timestamp: new Date().toISOString() }),
-    }
-  );
+    // BUG-20: borrar datos sensibles de sesiones de telemedicina
+    await conn.query(
+      `UPDATE tele_sessions
+       SET chief_complaint = NULL, notes = NULL, updated_at = NOW()
+       WHERE client_id = :cid`,
+      { cid: clientId }
+    ).catch(() => {});
+
+    // BUG-20: vaciar payload de trabajos de notificación pendientes para el cliente
+    await conn.query(
+      `UPDATE notification_retry_jobs
+       SET payload_json = '{}'
+       WHERE org_id = :orgId
+         AND JSON_EXTRACT(payload_json, '$.clientId') = :cid`,
+      { orgId, cid: clientId }
+    ).catch(() => {});
+
+    // Retirar todos los consentimientos
+    await conn.query(
+      `UPDATE gdpr_consents SET granted=0, updated_at=NOW() WHERE client_id=:cid`,
+      { cid: clientId }
+    );
+
+    // Registrar en audit trail
+    await conn.query(
+      `INSERT INTO gdpr_audit_trail (client_id, action, performed_by, details)
+       VALUES (:cid, 'erasure.completed', :uid, :details)`,
+      {
+        cid    : clientId,
+        uid    : requestedBy,
+        details: JSON.stringify({ anonPrefix, timestamp: new Date().toISOString() }),
+      }
+    );
+  });
 
   return { anonymized: true, reference: anonPrefix };
 }

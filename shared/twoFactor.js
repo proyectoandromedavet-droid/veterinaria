@@ -42,13 +42,26 @@ async function setupTwoFactor(userId, email) {
 /**
  * Verify a 6-digit TOTP token against a stored secret.
  *
+ * Sanitiza el token antes de pasarlo a otplib: solo dígitos, exactamente 6 chars.
+ * Esto previene que valores malformados causen comportamiento inesperado en otplib.
+ *
  * @param {string} secret  — the user's stored TOTP secret
  * @param {string} token   — the 6-digit code from the authenticator app
  * @returns {boolean}
  */
 function verifyTwoFactor(secret, token) {
+  // Validar formato antes de invocar otplib
+  const tokenStr = String(token || '').trim();
+  if (!/^\d{6}$/.test(tokenStr)) {
+    log.warn('2FA verification rejected: token format invalid');
+    return false;
+  }
+  if (!secret || typeof secret !== 'string') {
+    log.warn('2FA verification rejected: secret inválido');
+    return false;
+  }
   try {
-    return authenticator.verify({ token: String(token), secret });
+    return authenticator.verify({ token: tokenStr, secret });
   } catch (err) {
     log.warn('2FA verification failed', { error: err.message });
     return false;

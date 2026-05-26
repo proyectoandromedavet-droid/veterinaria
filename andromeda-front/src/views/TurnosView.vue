@@ -4,13 +4,13 @@
     <!-- Encabezado -->
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">📅</span>
+        <span class="page-emoji">&#x1F43E;</span>
         <div>
           <h2 class="page-title">{{ t('appointments.title') }}</h2>
           <p class="page-sub">{{ t('appointments.subtitle') }}</p>
         </div>
       </div>
-      <button type="button" class="btn-primary" @click="openModal()">🐾 {{ t('appointments.newAppointment') }}</button>
+      <button type="button" class="btn-primary" @click="openModal()">&#x1F43E; {{ t('appointments.newAppointment') }}</button>
     </div>
 
     <!-- Filtros -->
@@ -34,7 +34,7 @@
     <div v-else-if="error" class="alert alert--error" role="alert">{{ error }}</div>
 
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">🐱</span>
+      <span class="empty-state__emoji">&#x1F43E;</span>
       <p>{{ t('appointments.empty') }}</p>
       <button type="button" class="btn-ghost" @click="openModal()">{{ t('appointments.scheduleFirst') }}</button>
     </div>
@@ -60,12 +60,12 @@
           </div>
           <p class="appt-card__reason">{{ a.reason || a.appointment_type || 'Consulta general' }}</p>
           <div class="appt-card__meta-chips">
-            <span v-if="a.duration_minutes" class="vital-chip">⏱ {{ a.duration_minutes }} min</span>
-            <span v-if="a.is_emergency" class="vital-chip vital-chip--danger">🚨 Emergencia</span>
-            <span v-if="a.record_status" class="vital-chip">📋 {{ a.record_status }}</span>
+            <span v-if="a.duration_minutes" class="vital-chip">&#x2713; {{ a.duration_minutes }} min</span>
+            <span v-if="a.is_emergency" class="vital-chip vital-chip--danger">&#x1F43E; Emergencia</span>
+            <span v-if="a.record_status" class="vital-chip">&#x1F43E; {{ a.record_status }}</span>
           </div>
-          <p v-if="a.owner_phone" class="appt-card__vet">📞 {{ a.owner_phone }}</p>
-          <p v-if="a.vet_name" class="appt-card__vet">👨‍⚕️ {{ a.vet_name }}</p>
+          <p v-if="a.owner_phone" class="appt-card__vet">&#x1F43E; {{ a.owner_phone }}</p>
+          <p v-if="a.vet_name" class="appt-card__vet">&#x1F43E; {{ a.vet_name }}</p>
           <p v-if="a.notes" class="appt-card__notes">{{ a.notes }}</p>
         </div>
         <div class="appt-card__actions">
@@ -93,8 +93,8 @@
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
         <div class="modal">
           <div class="modal__header">
-            <h3>🐾 {{ t('appointments.newAppointment') }}</h3>
-            <button type="button" class="modal__close" @click="closeModal()">✕</button>
+            <h3>&#x1F43E; {{ t('appointments.newAppointment') }}</h3>
+            <button type="button" class="modal__close" @click="closeModal()">&times;</button>
           </div>
           <form @submit.prevent="handleCreate" novalidate>
             <div class="form-grid">
@@ -148,7 +148,7 @@
                   </button>
                 </div>
                 <div v-if="form.patientId" class="selected-patient">
-                  ✅ {{ selectedPatientLabel }}
+                  ? {{ selectedPatientLabel }}
                 </div>
                 <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
               </div>
@@ -187,12 +187,14 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import http from '../api/client'
+import { appointmentsApi, patientsApi } from '../api'
 import { adminUsersApi } from '../api/adminUsers'
 import { t } from '../i18n'
-import { logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
 
 const auth = useAuthStore()
+const { notifyError, success } = useUiFeedback()
 const items   = ref([])
 const loading = ref(false)
 const error   = ref('')
@@ -240,7 +242,7 @@ function normalizeAppointment(row) {
   }
 }
 
-// ── Vets list ─────────────────────────────────────────────────────────────
+// -- Vets list -------------------------------------------------------------
 const vetList = ref([])
 async function loadVets() {
   try {
@@ -271,11 +273,11 @@ async function loadVets() {
   } catch (error) { logError('turnos.loadVets', error); vetList.value = [] }
 }
 
-// ── Appointment types ─────────────────────────────────────────────────────
+// -- Appointment types -----------------------------------------------------
 const typeList = ref([])
 async function loadTypes() {
   try {
-    const { data } = await http.get('/appointments/types')
+    const { data } = await appointmentsApi.types()
     typeList.value = asArray(data?.data || data)
   } catch (error) { logError('turnos.loadTypes', error); typeList.value = [] }
 }
@@ -296,8 +298,8 @@ const STATUS_LABELS = {
 }
 
 function petEmoji(species) {
-  const map = { dog: '🐶', cat: '🐱', rabbit: '🐰', bird: '🐦', fish: '🐟', reptile: '🦎', hamster: '🐹' }
-  return map[species?.toLowerCase()] || '🐾'
+  const map = { dog: '\u{1F43E}', cat: '\u{1F43E}', rabbit: '\u{1F43E}', bird: '\u{1F43E}', fish: '\u{1F43E}', reptile: '\u{1F43E}', hamster: '\u{1F43E}' }
+  return map[species?.toLowerCase()] || '\u{1F43E}'
 }
 
 function formatTime(dt) {
@@ -312,7 +314,7 @@ async function load() {
     const params = { limit: 50 }
     if (filters.date)   params.date   = filters.date
     if (filters.status) params.status = filters.status
-    const { data } = await http.get('/appointments', { params })
+    const { data } = await appointmentsApi.list(params)
     const rows = asArray(data?.data || data?.appointments || data).map(normalizeAppointment).filter(Boolean)
     const needle = filters.search.trim().toLowerCase()
     items.value = needle
@@ -321,7 +323,8 @@ async function load() {
           .some((value) => String(value).toLowerCase().includes(needle)))
       : rows
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar los turnos'
+    logError('turnos.load', e)
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar los turnos', { context: 'Carga de turnos' })
   } finally {
     loading.value = false
   }
@@ -335,14 +338,15 @@ function debouncedLoad() {
 
 async function updateStatus(appt, status) {
   try {
-    await http.patch(`/appointments/${appt.id}/status`, { status })
+    await appointmentsApi.changeStatus(appt.id, status)
     appt.status = status
+    success('Turno actualizado correctamente.')
   } catch (e) {
-    alert(e.response?.data?.message || 'No se pudo actualizar el turno')
+    notifyError('turnos.updateStatus', e, 'No se pudo actualizar el turno', { context: 'Actualización de turno' })
   }
 }
 
-// ── Modal ──────────────────────────────────────────────────────────────────
+// -- Modal ------------------------------------------------------------------
 const showModal = ref(false)
 const saving    = ref(false)
 const saveError = ref('')
@@ -373,7 +377,7 @@ async function searchPatients() {
   if (patientSearch.value.length < 2) { patientResults.value = []; return }
   patientTimer = setTimeout(async () => {
     try {
-      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
+      const { data } = await patientsApi.list({ search: patientSearch.value, limit: 8 })
       patientResults.value = asArray(data?.data || data).map((row) => ({
         ...row,
         species: row.species || row.species_name || row.speciesName || '',
@@ -428,20 +432,20 @@ async function handleCreate() {
   try {
     const payload = {
       scheduledDate:     form.scheduledDate ? new Date(form.scheduledDate).toISOString() : form.scheduledDate,
-      patientId:         parseInt(form.patientId),
-      vetId:             parseInt(form.vetId),
-      appointmentTypeId: parseInt(form.appointmentTypeId),
+      patientId:         parseInt(form.patientId, 10),
+      vetId:             parseInt(form.vetId, 10),
+      appointmentTypeId: parseInt(form.appointmentTypeId, 10),
       durationMinutes:   form.duration || 30,
     }
-    if (form.clientId)  payload.clientId = parseInt(form.clientId)
+    if (form.clientId)  payload.clientId = parseInt(form.clientId, 10)
     if (form.reason)    payload.reason   = form.reason
     if (form.notes)     payload.notes    = form.notes
     if (form.isEmergency) payload.isEmergency = true
-    await http.post('/appointments', payload)
+    await appointmentsApi.create(payload)
     closeModal()
     await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || 'No se pudo guardar el turno'
+    saveError.value = extractDetailedErrorMessage(e, 'No se pudo guardar el turno', { context: 'Guardado de turno' })
   } finally {
     saving.value = false
   }
@@ -644,4 +648,3 @@ onMounted(() => { load(); loadVets(); loadTypes() })
   .form-grid { grid-template-columns: 1fr; }
 }
 </style>
-

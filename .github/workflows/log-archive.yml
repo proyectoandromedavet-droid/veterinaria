@@ -17,6 +17,7 @@ jobs:
           cache: npm
       - run: npm ci --prefer-offline
       - run: npm run logs:archive
+        timeout-minutes: 15
         env:
           MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
           MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}

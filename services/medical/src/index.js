@@ -7,6 +7,7 @@ const { buildApp, guardWrite, startService } = require('../../../shared/serviceB
 const apptRouter   = require('./routes/appointments.routes');
 const mrRouter     = require('./routes/medical-records.routes');
 const rulesRouter  = require('./routes/rules.routes');
+const { router: rulesEvaluateRouter } = require('./routes/rules.evaluate.routes');
 
 const app = buildApp('medical', (app, requirePerm) => {
   app.use('/appointments',    requirePerm('appointments:read'),    guardWrite('appointments'),    apptRouter);
@@ -15,6 +16,7 @@ const app = buildApp('medical', (app, requirePerm) => {
   app.post('/triage/:id', requirePerm('appointments:create'), ...apptRouter.postTriage);
   app.get('/prescriptions/:id', requirePerm('medical_records:read'), ...mrRouter.getPrescriptions);
   app.post('/prescriptions/:id', requirePerm('medical_records:read'), guardWrite('medical_records'), ...mrRouter.postPrescriptions);
+  app.use('/rules',           requirePerm('settings:read'),        rulesEvaluateRouter);
   app.use('/rules',           requirePerm('settings:read'),        guardWrite('settings'),        rulesRouter);
 }, { specPath: path.join(__dirname, 'openapi.yaml') });
 

@@ -1,5 +1,5 @@
 import { portalApi } from '../../api/portal'
-import { extractErrorMessage, logError } from '../../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../../utils/errors'
 
 export const authTabs = [
   { key: 'login', label: 'Ingresar' },
@@ -32,7 +32,7 @@ export function profileSummaryFrom(profile) {
 }
 
 export function extractPortalError(error, fallback) {
-  return extractErrorMessage(error, fallback, { includeRequestId: true })
+  return extractDetailedErrorMessage(error, fallback, { context: 'Portal de dueños' })
 }
 
 export function logPortalViewError(scope, error, meta) {
@@ -75,38 +75,50 @@ export function portalStatusClass(status) {
 }
 
 export async function loadPortalDashboard() {
-  const [meRes, petsRes, appointmentsRes, invoicesRes, notificationsRes, telemedicineRes] = await Promise.all([
-    portalApi.me(),
-    portalApi.pets.list(),
-    portalApi.appointments.list({ upcoming: true, limit: 8 }),
-    portalApi.invoices.list({ limit: 8 }),
-    portalApi.notifications.list({ limit: 12 }),
-    portalApi.telemedicine.list(),
-  ])
+  const entries = [
+    ['profile', () => portalApi.me()],
+    ['pets', () => portalApi.pets.list()],
+    ['appointments', () => portalApi.appointments.list({ upcoming: true, limit: 8 })],
+    ['invoices', () => portalApi.invoices.list({ limit: 8 })],
+    ['notifications', () => portalApi.notifications.list({ limit: 12 })],
+    ['telemedicine', () => portalApi.telemedicine.list()],
+  ]
+  const results = await Promise.allSettled(entries.map(([, request]) => request()))
+  const values = results.map((result, index) => {
+    if (result.status === 'fulfilled') return unwrapPortalResult(result.value)
+    logPortalViewError(`dashboard.${entries[index][0]}`, result.reason)
+    return index === 0 ? null : []
+  })
 
   return {
-    profile: unwrapPortalResult(meRes),
-    pets: Array.isArray(unwrapPortalResult(petsRes)) ? unwrapPortalResult(petsRes) : [],
-    appointments: Array.isArray(unwrapPortalResult(appointmentsRes)) ? unwrapPortalResult(appointmentsRes) : [],
-    invoices: Array.isArray(unwrapPortalResult(invoicesRes)) ? unwrapPortalResult(invoicesRes) : [],
-    notifications: Array.isArray(unwrapPortalResult(notificationsRes)) ? unwrapPortalResult(notificationsRes) : [],
-    telemedicine: Array.isArray(unwrapPortalResult(telemedicineRes)) ? unwrapPortalResult(telemedicineRes) : [],
+    profile: values[0],
+    pets: Array.isArray(values[1]) ? values[1] : [],
+    appointments: Array.isArray(values[2]) ? values[2] : [],
+    invoices: Array.isArray(values[3]) ? values[3] : [],
+    notifications: Array.isArray(values[4]) ? values[4] : [],
+    telemedicine: Array.isArray(values[5]) ? values[5] : [],
   }
 }
 
 export async function loadPortalPetBundle(petId) {
-  const [detail, history, vaccinations, prescriptions] = await Promise.all([
-    portalApi.pets.get(petId),
-    portalApi.pets.medicalHistory(petId),
-    portalApi.pets.vaccinations(petId),
-    portalApi.pets.prescriptions(petId),
-  ])
+  const entries = [
+    ['detail', () => portalApi.pets.get(petId)],
+    ['history', () => portalApi.pets.medicalHistory(petId)],
+    ['vaccinations', () => portalApi.pets.vaccinations(petId)],
+    ['prescriptions', () => portalApi.pets.prescriptions(petId)],
+  ]
+  const results = await Promise.allSettled(entries.map(([, request]) => request()))
+  const values = results.map((result, index) => {
+    if (result.status === 'fulfilled') return unwrapPortalResult(result.value)
+    logPortalViewError(`pet.${entries[index][0]}`, result.reason, { petId })
+    return index === 0 ? null : []
+  })
 
   return {
-    pet: unwrapPortalResult(detail),
-    history: Array.isArray(unwrapPortalResult(history)) ? unwrapPortalResult(history) : [],
-    vaccinations: Array.isArray(unwrapPortalResult(vaccinations)) ? unwrapPortalResult(vaccinations) : [],
-    prescriptions: Array.isArray(unwrapPortalResult(prescriptions)) ? unwrapPortalResult(prescriptions) : [],
+    pet: values[0],
+    history: Array.isArray(values[1]) ? values[1] : [],
+    vaccinations: Array.isArray(values[2]) ? values[2] : [],
+    prescriptions: Array.isArray(values[3]) ? values[3] : [],
   }
 }
 

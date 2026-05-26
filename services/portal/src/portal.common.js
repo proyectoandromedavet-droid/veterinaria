@@ -45,6 +45,16 @@ async function portalAuth(req, res, next) {
   try {
     const decoded = jwt.verifyAccess(token);
     if (decoded.role !== 'owner') return R.forbidden(res, 'Acceso exclusivo para duenios');
+
+    // BUG-001: verificar que la cuenta del cliente está activa en cada request
+    if (decoded.clientId) {
+      const client = await db.queryOne(
+        'SELECT id FROM clients WHERE id = :id AND is_active = 1',
+        { id: decoded.clientId }
+      );
+      if (!client) return R.forbidden(res, 'Cuenta suspendida o eliminada');
+    }
+
     req.owner = decoded;
     next();
   } catch (err) {
@@ -69,7 +79,7 @@ function buildOwnerRefresh(client) {
 
 function publishPortalEvent(topic, payload, req, extraMeta = {}) {
   const meta = {
-    orgId: req.owner?.orgId || req.headers['x-org-id'] || null,
+    orgId: req.owner?.orgId || null,  // BUG-017: no usar header x-org-id (spoofable)
     clientId: req.owner?.clientId || payload.clientId || null,
     branchId: payload.branchId || null,
     source: 'portal',

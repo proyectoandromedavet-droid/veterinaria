@@ -14,13 +14,13 @@ function registerNotFoundHandler(app) {
       requestId: req.headers['x-request-id'] || req.requestId || null,
       userId: req.user?.userId || req.user?.id || null,
     });
+    // Do NOT echo req.originalUrl back in the response body — it may contain
+    // resource IDs or PII that would confirm internal API structure to attackers.
     res.status(404).json({
       success: false,
       error: {
         code: 'NOT_FOUND',
         message: 'Route not found',
-        path: req.originalUrl,
-        method: req.method,
         ...(req.requestId ? { requestId: req.requestId } : {}),
         ...(req.traceId ? { traceId: req.traceId } : {}),
       },
@@ -56,8 +56,6 @@ function registerErrorHandlers(app) {
         error: {
           code: 'NOT_FOUND',
           message: 'Route not found',
-          path: req.originalUrl,
-          method: req.method,
           ...(req.requestId ? { requestId: req.requestId } : {}),
           ...(req.traceId ? { traceId: req.traceId } : {}),
         },

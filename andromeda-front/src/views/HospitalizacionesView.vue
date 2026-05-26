@@ -596,7 +596,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { t } from '../i18n'
 import BaseButton from '../components/base/BaseButton.vue'
-import { logError } from '../utils/errors'
+import { extractDetailedErrorMessage, logError } from '../utils/errors'
 import {
   addMedication as addMedicationRequest,
   addMonitoringRecord as addMonitoringRecordRequest,
@@ -639,7 +639,8 @@ async function load(page = 1) {
     pagination.value = { page: safePage, totalPages }
     computeStats()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las internaciones'
+    logError('hospitalizaciones.load', e)
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las internaciones', { context: 'Carga de internaciones' })
   } finally { loading.value = false }
 }
 
@@ -669,7 +670,8 @@ async function loadBoard() {
   try {
     boardData.value = await loadHospitalizationsBoardRequest()
   } catch (e) {
-    boardError.value = e.response?.data?.message || 'No se pudo cargar el tablero'
+    logError('hospitalizaciones.loadBoard', e)
+    boardError.value = extractDetailedErrorMessage(e, 'No se pudo cargar el tablero', { context: 'Tablero de internaciones' })
   } finally { boardLoading.value = false }
 }
 
@@ -814,7 +816,7 @@ async function handleAdmit() {
     showAdmit.value = false
     await load()
   } catch (e) {
-    admitError.value = e.response?.data?.message || 'No se pudo admitir el paciente.'
+    admitError.value = extractDetailedErrorMessage(e, 'No se pudo admitir el paciente.', { context: 'Admision de paciente' })
   } finally { admitSaving.value = false }
 }
 
@@ -866,7 +868,7 @@ async function handleMonitoring() {
     detailData.value = await getHospitalizationDetailRequest(detailData.value.id)
     resetMonForm()
   } catch (e) {
-    monError.value = e.response?.data?.message || 'No se pudo registrar el monitoreo.'
+    monError.value = extractDetailedErrorMessage(e, 'No se pudo registrar el monitoreo.', { context: 'Registro de monitoreo' })
   } finally { monSaving.value = false }
 }
 
@@ -909,7 +911,7 @@ async function handleMedication() {
     detailData.value = await getHospitalizationDetailRequest(detailData.value.id)
     resetMedForm()
   } catch (e) {
-    medError.value = e.response?.data?.message || 'No se pudo prescribir el medicamento.'
+    medError.value = extractDetailedErrorMessage(e, 'No se pudo prescribir el medicamento.', { context: 'Prescripcion de medicamento' })
   } finally { medSaving.value = false }
 }
 
@@ -934,7 +936,7 @@ async function handleDischarge() {
     showDischarge.value = false
     await load()
   } catch (e) {
-    dischargeError.value = e.response?.data?.message || 'No se pudo registrar el alta.'
+    dischargeError.value = extractDetailedErrorMessage(e, 'No se pudo registrar el alta.', { context: 'Alta de internacion' })
   } finally { dischargeSaving.value = false }
 }
 

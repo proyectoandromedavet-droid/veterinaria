@@ -31,8 +31,11 @@ const getPrescriptions = [async (req, res, next) => {
     const record = await db.queryOne(
       `SELECT mr.id FROM medical_records mr
        JOIN patients p ON p.id = mr.patient_id
-       WHERE mr.id = :mid AND p.organization_id = :orgId`,
-      { mid: req.params.id, orgId: req.user.orgId }
+       LEFT JOIN appointments a ON a.id = mr.appointment_id
+       WHERE mr.id = :mid
+         AND p.organization_id = :orgId
+         AND (:branchId IS NULL OR a.branch_id = :branchId)`,
+      { mid: req.params.id, orgId: req.user.orgId, branchId: req.user.branchId || null }
     );
     if (!record) return R.notFound(res, 'Ficha no encontrada');
     const rows = await db.query(
@@ -72,6 +75,22 @@ const postPrescriptions = [
   validate,
   async (req, res, next) => {
     try {
+      // SEC: verificar que la ficha existe, pertenece al tenant y no está firmada/cerrada
+      // (prescriptionsRouter se monta fuera de sectionsRouter, sin ensureMedicalRecordWritable)
+      const record = await db.queryOne(
+        `SELECT mr.id, mr.status, mr.signed_at FROM medical_records mr
+         JOIN patients p ON p.id = mr.patient_id
+         LEFT JOIN appointments a ON a.id = mr.appointment_id
+         WHERE mr.id = :mid
+           AND p.organization_id = :orgId
+           AND (:branchId IS NULL OR a.branch_id = :branchId)`,
+        { mid: req.params.id, orgId: req.user.orgId, branchId: req.user.branchId || null }
+      );
+      if (!record) return R.notFound(res, 'Ficha clinica no encontrada');
+      if (record.signed_at || ['signed', 'closed', 'cancelled'].includes(record.status)) {
+        return R.conflict(res, 'La ficha clinica no admite modificaciones', 'MEDICAL_RECORD_LOCKED');
+      }
+
       const { items, notes } = req.body;
       const refills = Math.min(Math.max(parseInt(req.body.refills ?? 0, 10) || 0, 0), MAX_REFILLS);
       const schema = await getPrescriptionSchema();

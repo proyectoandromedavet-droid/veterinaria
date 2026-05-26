@@ -17,8 +17,10 @@ defineProps({
 <style scoped>
 .base-table {
   overflow-x: auto;
-  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   background: var(--white);
+  box-shadow: var(--shadow-sm);
 }
 
 .base-table__content {

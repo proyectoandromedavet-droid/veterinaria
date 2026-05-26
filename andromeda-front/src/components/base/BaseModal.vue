@@ -44,11 +44,12 @@ watch(() => props.modelValue, async (value) => {
 .base-modal__backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(15, 23, 42, 0.48);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  z-index: 1000;
 }
 
 .base-modal {
@@ -56,8 +57,10 @@ watch(() => props.modelValue, async (value) => {
   max-height: min(90vh, 960px);
   overflow-y: auto;
   background: var(--white);
-  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: 24px;
   outline: none;
+  box-shadow: var(--shadow-lg);
 }
 </style>

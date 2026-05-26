@@ -3,6 +3,8 @@
 const { validationResult } = require('express-validator');
 const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
+const { createLogger } = require('../../../../shared/logger');
+const log = createLogger('lab-imaging.hospitalization');
 const { resolveMedicalRecordId } = require('../lib/clinicalContext');
 
 const validate = (req, res, next) => {
@@ -12,7 +14,7 @@ const validate = (req, res, next) => {
 };
 
 function logHospitalizationError(scope, error, meta = {}) {
-  console.error(`[lab-imaging:hospitalization] ${scope}`, {
+  log.error(`${scope}`, {
     message: error?.message,
     code: error?.code,
     errno: error?.errno,

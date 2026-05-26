@@ -55,7 +55,7 @@ describe('eventBus DLQ handling', () => {
       topic: 'notifications.push',
       consumer: 'consumer-a',
     }));
-    expect(redis.xAck).toHaveBeenCalledWith('vetmanager:events', 'vetmanager', '1-0');
+    expect(redis.xAck).toHaveBeenCalledWith('vetmanager:events', 'vetmanager:consumer-a', '1-0');
     expect(metricInc).toHaveBeenCalledWith(expect.objectContaining({
       topic: 'notifications.push',
       direction: 'consume',

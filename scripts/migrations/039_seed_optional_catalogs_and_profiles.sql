@@ -308,6 +308,9 @@ FROM lab_tests lt
 WHERE lt.name = 'Creatinina'
   AND NOT EXISTS (SELECT 1 FROM lab_reference_ranges rr WHERE rr.lab_test_id = lt.id AND rr.species_id = 2 AND rr.sex = 'any');
 
+-- Clinical patient facts must not be seeded into production patients.
+-- Demo allergies/conditions belong in explicit fixture scripts guarded by a demo tenant.
+/*
 -- Patient allergies
 INSERT INTO patient_allergies (patient_id, allergen, reaction_type, severity, reaction_description, is_active, diagnosed_at)
 SELECT p.id, 'Penicilina', 'Erupción cutánea', 'moderate', 'Prurito y eritema luego de administración', 1, CURDATE()
@@ -345,3 +348,4 @@ SELECT p.id, 'Artrosis', CURDATE(), 'Meloxicam según necesidad y control de pes
 FROM patients p
 WHERE p.id = 3
   AND NOT EXISTS (SELECT 1 FROM patient_chronic_conditions c WHERE c.patient_id = p.id AND c.condition_name = 'Artrosis');
+*/

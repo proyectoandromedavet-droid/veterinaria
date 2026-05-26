@@ -1,10 +1,20 @@
 'use strict';
 
 const { Router } = require('express');
-const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
 const { db, R, portalAuth, validate, vBody, PASSWORD_POLICY, log } = require('../portal.common');
+const pwHash = require('../../../../shared/passwordHash');
 
 const router = Router();
+
+// BUG-006: rate limit estricto en cambio de contraseña para prevenir brute force
+const passwordChangeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { message: 'Demasiados intentos de cambio de contraseña. Intente de nuevo en 1 hora.' } },
+});
 
 router.get('/', portalAuth, async (req, res, next) => {
   try {
@@ -21,9 +31,11 @@ router.get('/', portalAuth, async (req, res, next) => {
 
 router.put('/',
   portalAuth,
-  vBody('firstName').optional().notEmpty(),
-  vBody('lastName').optional().notEmpty(),
-  vBody('phone').optional(),
+  vBody('firstName').optional().notEmpty().isLength({ max: 100 }),    // BUG-010
+  vBody('lastName').optional().notEmpty().isLength({ max: 100 }),     // BUG-010
+  vBody('phone').optional().isLength({ max: 30 }),                    // BUG-010
+  vBody('address').optional().isLength({ max: 300 }),                 // BUG-010
+  vBody('city').optional().isLength({ max: 100 }),                    // BUG-010
   validate,
   async (req, res, next) => {
     try {
@@ -46,6 +58,7 @@ router.put('/',
 
 router.put('/password',
   portalAuth,
+  passwordChangeLimiter,   // BUG-006
   vBody('currentPassword').notEmpty(),
   vBody('newPassword').isLength({ min: 10 }).matches(PASSWORD_POLICY),
   validate,
@@ -53,15 +66,23 @@ router.put('/password',
     try {
       const { currentPassword, newPassword } = req.body;
       const client = await db.queryOne(`SELECT portal_password_hash FROM clients WHERE id=:id`, { id: req.owner.clientId });
-      if (!await bcrypt.compare(currentPassword, client.portal_password_hash)) {
+      if (!await pwHash.verify(currentPassword, client.portal_password_hash)) {
         return R.badRequest(res, 'Contrasena actual incorrecta');
       }
 
       await db.query(
         `UPDATE clients SET portal_password_hash=:hash, updated_at=NOW() WHERE id=:id`,
-        { hash: await bcrypt.hash(newPassword, 12), id: req.owner.clientId }
+        { hash: await pwHash.hash(newPassword), id: req.owner.clientId }
       );
-      return R.ok(res, { message: 'Contrasena actualizada' });
+
+      // BUG-016: invalidar todas las sesiones activas del cliente tras el cambio de contraseña
+      // Esto revoca los refresh tokens almacenados — el access token actual expirará en su TTL natural
+      await db.query(
+        `DELETE FROM client_sessions WHERE client_id=:id`,
+        { id: req.owner.clientId }
+      ).catch((err) => log.warn('portal session invalidation failed', { err: err.message }));
+
+      return R.ok(res, { message: 'Contrasena actualizada. Por favor, inicia sesion nuevamente.' });
     } catch (e) {
       log.warn('portal password update failed', { err: e.message });
       next(e);

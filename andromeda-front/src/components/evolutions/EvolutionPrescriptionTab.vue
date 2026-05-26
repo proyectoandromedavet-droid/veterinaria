@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div v-show="active">
     <div class="section-title">{{ t('evolutions.prescription') }}</div>
 
@@ -48,11 +48,11 @@
         <div v-for="(item, idx) in form.prescriptionItems" :key="idx" class="rx-item">
           <div class="rx-item__info">
             <strong>{{ item.medicationName }}</strong>
-            <span>{{ item.dose }}{{ item.doseUnit ? ' ' + item.doseUnit : '' }} — {{ item.frequency }}</span>
+            <span>{{ item.dose }}{{ item.doseUnit ? ' ' + item.doseUnit : '' }} - {{ item.frequency }}</span>
             <span v-if="item.route" class="sub">{{ t('evolutions.route') }}: {{ item.route }}</span>
             <span v-if="item.durationDays" class="sub">{{ item.durationDays }} {{ t('evolutions.durationDays') }}</span>
           </div>
-          <button type="button" class="rx-item__remove" @click="emit('remove-item', idx)" :disabled="saving" :title="t('evolutions.deleteItem')">✕</button>
+          <button type="button" class="rx-item__remove" @click="emit('remove-item', idx)" :disabled="saving" :title="t('evolutions.deleteItem')">&times;</button>
         </div>
       </div>
     </div>

@@ -11,6 +11,19 @@ const { validateRequest } = require('../../../../shared/validation');
 
 const router = Router();
 
+/**
+ * BUG-FIX IDOR: Verifica que el actor sólo pueda operar sobre su propio org,
+ * a menos que sea superadmin (que puede operar en cualquier org).
+ */
+function assertOrgAccess(req, res, orgId) {
+  const isSuperAdmin = Array.isArray(req.user?.roles) && req.user.roles.includes('superadmin');
+  if (!isSuperAdmin && parseInt(orgId, 10) !== parseInt(req.user?.orgId, 10)) {
+    res.status(403).json({ success: false, message: 'Insufficient privileges for this organization' });
+    return false;
+  }
+  return true;
+}
+
 async function auditFeatureChange(req, previousValue, newValue) {
   await db.query(
     `INSERT INTO permission_change_audit
@@ -36,6 +49,7 @@ router.get('/orgs/:orgId',
   validateRequest,
   async (req, res, next) => {
     try {
+      if (!assertOrgAccess(req, res, req.params.orgId)) return;
       const flags = await getFlags(req.params.orgId);
       res.json({
         success: true,
@@ -55,6 +69,7 @@ router.patch('/orgs/:orgId',
   validateRequest,
   async (req, res, next) => {
     try {
+      if (!assertOrgAccess(req, res, req.params.orgId)) return;
       const previous = await getFlags(req.params.orgId);
       const nextFlags = await setFlags(req.params.orgId, req.body.flags || {});
       await auditFeatureChange(req, previous, nextFlags);

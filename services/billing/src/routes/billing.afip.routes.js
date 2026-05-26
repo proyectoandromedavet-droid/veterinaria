@@ -2,6 +2,7 @@
 
 const { Router } = require('express');
 const { db, R, afip, enqueue, generateInvoicePdf, logBillingError } = require('./billing.common');
+const { clearCaeRecovery } = require('../../../../shared/afip');
 
 const router = Router();
 
@@ -21,26 +22,70 @@ router.post('/:id/authorize', async (req, res, next) => {
     );
     if (!inv) return R.notFound(res, 'Factura no encontrada');
     if (inv.afip_cae) return R.conflict(res, 'La factura ya tiene CAE asignado');
-    if (inv.status === 'paid') return R.conflict(res, 'No se puede autorizar una factura ya pagada');
+    if (['cancelled', 'refunded'].includes(inv.status)) {
+      return R.conflict(res, `No se puede autorizar una factura en estado '${inv.status}'`);
+    }
 
     const tipoComp = afip.getTipoComprobante(inv.fiscal_condition || 'CF');
     const tipoDoc = inv.fiscal_condition === 'RI'
       ? afip.TIPO_DOC.CUIT
       : (inv.tax_id ? afip.TIPO_DOC.DNI : afip.TIPO_DOC.CONSUMIDOR_FINAL);
 
-    const importeNeto = inv.subtotal || (inv.total_amount / 1.21);
-    const importeIVA = inv.tax_amount || (inv.total_amount - importeNeto);
+    // OT-049: calcular IVA dinámico desde invoice_items en lugar de hardcodear 21%
+    const items = await db.query(
+      `SELECT unit_price, quantity, discount_pct, tax_pct FROM invoice_items WHERE invoice_id = :id`,
+      { id: inv.id }
+    );
 
+    let importeNeto = 0;
+    let importeIVA = 0;
+    const ivaMap = new Map(); // id_alicuota → { BaseImp, Importe }
+
+    // IVA id AFIP: 3=0%, 4=10.5%, 5=21%, 6=27%, 8=5%, 9=2.5%
+    const alicuotaAfipId = (pct) => {
+      if (pct <= 0)   return 3;
+      if (pct <= 3)   return 9;
+      if (pct <= 6)   return 8;
+      if (pct <= 11)  return 4;
+      if (pct <= 22)  return 5;
+      return 6;
+    };
+
+    if (items.length) {
+      for (const item of items) {
+        const base = Number(item.unit_price) * Number(item.quantity) * (1 - (Number(item.discount_pct) || 0) / 100);
+        const pct = Number(item.tax_pct) || 0;
+        const ivaImporte = Number((base * pct / 100).toFixed(2));
+        importeNeto += base;
+        importeIVA  += ivaImporte;
+        const id = alicuotaAfipId(pct);
+        const prev = ivaMap.get(id) || { Id: id, BaseImp: 0, Importe: 0 };
+        ivaMap.set(id, { Id: id, BaseImp: Number((prev.BaseImp + base).toFixed(2)), Importe: Number((prev.Importe + ivaImporte).toFixed(2)) });
+      }
+      importeNeto = Number(importeNeto.toFixed(2));
+      importeIVA  = Number(importeIVA.toFixed(2));
+    } else {
+      // fallback si no hay ítems detallados
+      importeNeto = Number((inv.subtotal || inv.total_amount / 1.21).toFixed(2));
+      importeIVA  = Number((inv.tax_amount || (inv.total_amount - importeNeto)).toFixed(2));
+    }
+
+    const ivaDesglosado = ivaMap.size ? [...ivaMap.values()] : [];
+
+    // OT-052: pasar invoiceId para vincular nroComprobante desde el momento de autorización
     const result = await afip.authorizeVoucher({
       orgId: inv.org_id,
+      invoiceId: inv.id,
       tipoComprobante: tipoComp,
       tipoDocReceptor: tipoDoc,
       nroDocReceptor: inv.tax_id || '0',
       importeTotal: inv.total_amount,
-      importeNeto: Number(importeNeto.toFixed(2)),
-      importeIVA: Number(importeIVA.toFixed(2)),
+      importeNeto,
+      importeIVA,
+      iva: ivaDesglosado,
     });
 
+    // OT-047: actualizar DB y limpiar recovery key en Redis si tiene éxito
     await db.query(
       `UPDATE invoices
          SET afip_cae=:cae, afip_cae_vto=:vto,
@@ -56,6 +101,8 @@ router.post('/:id/authorize', async (req, res, next) => {
         id: inv.id,
       }
     );
+    // DB actualizada con éxito → eliminar recovery key de Redis
+    clearCaeRecovery(inv.id).catch(() => {});
 
     enqueue({ event: 'invoice.authorized', payload: { invoiceId: inv.id, cae: result.cae }, orgId: inv.org_id }).catch(() => {});
 

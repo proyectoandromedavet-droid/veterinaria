@@ -3,7 +3,9 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 ARG VITE_API_URL
+ARG VITE_PORTAL_ORG_ID
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_PORTAL_ORG_ID=${VITE_PORTAL_ORG_ID}
 
 COPY package.json package-lock.json ./
 RUN npm ci

@@ -1,11 +1,21 @@
 'use strict';
 
+const path = require('path');
 const { Router } = require('express');
 const { param } = require('express-validator');
 const { db, R, loadAccount, logDocumentsError } = require('./accounts.common');
 const { syncAccountDocuments } = require('../lib/sync');
-const { validate } = require('../documents.common');
+const { validate, hasPdfMagic } = require('../documents.common');
 const { getProviderCapability, isProviderSyncSupported } = require('../lib/capabilities');
+
+const MAX_SYNC_PDF_SIZE = 25 * 1024 * 1024; // 25 MB — igual que upload manual
+
+// BUG-DOC-03/04: sanitizar nombres de archivo de origen externo
+function sanitizeFilename(name) {
+  return path.basename(String(name || 'document.pdf'))
+    .replace(/[^\w\s.\-()]/g, '_')
+    .slice(0, 255) || 'document.pdf';
+}
 
 const router = Router();
 
@@ -67,10 +77,26 @@ router.post('/:id/sync',
             );
             if (existing) continue;
 
+            // BUG-DOC-01/05: validar magic bytes y tamaño antes de subir
+            if (!attachment.buffer || attachment.buffer.length === 0) continue;
+            if (attachment.buffer.length > MAX_SYNC_PDF_SIZE) {
+              logDocumentsError('sync: attachment demasiado grande, ignorado', null, {
+                filename: attachment.filename, size: attachment.buffer.length,
+              });
+              continue;
+            }
+            if (!hasPdfMagic(attachment.buffer)) {
+              logDocumentsError('sync: attachment no es PDF válido, ignorado', null, {
+                filename: attachment.filename,
+              });
+              continue;
+            }
+
+            const safeFilename = sanitizeFilename(attachment.filename); // BUG-DOC-04
             const { uploadFile, BUCKETS } = require('../../../../shared/minio');
             const storagePath = await uploadFile(
               attachment.buffer,
-              attachment.filename,
+              safeFilename,
               BUCKETS.documents,
               `documents/${req.user.orgId}/${account.id}`
             );
@@ -94,7 +120,7 @@ router.post('/:id/sync',
                 fromEmail: record.fromEmail,
                 subject: record.subject || null,
                 receivedAt: record.receivedAt,
-                filename: attachment.filename,
+                filename: safeFilename,
                 mimeType: attachment.mimeType || 'application/pdf',
                 fileSize: attachment.fileSize || attachment.buffer.length,
                 checksum: attachment.checksum,

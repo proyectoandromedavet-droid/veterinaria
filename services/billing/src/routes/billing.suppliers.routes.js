@@ -42,17 +42,19 @@ router.post('/',
 );
 
 router.put('/:id',
-  body('name').notEmpty(),
+  body('name').notEmpty().isLength({ max: 120 }),
+  body('email').optional({ nullable: true, checkFalsy: true }).isEmail(),
   validate,
   async (req, res, next) => {
     try {
       const { name, taxId, contactName, email, phone, address, paymentTerms, notes } = req.body;
-      await db.query(
+      const [result] = await db.query(
         `UPDATE suppliers SET name=:name, tax_id=:taxId, contact_name=:contact, email=:email,
           phone=:phone, address=:address, payment_terms=:terms, notes=:notes, updated_at=NOW()
          WHERE id=:id AND org_id=:oid AND ${notDeleted('suppliers')}`,
         { id: req.params.id, oid: req.user.orgId, name, taxId: taxId||null, contact: contactName||null, email: email||null, phone: phone||null, address: address||null, terms: paymentTerms||30, notes: notes||null }
       );
+      if (!result.affectedRows) return R.notFound(res, 'Proveedor no encontrado');
       return R.noContent(res);
     } catch (e) {
       logBillingError('PUT /suppliers/:id', e, { supplierId: req.params.id, orgId: req.user?.orgId, body: req.body });

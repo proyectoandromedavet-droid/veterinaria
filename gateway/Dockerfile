@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20.18.3-alpine3.21
 
 # Install from the root package.json — it contains all dependencies needed
 # by both the gateway and the shared/ modules (redis, prom-client, etc.).
@@ -17,6 +17,7 @@ COPY shared ./shared
 
 RUN mkdir -p /app/gateway/logs && chown -R node:node /app
 
-EXPOSE 3000
 USER node
+
+EXPOSE 4050
 CMD ["node", "gateway/src/index.js"]

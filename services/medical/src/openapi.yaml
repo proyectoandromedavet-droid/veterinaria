@@ -259,6 +259,12 @@ paths:
           name: id
           required: true
           schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrescriptionCreateRequest'
       responses:
         '201':
           description: Prescription added
@@ -281,6 +287,12 @@ paths:
           name: id
           required: true
           schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrescriptionCreateRequest'
       responses:
         '201':
           description: Prescription created
@@ -325,3 +337,32 @@ paths:
       responses:
         '200':
           description: Evaluation result
+
+components:
+  schemas:
+    PrescriptionItemInput:
+      type: object
+      required: [medicationName, dose, frequency]
+      properties:
+        medicationId:   { type: integer, minimum: 1, nullable: true }
+        medicationName: { type: string, minLength: 1, maxLength: 255 }
+        dose:           { type: string, minLength: 1, maxLength: 100 }
+        doseUnit:       { type: string, maxLength: 50, nullable: true }
+        frequency:      { type: string, minLength: 1, maxLength: 100 }
+        route:          { type: string, maxLength: 50, nullable: true }
+        durationDays:   { type: integer, minimum: 1, maximum: 3650, nullable: true }
+        quantity:       { type: number, minimum: 0, nullable: true }
+        instructions:   { type: string, maxLength: 4000, nullable: true }
+
+    PrescriptionCreateRequest:
+      type: object
+      required: [items]
+      properties:
+        notes:   { type: string, maxLength: 4000, nullable: true }
+        refills: { type: integer, minimum: 0, maximum: 12, default: 0 }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PrescriptionItemInput'

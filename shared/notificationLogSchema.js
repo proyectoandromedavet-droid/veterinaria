@@ -15,26 +15,32 @@ const FIELD_CANDIDATES = {
   readFlag: ['is_read', 'read', 'seen'],
 };
 
-let _schemaPromise;
+const SCHEMA_TTL_MS = parseInt(process.env.SCHEMA_CACHE_TTL_MS || '300000'); // 5 min
+let _schemaPromise = null;
+let _schemaExpiresAt = 0;
 
 async function getNotificationSchema() {
-  if (!_schemaPromise) {
-    _schemaPromise = db.query(
-      `SELECT TABLE_NAME, COLUMN_NAME
-       FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME IN ('notification_logs', 'user_fcm_tokens')`
-    ).then((rows) => {
-      const schema = {
-        notification_logs: new Set(),
-        user_fcm_tokens: new Set(),
-      };
-      for (const row of rows) {
-        if (schema[row.TABLE_NAME]) schema[row.TABLE_NAME].add(row.COLUMN_NAME);
-      }
-      return schema;
-    });
-  }
+  if (_schemaPromise && Date.now() < _schemaExpiresAt) return _schemaPromise;
+  _schemaExpiresAt = Date.now() + SCHEMA_TTL_MS;
+  _schemaPromise = db.query(
+    `SELECT TABLE_NAME, COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME IN ('notification_logs', 'user_fcm_tokens')`
+  ).then((rows) => {
+    const schema = {
+      notification_logs: new Set(),
+      user_fcm_tokens: new Set(),
+    };
+    for (const row of rows) {
+      if (schema[row.TABLE_NAME]) schema[row.TABLE_NAME].add(row.COLUMN_NAME);
+    }
+    return schema;
+  }).catch((err) => {
+    _schemaPromise = null;
+    _schemaExpiresAt = 0;
+    throw err;
+  });
   return _schemaPromise;
 }
 
@@ -45,6 +51,11 @@ function firstExisting(cols, options) {
   return null;
 }
 
+// BUG-013 (auditoría): seguro frente a inyección SQL —
+//   • `alias` siempre es un literal hardcodeado por el llamador (p.ej. 'nl')
+//   • `field` siempre es una clave conocida de FIELD_CANDIDATES
+//   • `column` proviene de INFORMATION_SCHEMA filtrado por el allowlist FIELD_CANDIDATES
+//   • `fallbackSql` siempre es un literal SQL hardcodeado por el llamador
 function notificationExpr(cols, alias, field, fallbackSql = 'NULL') {
   const column = firstExisting(cols, FIELD_CANDIDATES[field]);
   return column ? `${alias}.${column}` : fallbackSql;

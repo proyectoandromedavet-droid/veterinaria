@@ -493,6 +493,8 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { t } from '../i18n'
 import BaseButton from '../components/base/BaseButton.vue'
+import { extractDetailedErrorMessage } from '../utils/errors'
+import { useUiFeedback } from '../composables/useUiFeedback'
 import {
   cancelInvoice as cancelInvoiceRequest,
   createInvoice as createInvoiceRequest,
@@ -502,6 +504,8 @@ import {
   loadConsolidatedBilling,
   markInvoicePaid as markInvoicePaidRequest,
 } from '../composables/billing/useBillingDomain'
+
+const { confirm, success, notifyError } = useUiFeedback()
 
 // ── Tab ──────────────────────────────────────────────────────────────────────
 const activeTab = ref('facturas')
@@ -560,7 +564,7 @@ async function load(page = 1) {
     pagination.value = meta
     computeSummary()
   } catch (e) {
-    error.value = e.response?.data?.message || 'No se pudieron cargar las facturas'
+    error.value = extractDetailedErrorMessage(e, 'No se pudieron cargar las facturas', { context: 'Carga de facturas' })
   } finally { loading.value = false }
 }
 
@@ -619,7 +623,7 @@ async function handleCreate() {
     }
     closeModal(); await load()
   } catch (e) {
-    saveError.value = e.response?.data?.message || 'No se pudo emitir la factura'
+    saveError.value = extractDetailedErrorMessage(e, 'No se pudo emitir la factura', { context: 'Emision de factura' })
   } finally { saving.value = false }
 }
 
@@ -640,7 +644,7 @@ async function viewInvoice(inv) {
   try {
     detailInvoice.value = await getInvoiceDetailRequest(inv.id)
   } catch (e) {
-    detailError.value = e.response?.data?.message || 'No se pudo cargar el detalle'
+    detailError.value = extractDetailedErrorMessage(e, 'No se pudo cargar el detalle', { context: 'Detalle de factura' })
   } finally {
     detailLoading.value = false
   }
@@ -654,7 +658,14 @@ function closeViewModal() {
 }
 
 async function cancelInvoice(inv) {
-  if (!confirm(t('billing.cancelInvoiceConfirm', { invoice: inv.invoice_number || '#' + inv.id }))) return
+  const invoiceLabel = inv.invoice_number || '#' + inv.id
+  const ok = await confirm({
+    title: 'Cancelar factura',
+    message: t('billing.cancelInvoiceConfirm', { invoice: invoiceLabel }) || `Cancelar la factura ${invoiceLabel}?`,
+    confirmText: 'Cancelar factura',
+    variant: 'danger',
+  })
+  if (!ok) return
   cancellingInvoice.value = true
   detailError2.value = ''
   try {
@@ -664,8 +675,10 @@ async function cancelInvoice(inv) {
     const row = items.value.find(i => String(i.id) === String(inv.id))
     if (row) row.status = 'cancelled'
     computeSummary()
+    success('Factura cancelada correctamente.')
   } catch (e) {
-    detailError2.value = e.response?.data?.message || 'No se pudo cancelar la factura'
+    notifyError('facturacion.cancelInvoice', e, 'No se pudo cancelar la factura', { context: 'Cancelación de factura' })
+    detailError2.value = extractDetailedErrorMessage(e, 'No se pudo cancelar la factura', { context: 'Cancelación de factura' })
   } finally {
     cancellingInvoice.value = false
   }
@@ -703,7 +716,7 @@ async function confirmMarkPaid() {
     computeSummary()
     closePayModal()
   } catch (e) {
-    payError.value = e.response?.data?.message || 'No se pudo registrar el pago'
+    payError.value = extractDetailedErrorMessage(e, 'No se pudo registrar el pago', { context: 'Registro de pago' })
   } finally {
     payingSaving.value = false
   }
@@ -758,7 +771,7 @@ async function loadConsolidated() {
     consolSummary.value = summary
     consolOutstanding.value = outstanding
   } catch (e) {
-    consolError.value = e.response?.data?.message || 'No se pudo cargar el consolidado'
+    consolError.value = extractDetailedErrorMessage(e, 'No se pudo cargar el consolidado', { context: 'Consolidado de facturacion' })
   } finally {
     consolLoading.value = false
   }

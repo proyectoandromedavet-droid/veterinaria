@@ -9,6 +9,9 @@ const {
   validate,
   logClientsError,
   getClientSchema,
+  maskEmail,
+  maskPhone,
+  hasPiiAccess,
 } = require('./clients.common');
 
 const router = Router();
@@ -59,6 +62,16 @@ router.get('/', async (req, res, next) => {
       ),
     ]);
 
+    // OT-098: mask PII for callers without 'clients:pii' permission
+    const pii = hasPiiAccess(req);
+    if (!pii) {
+      for (const row of rows) {
+        row.email           = maskEmail(row.email);
+        row.phone           = maskPhone(row.phone);
+        row.document_number = row.document_number ? '****' : null;
+      }
+    }
+
     return R.paginated(res, rows, total, parsedPage, parsedLimit);
   } catch (e) {
     logClientsError('GET /clients', e, { branchId: req.user?.branchId, orgId: req.user?.orgId, query: req.query });
@@ -92,6 +105,14 @@ router.get('/:id', async (req, res, next) => {
       { id: req.params.id, branchId: req.user.branchId, orgId: req.user.orgId }
     );
     if (!client) return R.notFound(res, 'Client not found');
+
+    // OT-098: mask PII fields unless caller has 'clients:pii' permission
+    if (!hasPiiAccess(req)) {
+      client.email           = maskEmail(client.email);
+      client.phone           = maskPhone(client.phone);
+      client.document_number = client.document_number ? '****' : null;
+      client.tax_id          = client.tax_id          ? '****' : null;
+    }
 
     const chipExpr = patientCols.has('chip_number')
       ? `COALESCE(p.chip_number, ${patientCols.has('microchip_number') ? 'p.microchip_number' : 'NULL'})`
@@ -131,10 +152,16 @@ router.get('/:id', async (req, res, next) => {
 });
 
 router.post('/',
-  body('firstName').notEmpty().trim(),
-  body('lastName').notEmpty().trim(),
+  body('firstName').notEmpty().trim().isLength({ max: 100 }),
+  body('lastName').notEmpty().trim().isLength({ max: 100 }),
   body('email').optional().isEmail().normalizeEmail(),
-  body('phone').notEmpty(),
+  body('phone').notEmpty().isLength({ max: 30 }),
+  body('address').optional().isString().trim().isLength({ max: 500 }),
+  body('city').optional().isString().trim().isLength({ max: 100 }),
+  body('postalCode').optional().isString().trim().isLength({ max: 20 }),
+  body('documentNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('taxId').optional().isString().trim().isLength({ max: 50 }),
+  body('notes').optional().isString().trim().isLength({ max: 2000 }),
   validate,
   async (req, res, next) => {
     try {
@@ -204,8 +231,16 @@ router.post('/',
 );
 
 router.put('/:id',
-  body('firstName').optional().notEmpty().trim(),
+  body('firstName').optional().notEmpty().trim().isLength({ max: 100 }),
+  body('lastName').optional().notEmpty().trim().isLength({ max: 100 }),
   body('email').optional().isEmail().normalizeEmail(),
+  body('phone').optional().isString().isLength({ max: 30 }),
+  body('address').optional().isString().trim().isLength({ max: 500 }),
+  body('city').optional().isString().trim().isLength({ max: 100 }),
+  body('postalCode').optional().isString().trim().isLength({ max: 20 }),
+  body('documentNumber').optional().isString().trim().isLength({ max: 50 }),
+  body('taxId').optional().isString().trim().isLength({ max: 50 }),
+  body('notes').optional().isString().trim().isLength({ max: 2000 }),
   validate,
   async (req, res, next) => {
     try {

@@ -42,8 +42,10 @@ router.get('/',
 router.post('/',
   body('provider').isIn(['gmail', 'imap', 'outlook', 'manual']),
   body('emailAddress').isEmail(),
-  body('displayName').optional().isString(),
-  body('folderName').optional().isString(),
+  body('displayName').optional().isString().trim().isLength({ max: 200 }),
+  // folderName se usa como nombre de mailbox IMAP — solo caracteres seguros, sin CRLF ni path traversal
+  body('folderName').optional().isString().trim().isLength({ max: 200 })
+    .matches(/^[^<>"\r\n\0]+$/).withMessage('folderName contiene caracteres no permitidos'),
   body('settings').optional().isObject(),
   body('isActive').optional().isBoolean(),
   validate,
@@ -75,8 +77,10 @@ router.post('/',
 
 router.patch('/:id',
   param('id').isInt({ min: 1 }),
-  body('displayName').optional().isString(),
-  body('folderName').optional().isString(),
+  body('displayName').optional().isString().trim().isLength({ max: 200 }),
+  // folderName se usa como nombre de mailbox IMAP — solo caracteres seguros, sin CRLF ni path traversal
+  body('folderName').optional().isString().trim().isLength({ max: 200 })
+    .matches(/^[^<>"\r\n\0]+$/).withMessage('folderName contiene caracteres no permitidos'),
   body('settings').optional().isObject(),
   body('isActive').optional().isBoolean(),
   validate,
