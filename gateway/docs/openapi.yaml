@@ -1222,6 +1222,13 @@ paths:
     get:
       tags: [Lab]
       summary: Listar órdenes de laboratorio
+      parameters:
+        - { in: query, name: patientId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
       responses:
         '200': { description: Lista de órdenes }
     post:
@@ -1412,6 +1419,13 @@ paths:
     get:
       tags: [Surgery]
       summary: Listar cirugías
+      parameters:
+        - { in: query, name: patientId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
       responses:
         '200': { description: Lista de cirugías }
     post:
@@ -1440,9 +1454,10 @@ paths:
       tags: [Hospitalization]
       summary: Listar internaciones
       parameters:
-        - in: query
-          name: status
-          schema: { type: string, enum: [active, discharged, all], default: active }
+        - { in: query, name: status, schema: { type: string, enum: [active, discharged, all], default: active } }
+        - { in: query, name: patientId, schema: { type: integer } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 30 } }
       responses:
         '200': { description: Lista de internaciones }
     post:
