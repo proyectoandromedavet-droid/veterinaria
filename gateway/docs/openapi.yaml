@@ -2281,7 +2281,7 @@ paths:
           name: to
           schema: { type: string, format: date }
       responses:
-        '200': { description: Sesiones, duración promedio, rating por período }
+        '200': { description: 'Sesiones, duración promedio, rating por período' }
 
   /reports/grooming:
     get:
@@ -2295,7 +2295,7 @@ paths:
           name: to
           schema: { type: string, format: date }
       responses:
-        '200': { description: Turnos de grooming, ingresos, servicios más pedidos }
+        '200': { description: 'Turnos de grooming, ingresos, servicios más pedidos' }
 
   /reports/security:
     get:
