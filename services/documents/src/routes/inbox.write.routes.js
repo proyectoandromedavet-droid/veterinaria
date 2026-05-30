@@ -9,6 +9,10 @@ const { db, R, requirePerm, uploadFile, BUCKETS, sha256, validate, isPdf, hasPdf
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
 
+// FIX 5 — whitelist de categorías de documento válidas
+const VALID_DOCUMENT_CATEGORIES = ['external_lab', 'prescription', 'medical_authorization', 'insurance_claim', 'vet_clinic_records', 'general'];
+const VALID_CATS_SET = new Set(VALID_DOCUMENT_CATEGORIES);
+
 router.post('/manual',
   requirePerm('medical_records:update'),
   body('accountId').optional().isInt({ min: 1 }),
@@ -16,12 +20,12 @@ router.post('/manual',
   body('subject').optional().isString(),
   body('receivedAt').optional().isISO8601(),
   body('attachments').isArray({ min: 1 }),
-  body('attachments.*.filename').isString(),
+  body('attachments.*.filename').isString().trim().isLength({ min: 1, max: 255 }).customSanitizer(v => path.basename(v).replace(/[^\w\s\-_.]/g, '_').slice(0, 255)),
   body('attachments.*.mimeType').optional().isString(),
   body('attachments.*.fileSize').optional().isInt({ min: 0 }),
   body('attachments.*.checksum').optional().isString(),
   body('attachments.*.storagePath').optional().isString(),
-  body('attachments.*.documentCategory').optional().isString(),
+  body('attachments.*.documentCategory').optional().isIn(VALID_DOCUMENT_CATEGORIES),
   body('attachments.*.patientId').optional().isInt({ min: 1 }),
   validate,
   async (req, res, next) => {
@@ -104,7 +108,7 @@ router.post('/upload',
 
       const fromEmail = String(req.body.fromEmail || req.user.email || 'manual-upload@local').trim();
       const subject = String(req.body.subject || 'Carga manual').trim();
-      const documentCategory = String(req.body.documentCategory || 'external_lab').trim();
+      const documentCategory = VALID_CATS_SET.has(req.body.documentCategory) ? req.body.documentCategory : 'external_lab';
       const accountId = req.body.accountId ? Number(req.body.accountId) : null;
       const patientId = req.body.patientId ? Number(req.body.patientId) : null;
       const receivedAt = req.body.receivedAt || new Date().toISOString();
@@ -193,7 +197,7 @@ router.patch('/:id/associate',
   requirePerm('medical_records:update'),
   param('id').isInt({ min: 1 }),
   body('patientId').isInt({ min: 1 }),
-  body('documentCategory').optional().isString(),
+  body('documentCategory').optional().isIn(VALID_DOCUMENT_CATEGORIES),
   body('metadata').optional().isObject(),
   validate,
   async (req, res, next) => {

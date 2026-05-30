@@ -90,31 +90,68 @@ router.post('/',
   body('groomerId').isInt(),
   body('scheduledAt').isISO8601(),
   body('services').isArray({ min: 1 }),
+  body('services.*.serviceTypeId').isInt({ min: 1 }).toInt(),
   validate,
   async (req, res, next) => {
     try {
       const { patientId, clientId, groomerId, scheduledAt, services, estimatedDurationMinutes = 90, pickupRequired, pickupAddress, deliveryRequired, deliveryAddress, notes } = req.body;
-      const [r] = await db.query(
-        `INSERT INTO grooming_appointments
-           (branch_id, patient_id, client_id, groomer_id, scheduled_at,
-            estimated_duration_minutes, pickup_required, pickup_address,
-            delivery_required, delivery_address, notes, status)
-         VALUES (:bid,:pid,:cid,:gid,:sched,:dur,:pickup,:paddr,:del,:daddr,:notes,'scheduled')`,
-        {
-          bid: req.user.branchId, pid: patientId, cid: clientId, gid: groomerId, sched: scheduledAt, dur: estimatedDurationMinutes,
-          pickup: pickupRequired ? 1 : 0, paddr: pickupAddress || null, del: deliveryRequired ? 1 : 0, daddr: deliveryAddress || null,
-          notes: notes || null,
-        }
-      );
-      const apptId = r.insertId;
+      let apptId;
       let totalEstimate = 0;
-      for (const svc of services) {
-        const serviceType = await db.queryOne(`SELECT * FROM grooming_service_types WHERE id = :id`, { id: svc.serviceTypeId });
-        const price = svc.priceCharged ?? serviceType?.base_price_medium ?? 0;
-        totalEstimate += parseFloat(price);
-        await db.query(`INSERT INTO grooming_appointment_services (grooming_appointment_id, service_type_id, price_charged, notes) VALUES (?,?,?,?)`, [apptId, svc.serviceTypeId, price, svc.notes || null]);
-      }
-      await db.query(`UPDATE grooming_appointments SET estimated_price = ? WHERE id = ?`, [totalEstimate, apptId]);
+
+      await db.transaction(async (conn) => {
+        // FIX 1a — lock de concurrencia: conflicto por groomer
+        const groomerConflict = await conn.queryOne(
+          `SELECT id FROM grooming_appointments
+           WHERE groomer_id = :gid
+             AND branch_id = :bid
+             AND status NOT IN ('cancelled', 'no_show')
+             AND scheduled_at < DATE_ADD(:sched, INTERVAL :dur MINUTE)
+             AND DATE_ADD(scheduled_at, INTERVAL COALESCE(estimated_duration_minutes, 60) MINUTE) > :sched
+           LIMIT 1 FOR UPDATE`,
+          { gid: groomerId, bid: req.user.branchId, sched: scheduledAt, dur: estimatedDurationMinutes || 60 }
+        );
+        if (groomerConflict) {
+          return R.conflict(res, 'El groomer ya tiene un turno en ese horario');
+        }
+
+        // FIX 1b — lock de concurrencia: conflicto por paciente
+        const patientConflict = await conn.queryOne(
+          `SELECT id FROM grooming_appointments
+           WHERE patient_id = :pid
+             AND status NOT IN ('cancelled', 'no_show')
+             AND scheduled_at < DATE_ADD(:sched, INTERVAL :dur MINUTE)
+             AND DATE_ADD(scheduled_at, INTERVAL COALESCE(estimated_duration_minutes, 60) MINUTE) > :sched
+           LIMIT 1 FOR UPDATE`,
+          { pid: patientId, sched: scheduledAt, dur: estimatedDurationMinutes || 60 }
+        );
+        if (patientConflict) {
+          return R.conflict(res, 'El paciente ya tiene un turno en ese horario');
+        }
+
+        const [r] = await conn.query(
+          `INSERT INTO grooming_appointments
+             (branch_id, patient_id, client_id, groomer_id, scheduled_at,
+              estimated_duration_minutes, pickup_required, pickup_address,
+              delivery_required, delivery_address, notes, status)
+           VALUES (:bid,:pid,:cid,:gid,:sched,:dur,:pickup,:paddr,:del,:daddr,:notes,'scheduled')`,
+          {
+            bid: req.user.branchId, pid: patientId, cid: clientId, gid: groomerId, sched: scheduledAt, dur: estimatedDurationMinutes,
+            pickup: pickupRequired ? 1 : 0, paddr: pickupAddress || null, del: deliveryRequired ? 1 : 0, daddr: deliveryAddress || null,
+            notes: notes || null,
+          }
+        );
+        apptId = r.insertId;
+
+        for (const svc of services) {
+          const serviceType = await conn.queryOne(`SELECT * FROM grooming_service_types WHERE id = :id`, { id: svc.serviceTypeId });
+          const price = svc.priceCharged ?? serviceType?.base_price_medium ?? 0;
+          totalEstimate += parseFloat(price);
+          await conn.query(`INSERT INTO grooming_appointment_services (grooming_appointment_id, service_type_id, price_charged, notes) VALUES (?,?,?,?)`, [apptId, svc.serviceTypeId, price, svc.notes || null]);
+        }
+        await conn.query(`UPDATE grooming_appointments SET estimated_price = ? WHERE id = ?`, [totalEstimate, apptId]);
+      });
+
+      if (res.headersSent) return;
       return R.created(res, { id: apptId, estimatedPrice: totalEstimate });
     } catch (e) { logGroomingError('POST /grooming/appointments', e, { branchId: req.user?.branchId }); next(e); }
   }
@@ -129,6 +166,10 @@ router.patch('/:id/status', body('status').isIn(['scheduled', 'confirmed', 'in_p
 
 router.post('/:id/record', body('servicesPerformed').isArray({ min: 1 }), validate, async (req, res, next) => {
   try {
+    // FIX 2 — permiso granular para registrar resultado de grooming
+    if (!req.user.permissions?.includes('grooming:update') && !req.user.permissions?.includes('*')) {
+      return R.forbidden(res, 'Permiso insuficiente para registrar resultado de grooming');
+    }
     const { servicesPerformed, productsUsed, beforePhotoUrl, afterPhotoUrl, behaviorObservations, coatCondition, skinCondition, vetReferralRequired, vetReferralReason, finalPrice, groomingNotes } = req.body;
     const [r] = await db.query(
       `INSERT INTO grooming_records
@@ -152,6 +193,10 @@ router.post('/:id/record', body('servicesPerformed').isArray({ min: 1 }), valida
 
 router.post('/:id/rating', body('overallScore').isInt({ min: 1, max: 5 }), validate, async (req, res, next) => {
   try {
+    // FIX 2 — permiso granular para registrar rating de grooming
+    if (!req.user.permissions?.includes('grooming:update') && !req.user.permissions?.includes('*')) {
+      return R.forbidden(res, 'Permiso insuficiente para registrar rating de grooming');
+    }
     const { overallScore, qualityScore, timelinessScore, grooomerFriendlinessScore, comment, recommendGroomer } = req.body;
     await db.query(
       `INSERT INTO grooming_ratings
