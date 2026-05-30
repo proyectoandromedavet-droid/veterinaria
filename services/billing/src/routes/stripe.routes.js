@@ -135,15 +135,23 @@ async function stripeWebhookHandler(req, res) {
 
     // Manejar eventos relevantes
     switch (event.type) {
-      case 'invoice.payment_succeeded':
+      case 'invoice.payment_succeeded': {
         if (orgId) {
-          await db.query(
-            'UPDATE tenants SET next_billing_date = DATE_ADD(NOW(), INTERVAL 1 MONTH) WHERE org_id = :orgId',
-            { orgId },
-          );
-          logger.info('[stripe-webhook] Payment succeeded', { orgId, eventId: event.id });
+          const invoiceObj = event.data?.object;
+          const periodEnd = invoiceObj?.lines?.data?.[0]?.period?.end || invoiceObj?.period_end;
+          const nextBillingDate = periodEnd
+            ? new Date(periodEnd * 1000).toISOString().slice(0, 10)
+            : null;
+          if (nextBillingDate) {
+            await db.query(
+              'UPDATE tenants SET next_billing_date = :date, subscription_status = :status WHERE org_id = :orgId',
+              { date: nextBillingDate, status: 'active', orgId },
+            );
+          }
+          logger.info('[stripe-webhook] Payment succeeded', { orgId, eventId: event.id, nextBillingDate });
         }
         break;
+      }
 
       case 'invoice.payment_failed':
         if (orgId) {

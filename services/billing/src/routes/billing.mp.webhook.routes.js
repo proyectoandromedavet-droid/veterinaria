@@ -73,10 +73,36 @@ router.post('/', async (req, res, next) => {
     }
 
     if (status === 'refunded') {
-      await db.query(
-        `UPDATE invoices SET status = 'refunded', updated_at = NOW() WHERE id = :id`,
-        { id: invoiceId }
+      const mpRefunds = paymentData.refunds || [];
+      const allRefundIds = mpRefunds.length
+        ? mpRefunds.map(r => r.id).sort().join(',')
+        : 'full';
+      const refundRef = `refund:${mpPaymentId}:${allRefundIds}`;
+
+      const existing = await db.queryOne(
+        `SELECT id FROM payments WHERE reference = :ref AND invoice_id = :iid`,
+        { ref: refundRef, iid: invoiceId }
       );
+      if (existing) return res.status(200).json({ received: true });
+
+      await db.transaction(async (conn) => {
+        await conn.query(
+          `INSERT INTO payments
+             (invoice_id, amount, payment_method, reference, mp_payment_id, payment_status, notes, paid_at, created_by)
+           VALUES (:iid, :amount, 'mercadopago', :reference, :mpid, 'refunded', :notes, NOW(), NULL)`,
+          {
+            iid: invoiceId,
+            amount: -(paymentData.transaction_amount || 0),
+            reference: refundRef,
+            mpid: String(mpPaymentId),
+            notes: `MercadoPago refund - ${mpPaymentId}`,
+          }
+        );
+        await conn.query(
+          `UPDATE invoices SET status = 'refunded', updated_at = NOW() WHERE id = :id`,
+          { id: invoiceId }
+        );
+      });
       enqueue({ event: 'payment.refunded', payload: { invoiceId, mpPaymentId } }).catch((err) => {
         log.warn('MP webhook enqueue failed', { error: err.message, invoiceId, mpPaymentId });
       });

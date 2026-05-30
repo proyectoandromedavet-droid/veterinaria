@@ -63,11 +63,18 @@ router.put('/:id',
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    await db.query(
+    const activePOs = await db.queryOne(
+      `SELECT COUNT(*) AS cnt FROM purchase_orders WHERE supplier_id = :id AND status IN ('draft','sent','partial') AND deleted_at IS NULL`,
+      { id: req.params.id }
+    );
+    if (activePOs?.cnt > 0) return R.conflict(res, 'El proveedor tiene órdenes de compra activas');
+
+    const result = await db.query(
       `UPDATE suppliers SET is_active=0, deleted_at=NOW(), updated_at=NOW()
        WHERE id=:id AND org_id=:oid AND ${notDeleted('suppliers')}`,
       { id: req.params.id, oid: req.user.orgId }
     );
+    if (!result.affectedRows) return R.notFound(res, 'Proveedor no encontrado');
     return R.noContent(res);
   } catch (e) {
     logBillingError('DELETE /suppliers/:id', e, { supplierId: req.params.id, orgId: req.user?.orgId });

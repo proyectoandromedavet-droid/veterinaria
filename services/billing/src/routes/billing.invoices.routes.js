@@ -100,8 +100,16 @@ router.post('/',
     try {
       const { clientId, patientId, appointmentId, currencyId, dueDate, notes, items = [] } = req.body;
       const invoice = await db.transaction(async (conn) => {
-        const [{ seq }] = await conn.query(
-          `SELECT COALESCE(MAX(id), 0) + 1 AS seq FROM invoices WHERE branch_id = :bid FOR UPDATE`,
+        await conn.query(
+          `INSERT IGNORE INTO invoice_branch_sequences (branch_id, next_seq) VALUES (:bid, 0)`,
+          { bid: req.user.branchId }
+        );
+        await conn.query(
+          `UPDATE invoice_branch_sequences SET next_seq = next_seq + 1 WHERE branch_id = :bid`,
+          { bid: req.user.branchId }
+        );
+        const { seq } = await conn.queryOne(
+          `SELECT next_seq AS seq FROM invoice_branch_sequences WHERE branch_id = :bid`,
           { bid: req.user.branchId }
         );
         const invoiceNumber = buildInvoiceNumber(req.user.branchId, seq);

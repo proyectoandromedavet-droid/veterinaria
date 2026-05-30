@@ -29,13 +29,16 @@ router.post('/orders',
 
       if (!normalizedTests.length) return R.badRequest(res, 'At least one valid lab test is required');
 
-      const [{ nextNum }] = await db.query(
-        `SELECT COALESCE(MAX(CAST(SUBSTRING(order_number,4) AS UNSIGNED)),0)+1 AS nextNum
-           FROM lab_orders
-          WHERE branch_id = :bid`,
+      await db.query(
+        `INSERT INTO lab_branch_sequences (branch_id, next_seq) VALUES (:bid, 1)
+         ON DUPLICATE KEY UPDATE next_seq = next_seq + 1`,
         { bid: req.user.branchId }
       );
-      const orderNumber = `LAB${String(nextNum).padStart(6, '0')}`;
+      const { seq } = await db.queryOne(
+        `SELECT next_seq AS seq FROM lab_branch_sequences WHERE branch_id = :bid FOR UPDATE`,
+        { bid: req.user.branchId }
+      );
+      const orderNumber = `LAB${String(seq).padStart(6, '0')}`;
 
       const [r] = await db.query(
         `INSERT INTO lab_orders

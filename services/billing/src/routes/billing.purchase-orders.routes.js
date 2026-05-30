@@ -63,12 +63,18 @@ router.post('/',
   async (req, res, next) => {
     try {
       const { supplierId, items, orderedDate, expectedDate, notes } = req.body;
-      const [{ count }] = await db.query(
-        `SELECT COUNT(*)+1 AS count FROM purchase_orders WHERE branch_id=:bid`,
+      const subtotal = items.reduce((s, i) => s + (i.quantity * i.unitCost), 0);
+
+      await db.query(
+        `INSERT INTO po_branch_sequences (branch_id, next_seq) VALUES (:bid, 1)
+         ON DUPLICATE KEY UPDATE next_seq = next_seq + 1`,
         { bid: req.user.branchId }
       );
-      const poNumber = `PO-${String(count).padStart(5, '0')}`;
-      const subtotal = items.reduce((s, i) => s + (i.quantity * i.unitCost), 0);
+      const { seq } = await db.queryOne(
+        `SELECT next_seq AS seq FROM po_branch_sequences WHERE branch_id = :bid FOR UPDATE`,
+        { bid: req.user.branchId }
+      );
+      const poNumber = `PO-${String(seq).padStart(5, '0')}`;
 
       const r = await db.query(
         `INSERT INTO purchase_orders (branch_id, supplier_id, po_number, status, ordered_date, expected_date, subtotal, total_amount, notes, created_by)
