@@ -299,7 +299,24 @@ function setPeriod(value) {
   load()
 }
 
+function validateDateRange() {
+  if (!dateFrom.value || !dateTo.value) return true // usa defaults
+  const from = new Date(dateFrom.value)
+  const to = new Date(dateTo.value)
+  if (to < from) {
+    error.value = 'La fecha de inicio debe ser anterior a la fecha de fin'
+    return false
+  }
+  const diffDays = (to - from) / (1000 * 60 * 60 * 24)
+  if (diffDays > 730) {
+    error.value = 'El rango máximo de consulta es de 2 años'
+    return false
+  }
+  return true
+}
+
 async function load() {
+  if (!validateDateRange()) return
   loading.value = true
   error.value = ''
   const from = dateFrom.value

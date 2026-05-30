@@ -3,7 +3,7 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji">&#x1F43E;</span>
+        <span class="page-emoji">💻</span>
         <div>
           <h2 class="page-title">{{ t('telemedicine.title') }}</h2>
           <p class="page-sub">{{ t('telemedicine.subtitle') }}</p>
@@ -15,28 +15,28 @@
     <!-- KPI Stats bar -->
     <div class="kpi-row">
       <div class="kpi" style="--c:#D6EEFF;--ct:#1A5FAA">
-        <span>&#x1F43E;</span>
+        <span>💻</span>
         <div>
           <strong>{{ statsData.total }}</strong>
           <span>{{ t('telemedicine.totalSessions') }}</span>
         </div>
       </div>
       <div class="kpi" style="--c:#D6F3EC;--ct:#1A9E7F">
-        <span>&#x2713;</span>
+        <span>✅</span>
         <div>
           <strong>{{ statsData.completed }}</strong>
           <span>{{ t('telemedicine.completed') }}</span>
         </div>
       </div>
       <div class="kpi" style="--c:#FFF3CC;--ct:#8A6200">
-        <span>&#x1F43E;</span>
+        <span>⏱️</span>
         <div>
           <strong>{{ statsData.avgDuration }} min</strong>
           <span>Duración promedio</span>
         </div>
       </div>
       <div class="kpi" style="--c:#F0E6FF;--ct:#6B21A8">
-        <span>&#x1F43E;</span>
+        <span>📅</span>
         <div>
           <strong>{{ statsData.today }}</strong>
           <span>{{ t('telemedicine.sessionsToday') }}</span>
@@ -46,7 +46,7 @@
 
     <!-- Info banner -->
     <div class="info-banner">
-      <span>&#x1F43E;</span>
+      <span>🎥</span>
       <div>
         <strong>{{ t('telemedicine.infoTitle') }}</strong>
         <span>Los dueños reciben un enlace por email para unirse a la videollamada en el horario pactado.</span>
@@ -67,13 +67,13 @@
         <option value="no_show">{{ t('telemedicine.statusNoShow') }}</option>
       </select>
       <label for="tele-search" class="sr-only">Buscar paciente</label>
-      <input id="tele-search" name="tele-search" v-model.trim="search" type="search" placeholder="Buscar paciente..." class="filter-input filter-input--grow" @input="debouncedLoad()" />
+      <input id="tele-search" name="tele-search" v-model.trim="search" type="search" placeholder="🔍 Buscar paciente…" class="filter-input filter-input--grow" @input="debouncedLoad()" />
     </div>
 
     <div v-if="loading" class="loading-state"><span class="spin spin--dark" /> {{ t('telemedicine.loading') }}</div>
     <div v-else-if="error" class="alert alert--error">{{ error }}</div>
     <div v-else-if="items.length === 0" class="empty-state">
-      <span class="empty-state__emoji">&#x1F43E;</span>
+      <span class="empty-state__emoji">🐱</span>
       <p>{{ t('telemedicine.emptyState') }}</p>
       <button type="button" class="btn-ghost" @click="openModal()">{{ t('telemedicine.programConsultation') }}</button>
     </div>
@@ -93,7 +93,7 @@
             </div>
           </div>
           <p class="tele-reason">{{ t.reason || t.chief_complaint || t('telemedicine.generalConsultation') }}</p>
-          <p class="tele-vet" v-if="t.vet_name">&#x1F43E; {{ t.vet_name }}</p>
+          <p class="tele-vet" v-if="t.vet_name">👨‍⚕️ {{ t.vet_name }}</p>
         </div>
         <div class="tele-card__right">
           <button
@@ -102,7 +102,7 @@
             class="btn-join"
             @click="joinCall(t)"
           >
-            &#x1F43E; Unirse
+            🎥 Unirse
           </button>
           <button
             v-if="t.status === 'in_progress'"
@@ -118,6 +118,13 @@
           >{{ t('telemedicine.cancelSession') }}</button>
         </div>
       </div>
+    </div>
+
+    <!-- Paginación sesiones -->
+    <div v-if="totalPages > 1" class="pagination">
+      <button type="button" :disabled="page <= 1" @click="loadPage(page - 1)">{{ t('common.previous') }}</button>
+      <span>{{ page }} / {{ totalPages }}</span>
+      <button type="button" :disabled="page >= totalPages" @click="loadPage(page + 1)">{{ t('common.next') }}</button>
     </div>
 
     <!-- Modal -->
@@ -150,11 +157,11 @@
                   <input id="tele-m-patient" name="tele-m-patient" v-model.trim="patientSearch" type="search" :placeholder="t('telemedicine.patientSearch')" :disabled="saving" @input="searchPatients" autocomplete="off" />
                   <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
                     <button v-for="pt in patientResults" :key="pt.id" type="button" class="autocomplete__item" role="option" :aria-label="`${t('common.selectPatient')} ${pt.name}`" @click="selectPatient(pt)">
-                      &#x1F43E; <b>{{ pt.name }}</b>
+                      🐾 <b>{{ pt.name }}</b>
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
                   </div>
-                  <div v-if="form.patientId" class="selected-patient">&#x2713; {{ selectedPatientLabel }}</div>
+                  <div v-if="form.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
@@ -204,15 +211,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import { teleApi, patientsApi } from '../api'
+import http from '../api/client'
 import { adminUsersApi } from '../api/adminUsers'
 import { t } from '../i18n'
-import { extractDetailedErrorMessage, logError } from '../utils/errors'
-import { useUiFeedback } from '../composables/useUiFeedback'
-
-const { notifyError, warning, success } = useUiFeedback()
+import { logError } from '../utils/errors'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -276,23 +280,39 @@ function normalizePatient(row) {
   }
 }
 
-const items = ref([])
-const loading = ref(false)
-const error   = ref('')
-const search  = ref('')
+const allItems = ref([])
+const items    = ref([])
+const loading  = ref(false)
+const error    = ref('')
+const search   = ref('')
 const dateFilter   = ref(new Date().toISOString().split('T')[0])
 const statusFilter = ref('')
+
+const page     = ref(1)
+const pageSize = ref(20)
+const totalSessions = computed(() => allItems.value.length)
+const totalPages    = computed(() => Math.max(1, Math.ceil(totalSessions.value / pageSize.value)))
 
 const STATUS = { scheduled: t('telemedicine.statusScheduled'), in_progress: t('telemedicine.statusInProgress'), completed: t('telemedicine.statusCompleted'), cancelled: t('telemedicine.statusCancelled'), no_show: t('telemedicine.statusNoShow') }
 
 function petEmoji(s) {
-  const m = { dog:'\u{1F43E}', cat:'\u{1F43E}', rabbit:'\u{1F43E}', bird:'\u{1F43E}', fish:'\u{1F43E}', reptile:'\u{1F43E}' }
-  return m[s] || '\u{1F43E}'
+  const m = { dog:'🐶', cat:'🐱', rabbit:'🐰', bird:'🐦', fish:'🐟', reptile:'🦎' }
+  return m[s] || '🐾'
 }
 
 function formatTime(dt) {
   if (!dt) return '—'
   return new Date(dt).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' })
+}
+
+function applyPage() {
+  const start = (page.value - 1) * pageSize.value
+  items.value = allItems.value.slice(start, start + pageSize.value)
+}
+
+function loadPage(newPage) {
+  page.value = Math.max(1, Math.min(newPage, totalPages.value))
+  applyPage()
 }
 
 async function load() {
@@ -301,17 +321,18 @@ async function load() {
     const params = {}
     if (dateFilter.value)   params.date   = dateFilter.value
     if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await teleApi.sessions.list(params)
+    const { data } = await http.get('/tele/sessions', { params })
     const rows = asArray(data?.data || data?.consultations || data).map(normalizeTeleSession).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
-    items.value = needle
+    allItems.value = needle
       ? rows.filter((row) => [row.patient_name, row.client_name, row.vet_name, row.platform_name]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(needle)))
       : rows
+    page.value = 1
+    applyPage()
   } catch (e) {
-    logError('telemedicina.load', e)
-    error.value = extractDetailedErrorMessage(e, t('telemedicine.loadError'), { context: 'Carga de teleconsultas' })
+    error.value = e.response?.data?.message || t('telemedicine.loadError')
   } finally { loading.value = false }
 }
 
@@ -322,17 +343,16 @@ function joinCall(t) {
   if (t.meeting_url) {
     window.open(t.meeting_url, '_blank')
   } else {
-    warning('El enlace de videollamada no esta disponible aun.', { title: 'Videollamada sin enlace' })
+    alert('El enlace de videollamada no está disponible aún.')
   }
 }
 
 async function changeStatus(t, status) {
   try {
-    await teleApi.sessions.updateStatus(t.id, { status })
+    await http.patch(`/tele/sessions/${t.id}/status`, { status })
     t.status = status
-    success('Teleconsulta actualizada correctamente.')
   } catch (e) {
-    notifyError('telemedicina.changeStatus', e, t('telemedicine.updateError'), { context: 'Actualización de teleconsulta' })
+    alert(e.response?.data?.message || t('telemedicine.updateError'))
   }
 }
 
@@ -341,7 +361,7 @@ const statsData = reactive({ total: 0, completed: 0, avgDuration: 0, today: 0 })
 const auth = useAuthStore()
 async function loadStats() {
   try {
-    const { data } = await teleApi.stats()
+    const { data } = await http.get('/tele/stats')
     const rows = asArray(data?.data || data).filter(Boolean)
     const todayStr = new Date().toISOString().split('T')[0]
     let totalSessions = 0
@@ -403,7 +423,7 @@ async function loadVets() {
 const platformList = ref([])
 async function loadPlatforms() {
   try {
-    const { data } = await teleApi.platforms()
+    const { data } = await http.get('/tele/platforms')
     platformList.value = asArray(data?.data || data).map(normalizePlatform).filter(Boolean)
   } catch (error) { logError('telemedicina.loadPlatforms', error); platformList.value = [] }
 }
@@ -420,7 +440,7 @@ async function searchPatients() {
   if (patientSearch.value.length < 2) { patientResults.value = []; return }
   patientTimer = setTimeout(async () => {
     try {
-      const { data } = await patientsApi.list({ search: patientSearch.value, limit: 8 })
+      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch (error) { logError('telemedicina.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
@@ -466,26 +486,22 @@ async function handleCreate() {
   try {
     const payload = {
       scheduledAt:     form.scheduledDate,
-      patientId:       parseInt(form.patientId, 10),
-      clientId:        parseInt(form.clientId, 10),
-      vetId:           parseInt(form.vetId, 10),
+      patientId:       parseInt(form.patientId),
+      clientId:        parseInt(form.clientId),
+      vetId:           parseInt(form.vetId),
       chiefComplaint:  form.reason,
-      durationMinutes: parseInt(form.duration, 10),
+      durationMinutes: parseInt(form.duration),
       sessionType:     form.sessionType,
     }
-    if (form.platformId) payload.platformId = parseInt(form.platformId, 10)
-    await teleApi.sessions.create(payload)
+    if (form.platformId) payload.platformId = parseInt(form.platformId)
+    await http.post('/tele/sessions', payload)
     closeModal(); await load()
   } catch (e) {
-    saveError.value = extractDetailedErrorMessage(e, t('telemedicine.createError'), { context: 'Creacion de teleconsulta' })
+    saveError.value = e.response?.data?.message || t('telemedicine.createError')
   } finally { saving.value = false }
 }
 
 onMounted(() => { load(); loadStats(); loadVets(); loadPlatforms() })
-onUnmounted(() => {
-  clearTimeout(timer)
-  clearTimeout(patientTimer)
-})
 </script>
 
 <style scoped>
@@ -585,6 +601,10 @@ onUnmounted(() => {
 @keyframes spin { to { transform: rotate(360deg); } }
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
+.pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
+.pagination button:hover:not(:disabled) { background: var(--surface-2); }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 @media (max-width: 600px) {
   .tele-card { flex-wrap: wrap; }
   .form-grid { grid-template-columns: 1fr; }
@@ -596,3 +616,6 @@ onUnmounted(() => {
 .selected-patient { margin-top: 6px; font-size: 0.82rem; color: var(--primary); font-weight: 500; }
 .field { position: relative; }
 </style>
+
+
+
