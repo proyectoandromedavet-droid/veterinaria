@@ -64,8 +64,7 @@ async function syncGmail(account) {
     if (tokens.refresh_token) refreshed.refreshToken = tokens.refresh_token;
   });
 
-  const GMAIL_TIMEOUT_MS = parseInt(process.env.GMAIL_SYNC_TIMEOUT_MS || '20000', 10);
-  const gmail = google.gmail({ version: 'v1', auth: oauth2, timeout: GMAIL_TIMEOUT_MS });
+  const gmail = google.gmail({ version: 'v1', auth: oauth2 });
   const query = settings.query || 'has:attachment filename:pdf newer_than:30d';
   const maxResults = Math.min(Math.max(Number(settings.maxResults || 20), 1), 50);
 
@@ -137,18 +136,21 @@ async function syncGmail(account) {
   return { records, settings: nextSettings };
 }
 
-// Lista de rangos IP privados/reservados — SSRF guard para IMAP
-const SSRF_BLOCKED_RE = /^(?:localhost|127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|0\.0\.0\.0|::1|fc00:|fd)/i;
+const SSRF_BLOCKED_RE = /^(?:localhost|127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|0\.0\.0\.0|::1|fc00:|fd|0{0,4}:0{0,4}:0{0,4}:0{0,4}:0{0,4}:0{0,4}:0{0,4}:0*1|::ffff:(?:127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.))/i;
 
-function validateImapHost(host) {
-  if (!host || typeof host !== 'string') throw new Error('IMAP host is required');
-  const trimmed = host.trim().toLowerCase();
-  if (SSRF_BLOCKED_RE.test(trimmed)) {
-    throw new Error('IMAP host apunta a una dirección IP privada o reservada (SSRF no permitido)');
+const ALLOWED_IMAP_PORTS = new Set([143, 993]);
+
+function validateImapHost(host, port) {
+  const numPort = parseInt(port, 10);
+  if (!ALLOWED_IMAP_PORTS.has(numPort)) {
+    throw new Error(`Puerto IMAP no permitido: ${numPort}. Solo se permiten 143 y 993`);
   }
-  // El host no debe contener caracteres de control ni URLs (solo hostname/IP)
-  if (/[^\w.\-:]/.test(host.trim())) {
-    throw new Error('IMAP host contiene caracteres no permitidos');
+  if (!host || typeof host !== 'string') {
+    throw new Error('IMAP host inválido');
+  }
+  const normalized = host.trim().toLowerCase();
+  if (SSRF_BLOCKED_RE.test(normalized)) {
+    throw new Error(`Host IMAP bloqueado por política SSRF: ${host}`);
   }
 }
 
@@ -156,10 +158,11 @@ function buildImapClient(settings = {}, account) {
   if (!settings.host || !settings.username || !settings.password) {
     throw new Error('IMAP settings require host, username and password');
   }
-  validateImapHost(settings.host);
+  const port = Number(settings.port || 993);
+  validateImapHost(settings.host, port);
   return new ImapFlow({
-    host: settings.host.trim(),
-    port: Number(settings.port || 993),
+    host: settings.host,
+    port,
     secure: settings.secure !== false,
     auth: {
       user: settings.username || account.email_address,

@@ -124,7 +124,11 @@ async function renderPdfPages(pdfBuffer, maxPages = 3) {
     const totalPages = Math.min(document.numPages || 0, maxPages);
     for (let pageNum = 1; pageNum <= totalPages; pageNum += 1) {
       const page = await document.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 2 });
+      const MAX_DIM_PX = 4096;
+      const rawScale = 2;
+      const baseViewport = page.getViewport({ scale: 1 });
+      const maxScale = Math.min(rawScale, MAX_DIM_PX / Math.max(baseViewport.width, baseViewport.height));
+      const viewport = page.getViewport({ scale: maxScale });
       const target = canvasFactory.create(Math.ceil(viewport.width), Math.ceil(viewport.height));
 
       try {
