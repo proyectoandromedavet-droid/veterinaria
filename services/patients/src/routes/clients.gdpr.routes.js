@@ -32,7 +32,7 @@ function requireGdprAdmin(req, res, next) {
   next();
 }
 
-router.get('/:id/gdpr/consents', async (req, res, next) => {
+router.get('/:id/gdpr/consents', requireGdprAdmin, async (req, res, next) => {
   try {
     if (!await requireClientBranch(req.params.id, req.user.branchId, req.user.orgId, res)) return;
     const consents = await gdpr.getConsents(req.params.id);
@@ -44,6 +44,7 @@ router.get('/:id/gdpr/consents', async (req, res, next) => {
 });
 
 router.post('/:id/gdpr/consents',
+  requireGdprAdmin,
   body('consentType').isIn(['marketing', 'analytics', 'third_party', 'telemedicine', 'photo', 'data_sharing', 'terms', 'privacy']),
   body('granted').isBoolean(),
   // CORRECCIÓN: faltaba validate — las reglas body() no se ejecutaban.
@@ -54,6 +55,7 @@ router.post('/:id/gdpr/consents',
       const { consentType, granted, source, version } = req.body;
       const result = await gdpr.recordConsent({
         clientId: req.params.id,
+        orgId: req.user.orgId,
         consentType,
         granted: granted === true || granted === 'true',
         source: source || 'staff',
@@ -63,8 +65,8 @@ router.post('/:id/gdpr/consents',
       });
 
       await db.query(
-        `INSERT INTO gdpr_audit_trail (client_id, user_id, action, performed_by, ip_address, details)
-         VALUES (:cid, NULL, :action, :uid, :ip, :det)`,
+        `INSERT INTO gdpr_audit_trail (client_id, action, performed_by, ip_address, detail_json)
+         VALUES (:cid, :action, :uid, :ip, :det)`,
         {
           cid: req.params.id,
           action: `consent.${granted ? 'granted' : 'withdrawn'}.${consentType}`,
@@ -82,7 +84,7 @@ router.post('/:id/gdpr/consents',
   }
 );
 
-router.delete('/:id/gdpr/consents', async (req, res, next) => {
+router.delete('/:id/gdpr/consents', requireGdprAdmin, async (req, res, next) => {
   try {
     if (!await requireClientBranch(req.params.id, req.user.branchId, req.user.orgId, res)) return;
     await gdpr.withdrawAllConsents(req.params.id, 'staff');
@@ -93,7 +95,7 @@ router.delete('/:id/gdpr/consents', async (req, res, next) => {
   }
 });
 
-router.get('/:id/gdpr/export', async (req, res, next) => {
+router.get('/:id/gdpr/export', requireGdprAdmin, async (req, res, next) => {
   try {
     // OT-101: GDPR personal-data exports must only be served over HTTPS.
     // In production, reject plaintext HTTP requests (e.g., misconfigured proxies
@@ -106,8 +108,8 @@ router.get('/:id/gdpr/export', async (req, res, next) => {
     if (!await requireClientBranch(req.params.id, req.user.branchId, req.user.orgId, res)) return;
     const data = await gdpr.exportPersonalData(req.params.id, req.user.orgId);
     await db.query(
-      `INSERT INTO gdpr_audit_trail (client_id, user_id, action, performed_by, ip_address)
-       VALUES (:cid, NULL, 'access.export', :uid, :ip)`,
+      `INSERT INTO gdpr_audit_trail (client_id, action, performed_by, ip_address)
+       VALUES (:cid, 'access.export', :uid, :ip)`,
       { cid: req.params.id, uid: req.user.userId, ip: req.ip }
     ).catch((auditError) => logClientsError('GET /clients/:id/gdpr/export audit', auditError, { clientId: req.params.id, orgId: req.user?.orgId }));
 
@@ -126,6 +128,7 @@ router.get('/:id/gdpr/export', async (req, res, next) => {
 });
 
 router.post('/:id/gdpr/requests',
+  requireGdprAdmin,
   body('requestType').isIn(['access', 'erasure', 'portability', 'rectification', 'restriction', 'objection']),
   body('notes').optional().isString().isLength({ max: 1000 }),
   // CORRECCIÓN: faltaba validate — requestType inválido pasaba sin error.
@@ -173,7 +176,7 @@ router.get('/gdpr/requests', requireGdprAdmin, async (req, res, next) => {
        FROM gdpr_data_requests gdr
        JOIN clients c ON gdr.client_id = c.id
        JOIN branches b ON c.branch_id = b.id
-       LEFT JOIN users u ON gdr.handled_by = u.id
+       LEFT JOIN users u ON gdr.completed_by = u.id
        WHERE ${conds.join(' AND ')}
        ORDER BY gdr.due_date ASC, gdr.created_at DESC
        LIMIT :limit OFFSET :offset`,
@@ -225,7 +228,7 @@ router.delete('/:id/gdpr/erase', requireGdprAdmin, async (req, res, next) => {
   }
 });
 
-router.get('/gdpr/retention', async (req, res, next) => {
+router.get('/gdpr/retention', requireGdprAdmin, async (req, res, next) => {
   try {
     const candidates = await gdpr.findRetentionCandidates(req.user.orgId);
     return R.ok(res, candidates, { policies: gdpr.getRetentionPolicies() });
