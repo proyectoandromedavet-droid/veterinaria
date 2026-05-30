@@ -33,7 +33,11 @@ router.delete('/2fa',
 const twoFaChallengeLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  keyGenerator: (req) => `2fa:${req.body?.userId || req.ip}`,
+  // Usar userId del token JWT (req.user) si está disponible tras autenticación;
+  // en rutas públicas de challenge, req.user aún no existe, así que se cae a IP.
+  // NO usar req.body.userId ni req.headers['x-user-id'] porque son manipulables
+  // por un atacante para causar lockout (DoS) de otros usuarios.
+  keyGenerator: (req) => req.user?.userId ? `2fa:${req.user.userId}` : `2fa:ip:${req.ip}`,
   handler: (_req, res) => res.status(429).json({
     success: false,
     error: { message: 'Too many 2FA attempts. Try again in 15 minutes.', code: 'RATE_LIMIT_EXCEEDED' },

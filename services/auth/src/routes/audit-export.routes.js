@@ -53,15 +53,19 @@ router.get('/export', fromHeaders, requireOrgContext, requireAdminRole, async (r
       (req.headers['accept'] || '').includes('application/x-ndjson');
     const source = req.query.source === 'immutable' ? 'immutable' : 'audit_logs';
 
+    // Sanitizar limit para evitar que NaN llegue a Math.min dentro de exportAuditLogs
+    const rawLimit  = parseInt(req.query.limit, 10);
+    const safeLimit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 10000) : 1000;
+
     const { rows, format } = await exportAuditLogs({
       orgId,
       dateFrom: req.query.dateFrom,
       dateTo:   req.query.dateTo,
       resource: req.query.resource,
       action:   req.query.action,
-      userId:   req.query.userId ? parseInt(req.query.userId) : undefined,
+      userId:   req.query.userId ? parseInt(req.query.userId, 10) : undefined,
       format:   wantsNdjson ? 'ndjson' : (wantsCsv ? 'csv' : 'json'),
-      limit:    req.query.limit,
+      limit:    safeLimit,
       source,
     });
 

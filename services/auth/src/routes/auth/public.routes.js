@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const rateLimit = require('express-rate-limit');
 const ctrl = require('../../controllers/auth.controller');
 const {
   body,
@@ -11,6 +12,14 @@ const {
 
 const router = Router();
 
+const ssoConnectLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { message: 'Too many SSO requests', code: 'RATE_LIMIT_EXCEEDED' } },
+});
+
 router.post('/login',
   captchaMiddleware,
   body('email').isEmail().normalizeEmail(),
@@ -20,7 +29,7 @@ router.post('/login',
 );
 
 router.post('/refresh', ctrl.refresh);
-router.get('/sso/:provider/connect', ctrl.ssoConnect);
+router.get('/sso/:provider/connect', ssoConnectLimiter, ctrl.ssoConnect);
 router.get('/sso/:provider/callback', ctrl.ssoCallback);
 
 router.post('/password-reset/request',
