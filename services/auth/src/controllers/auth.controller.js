@@ -653,58 +653,62 @@ async function requestPasswordReset(req, res) {
 /**
  * POST /auth/password-reset/confirm
  */
-async function confirmPasswordReset(req, res) {
-  const { token, newPassword } = req.body;
-  const hash = jwt.hashToken(token);
-
-  const record = await db.queryOne(
-    `SELECT prt.*, u.id AS user_id, u.email, u.first_name, u.last_name
-     FROM password_reset_tokens prt
-     JOIN users u ON prt.user_id = u.id
-     WHERE prt.token_hash = :hash
-       AND prt.expires_at > NOW()
-       AND prt.used_at IS NULL`,
-    { hash }
-  );
-
-  if (!record) return R.badRequest(res, 'Invalid or expired reset token');
-
-  // Validar fortaleza de la nueva contraseña antes de hashear
+async function confirmPasswordReset(req, res, next) {
   try {
-    enforcePassword(newPassword, {
-      email:     record.email,
-      firstName: record.first_name,
-      lastName:  record.last_name,
+    const { token, newPassword } = req.body;
+    const hash = jwt.hashToken(token);
+
+    const record = await db.queryOne(
+      `SELECT prt.*, u.id AS user_id, u.email, u.first_name, u.last_name
+       FROM password_reset_tokens prt
+       JOIN users u ON prt.user_id = u.id
+       WHERE prt.token_hash = :hash
+         AND prt.expires_at > NOW()
+         AND prt.used_at IS NULL`,
+      { hash }
+    );
+
+    if (!record) return R.badRequest(res, 'Invalid or expired reset token');
+
+    // Validar fortaleza de la nueva contraseña antes de hashear
+    try {
+      enforcePassword(newPassword, {
+        email:     record.email,
+        firstName: record.first_name,
+        lastName:  record.last_name,
+      });
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        error: { message: e.message, code: e.code, details: e.details?.errors },
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await db.transaction(async (conn) => {
+      await conn.execute(
+        `UPDATE users SET password_hash = ?, failed_login_attempts = 0,
+                          locked_until = NULL, updated_at = NOW()
+         WHERE id = ?`,
+        [passwordHash, record.user_id]
+      );
+      await conn.execute(
+        `UPDATE password_reset_tokens SET used_at = NOW() WHERE token_hash = ?`,
+        [hash]
+      );
+      // Revoke all sessions
+      await conn.execute(
+        `UPDATE sessions SET is_revoked = TRUE, revoked_at = NOW()
+         WHERE user_id = ? AND is_revoked = FALSE`,
+        [record.user_id]
+      );
     });
-  } catch (e) {
-    return res.status(400).json({
-      success: false,
-      error: { message: e.message, code: e.code, details: e.details?.errors },
-    });
+
+    return R.ok(res, { message: 'Password updated successfully. Please log in again.' });
+  } catch (err) {
+    return next(err);
   }
-
-  const passwordHash = await bcrypt.hash(newPassword, 12);
-
-  await db.transaction(async (conn) => {
-    await conn.execute(
-      `UPDATE users SET password_hash = ?, failed_login_attempts = 0,
-                        locked_until = NULL, updated_at = NOW()
-       WHERE id = ?`,
-      [passwordHash, record.user_id]
-    );
-    await conn.execute(
-      `UPDATE password_reset_tokens SET used_at = NOW() WHERE token_hash = ?`,
-      [hash]
-    );
-    // Revoke all sessions
-    await conn.execute(
-      `UPDATE sessions SET is_revoked = TRUE, revoked_at = NOW()
-       WHERE user_id = ? AND is_revoked = FALSE`,
-      [record.user_id]
-    );
-  });
-
-  return R.ok(res, { message: 'Password updated successfully. Please log in again.' });
 }
 
 /**
@@ -879,7 +883,7 @@ async function deleteApiKey(req, res) {
  * POST /internal/validate-api-key  (called by gateway only)
  */
 async function validateApiKey(req, res) {
-  const { apiKey } = req.body;
+  const apiKey = req.headers['x-api-key-value'] || req.body.apiKey;
   if (!apiKey) return R.badRequest(res, 'apiKey required');
 
   const cols = await getApiKeysColumns();

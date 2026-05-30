@@ -34,7 +34,13 @@ async function verifyCaptcha(token, remoteip) {
  */
 function captchaMiddleware(req, res, next) {
   if (process.env.NODE_ENV === 'test') return next();
-  if (!process.env.HCAPTCHA_SECRET) return next();
+  if (!process.env.HCAPTCHA_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ error: 'CAPTCHA service not configured' });
+    }
+    // En desarrollo/staging, permitir pasar sin CAPTCHA
+    return next();
+  }
 
   const token = req.body?.captchaToken;
   if (!token) {

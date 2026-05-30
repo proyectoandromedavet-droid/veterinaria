@@ -23,6 +23,14 @@ const currentApiVersion = process.env.API_VERSION || 'v1';
 const supportedApiVersions = [...new Set(readCsv('API_VERSIONS', ['v1', 'v2', currentApiVersion]))];
 const defaultApiVersion = process.env.API_DEFAULT_VERSION || currentApiVersion;
 
+const _metricsTokenRaw = getSecret('METRICS_TOKEN', { defaultValue: '' }) || '';
+if (
+  (process.env.NODE_ENV === 'production') &&
+  (_metricsTokenRaw === 'CHANGE_ME' || _metricsTokenRaw === '')
+) {
+  throw new Error('METRICS_TOKEN must be set to a secure value in production (current value is missing or default "CHANGE_ME")');
+}
+
 const config = {
   env: process.env.NODE_ENV || 'development',
   port: readInt('PORT', 4050),
@@ -30,7 +38,7 @@ const config = {
   defaultApiVersion,
   supportedApiVersions,
   jsonBodyLimit: process.env.JSON_BODY_LIMIT || '512kb',
-  metricsToken: getSecret('METRICS_TOKEN', { defaultValue: '' }) || '',
+  metricsToken: _metricsTokenRaw,
   swaggerEnabled: process.env.NODE_ENV !== 'production' || readBoolean('SWAGGER_ENABLED', false),
   openApiValidate: process.env.OPENAPI_VALIDATE !== 'false',
   webhookWorkerEnabled: process.env.WEBHOOK_WORKER !== 'false',

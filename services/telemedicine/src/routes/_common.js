@@ -8,6 +8,7 @@ const R = require('../../../../shared/response');
 const webrtc = require('../../../../shared/webrtc');
 const fcm = require('../../../../shared/fcm');
 const { sendTemplate } = require('../../../../shared/messaging');
+const log = require('../../../../shared/logger');
 
 module.exports = {
   crypto,
@@ -18,4 +19,5 @@ module.exports = {
   webrtc,
   fcm,
   sendTemplate,
+  log,
 };
