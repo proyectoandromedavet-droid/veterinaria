@@ -2,7 +2,8 @@ import axios from 'axios'
 import { http, ensureCsrfToken } from './client'
 import { logError } from '../utils/errors'
 
-const STORAGE_KEY = 'portal.owner.session'
+const STORAGE_KEY_ACCESS = 'portal.owner.accessToken'
+const STORAGE_KEY_PERSIST = 'portal.owner.session'
 const SAFE_METHODS = new Set(['get', 'head', 'options'])
 
 function getBaseURL() {
@@ -12,11 +13,12 @@ function getBaseURL() {
 function readStoredSession() {
   if (typeof window === 'undefined') return { accessToken: null, refreshToken: null, owner: null }
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { accessToken: null, refreshToken: null, owner: null }
+    const accessToken = window.sessionStorage.getItem(STORAGE_KEY_ACCESS) || null
+    const raw = window.localStorage.getItem(STORAGE_KEY_PERSIST)
+    if (!raw) return { accessToken, refreshToken: null, owner: null }
     const parsed = JSON.parse(raw)
     return {
-      accessToken: parsed.accessToken || null,
+      accessToken,
       refreshToken: parsed.refreshToken || null,
       owner: parsed.owner || null,
     }
@@ -28,17 +30,22 @@ function readStoredSession() {
 
 function writeStoredSession(session) {
   if (typeof window === 'undefined') return
+  if (session?.accessToken) {
+    window.sessionStorage.setItem(STORAGE_KEY_ACCESS, session.accessToken)
+  } else {
+    window.sessionStorage.removeItem(STORAGE_KEY_ACCESS)
+  }
   const payload = {
-    accessToken: session?.accessToken || null,
     refreshToken: session?.refreshToken || null,
     owner: session?.owner || null,
   }
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  window.localStorage.setItem(STORAGE_KEY_PERSIST, JSON.stringify(payload))
 }
 
 function clearStoredSession() {
   if (typeof window === 'undefined') return
-  window.localStorage.removeItem(STORAGE_KEY)
+  window.sessionStorage.removeItem(STORAGE_KEY_ACCESS)
+  window.localStorage.removeItem(STORAGE_KEY_PERSIST)
 }
 
 let currentSession = readStoredSession()

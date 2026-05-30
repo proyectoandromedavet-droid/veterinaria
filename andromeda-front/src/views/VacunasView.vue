@@ -73,8 +73,8 @@
         </select>
       </div>
 
-      <div v-if="loading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingVaccines') }}</div>
-      <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+      <div v-if="loading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('vaccines.loadingVaccines') }}</div>
+      <div v-else-if="error" class="alert alert--error" role="alert" aria-live="assertive">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="empty-state__emoji" aria-hidden="true">🐾</span>
         <p>{{ t('vaccines.emptyVaccines') }}</p>
@@ -148,8 +148,8 @@
         <input id="dew-search" name="dew-search" v-model.trim="dewSearch" type="search" :placeholder="t('vaccines.searchDewormingPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoadDew()" />
       </div>
 
-      <div v-if="dewLoading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingDeworming') }}</div>
-      <div v-else-if="dewError" class="alert alert--error">{{ dewError }}</div>
+      <div v-if="dewLoading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('vaccines.loadingDeworming') }}</div>
+      <div v-else-if="dewError" class="alert alert--error" role="alert" aria-live="assertive">{{ dewError }}</div>
       <div v-else-if="dewItems.length === 0" class="empty-state">
         <span class="empty-state__emoji" aria-hidden="true">🐛</span>
         <p>{{ t('vaccines.emptyDeworming') }}</p>
@@ -404,7 +404,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import http from '../api/client'
 import { t } from '../i18n'
 import { logError } from '../utils/errors'
@@ -613,14 +613,14 @@ async function load(page = 1) {
     const safePage = Math.min(page, totalPages)
     items.value = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
     pagination.value = { page: safePage, totalPages }
-    computeStats()
+    computeStats(rows)
   } catch (e) {
     error.value = e.response?.data?.message || t('vaccines.loadVaccinesError')
   } finally { loading.value = false }
 }
 
-function computeStats() {
-  const all = items.value
+function computeStats(allRecords) {
+  const all = allRecords || items.value
   stats.value.total    = all.length
   stats.value.overdue  = all.filter(v => vacStatus(v) === 'badge--red').length
   stats.value.dueSoon  = all.filter(v => vacStatus(v) === 'badge--yellow').length
@@ -787,6 +787,11 @@ onMounted(() => {
   loadVaccines()
   loadDew()
   loadDewProducts()
+})
+
+onUnmounted(() => {
+  clearTimeout(timer)
+  clearTimeout(dewTimer)
 })
 </script>
 
