@@ -337,7 +337,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { labApi, patientsApi } from '../api'
 import { t } from '../i18n'
 import { extractDetailedErrorMessage, logError } from '../utils/errors'
@@ -587,6 +587,7 @@ async function handleResult() {
 }
 
 onMounted(() => { load(); loadTypes() })
+onUnmounted(() => { clearTimeout(timer); clearTimeout(patientTimer) })
 </script>
 
 <style scoped>

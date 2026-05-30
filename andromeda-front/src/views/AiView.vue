@@ -25,11 +25,11 @@
         </div>
         <div class="field">
           <label for="diag-symptoms">Síntomas</label>
-          <input id="diag-symptoms" name="diag-symptoms" v-model.trim="diagnosisForm.symptoms" type="text" placeholder="vómitos, diarrea, letargo" />
+          <input id="diag-symptoms" name="diag-symptoms" v-model.trim="diagnosisForm.symptoms" type="text" placeholder="vómitos, diarrea, letargo" maxlength="2000" />
         </div>
         <div class="field">
           <label for="diag-anamnesis">Anamnesis</label>
-          <textarea id="diag-anamnesis" name="diag-anamnesis" v-model.trim="diagnosisForm.anamnesis" rows="4" placeholder="Contexto clínico adicional" />
+          <textarea id="diag-anamnesis" name="diag-anamnesis" v-model.trim="diagnosisForm.anamnesis" rows="4" placeholder="Contexto clínico adicional" maxlength="5000" />
         </div>
         <BaseButton @click="runDiagnosis" :disabled="loadingDiagnosis || loadingAiFeatures || !aiFeatures.diagnosis">Analizar</BaseButton>
 
@@ -101,7 +101,7 @@
       </div>
       <div class="chat-input">
         <label for="chat-input" class="sr-only">Mensaje del chat clínico</label>
-        <textarea id="chat-input" name="chat-input" v-model.trim="chatInput" rows="3" placeholder="Escribí una consulta clínica..." />
+        <textarea id="chat-input" name="chat-input" v-model.trim="chatInput" rows="3" placeholder="Escribí una consulta clínica..." maxlength="3000" />
         <BaseButton @click="sendChat" :disabled="loadingChat || loadingAiFeatures || !aiFeatures.chat || !chatInput">Enviar</BaseButton>
       </div>
     </section>

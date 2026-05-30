@@ -56,6 +56,8 @@ router.beforeEach(async (to) => {
 
   if (IS_DEV_MODE) {
     if (to.path === '/login' && auth.isAuthenticated) return '/'
+    // En DEV no verificamos roles/permisos pero sí autenticación básica
+    if (to.meta?.requiresAuth && !auth.isAuthenticated) return '/login'
     return true
   }
 

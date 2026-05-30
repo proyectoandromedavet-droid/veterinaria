@@ -539,7 +539,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import { t } from '../i18n'
 import { extractDetailedErrorMessage, logError } from '../utils/errors'
@@ -827,6 +827,10 @@ async function viewDetail(surgery) {
 }
 
 onMounted(load)
+onUnmounted(() => {
+  clearTimeout(loadTimer)
+  clearTimeout(patientTimer)
+})
 </script>
 
 <style scoped>

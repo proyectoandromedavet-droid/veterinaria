@@ -383,7 +383,7 @@
 </template>
 
 <script setup>
-import { computed, ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted, onUnmounted } from 'vue'
 import { t } from '../i18n'
 import { useAuthStore } from '../stores/auth'
 import { extractDetailedErrorMessage, logError } from '../utils/errors'
@@ -823,6 +823,10 @@ async function handleCreate() {
 }
 
 onMounted(load)
+onUnmounted(() => {
+  clearTimeout(timer)
+  clearTimeout(patientTimer)
+})
 </script>
 
 <style scoped>

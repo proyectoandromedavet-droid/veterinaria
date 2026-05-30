@@ -263,7 +263,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { labApi } from '../api'
 import { t } from '../i18n'
 import { extractDetailedErrorMessage, logError } from '../utils/errors'
@@ -445,6 +445,7 @@ async function handleSubmitReport() {
 }
 
 onMounted(load)
+onUnmounted(() => clearTimeout(loadTimer))
 </script>
 
 <style scoped>

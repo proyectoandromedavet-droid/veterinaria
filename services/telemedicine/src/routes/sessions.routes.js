@@ -29,7 +29,12 @@ router.get('/', async (req, res, next) => {
 
     const rows = await db.query(
       `SELECT ts.id, ts.session_code, ts.status, ts.session_type, ts.scheduled_at,
-              ts.duration_minutes, ts.meeting_url, ts.platform_name,
+              ts.duration_minutes,
+              CASE WHEN ts.status IN ('in_progress', 'ready', 'confirmed', 'scheduled', 'waiting')
+                   THEN ts.meeting_url
+                   ELSE NULL
+              END AS meeting_url,
+              ts.platform_name,
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(cl.first_name,' ',cl.last_name) AS client_name, cl.phone,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
@@ -191,6 +196,14 @@ router.post('/:id/messages', body('messageText').optional(), async (req, res, ne
   try {
     const { messageText, senderType = 'vet', attachmentUrl, attachmentType } = req.body;
     if (!messageText && !attachmentUrl) return R.badRequest(res, 'message or attachment required');
+
+    const VALID_SENDER_TYPES = new Set(['vet', 'client', 'system']);
+    if (!VALID_SENDER_TYPES.has(senderType)) {
+      return R.badRequest(res, 'senderType debe ser vet, client o system');
+    }
+    if (senderType === 'client' && !req.user.roles?.includes('client')) {
+      return R.forbidden(res, 'No puedes enviar mensajes como cliente');
+    }
 
     const [r] = await db.query(
       `INSERT INTO tele_messages

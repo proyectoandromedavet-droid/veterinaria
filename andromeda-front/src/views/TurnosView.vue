@@ -185,7 +185,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { appointmentsApi, patientsApi } from '../api'
 import { adminUsersApi } from '../api/adminUsers'
@@ -452,6 +452,10 @@ async function handleCreate() {
 }
 
 onMounted(() => { load(); loadVets(); loadTypes() })
+onUnmounted(() => {
+  clearTimeout(debounceTimer)
+  clearTimeout(patientTimer)
+})
 </script>
 
 <style scoped>

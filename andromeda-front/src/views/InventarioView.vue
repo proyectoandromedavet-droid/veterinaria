@@ -510,7 +510,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { t } from '../i18n'
 import { extractDetailedErrorMessage, logError } from '../utils/errors'
 import { useUiFeedback } from '../composables/useUiFeedback'
@@ -926,6 +926,9 @@ async function cancelOrder(id) {
 // INIT
 // ---------------------------------------------------------------
 onMounted(load)
+onUnmounted(() => {
+  clearTimeout(timer)
+})
 </script>
 
 <style scoped>
