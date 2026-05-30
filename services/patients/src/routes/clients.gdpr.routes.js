@@ -2,7 +2,10 @@
 
 const { Router } = require('express');
 const gdpr = require('../../../../shared/gdpr');
+const { requirePerm } = require('../../../../shared/serviceBase');
 const { db, R, body, logClientsError } = require('./clients.common');
+
+const requireGdprAdmin = requirePerm('gdpr:admin');
 
 const router = Router();
 
@@ -153,7 +156,7 @@ router.delete('/:id/gdpr/erase', async (req, res, next) => {
   }
 });
 
-router.get('/gdpr/retention', async (req, res, next) => {
+router.get('/gdpr/retention', requireGdprAdmin, async (req, res, next) => {
   try {
     const candidates = await gdpr.findRetentionCandidates(req.user.orgId);
     return R.ok(res, candidates, { policies: gdpr.getRetentionPolicies() });

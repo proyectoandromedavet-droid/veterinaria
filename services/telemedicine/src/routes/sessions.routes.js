@@ -209,6 +209,10 @@ router.post('/:id/prescription',
   validateRequest,
   async (req, res, next) => {
     try {
+      const userRoles = req.user.roles || [];
+      if (!userRoles.includes('vet') && !userRoles.includes('admin') && !userRoles.includes('superadmin')) {
+        return R.forbidden(res, 'Solo veterinarios pueden emitir prescripciones');
+      }
       const { prescriptionId, validityDays = 30 } = req.body;
       const signatureData = `${prescriptionId}-${req.user.userId}-${Date.now()}`;
       const signatureHash = crypto.createHash('sha256').update(signatureData).digest('hex');
@@ -234,6 +238,14 @@ router.post('/:id/rating',
   validateRequest,
   async (req, res, next) => {
     try {
+      const session = await db.queryOne(
+        `SELECT id, status FROM tele_sessions WHERE id = :id AND branch_id = :bid`,
+        { id: req.params.id, bid: req.user.branchId }
+      );
+      if (!session) return R.notFound(res);
+      if (session.status !== 'completed') {
+        return R.conflict(res, 'Solo se puede puntuar una sesión completada');
+      }
       const { overallScore, vetScore, connectionScore, platformScore, comment } = req.body;
       await db.query(
         `INSERT INTO tele_ratings
@@ -342,6 +354,12 @@ router.get('/:id/room', async (req, res, next) => {
 
 router.post('/:id/room/token', async (req, res, next) => {
   try {
+    const session = await db.queryOne(
+      `SELECT id FROM tele_sessions WHERE id = :id AND branch_id = :bid AND status IN ('scheduled','confirmed','waiting','in_progress','ready')`,
+      { id: req.params.id, bid: req.user.branchId }
+    );
+    if (!session) return R.notFound(res, 'Sesión no encontrada o no activa');
+
     const room = await db.queryOne(
       `SELECT * FROM webrtc_rooms WHERE session_id = :sid AND status IN ('created','active')`,
       { sid: req.params.id }
@@ -470,7 +488,6 @@ router.get('/:id/waiting-room', async (req, res, next) => {
 
 router.post('/:id/waiting-room/join',
   body('displayName').notEmpty(),
-  body('identity').notEmpty(),
   validateRequest,
   async (req, res, next) => {
     try {
@@ -480,7 +497,8 @@ router.post('/:id/waiting-room/join',
       );
       if (!room) return R.notFound(res, 'Sala no encontrada');
 
-      const { displayName, identity } = req.body;
+      const { displayName } = req.body;
+      const identity = req.user.email || String(req.user.userId);
       const [r] = await db.query(
         `INSERT INTO webrtc_waiting_room (room_id, identity, display_name, status, joined_at)
          VALUES (:rid,:identity,:name,'waiting',NOW())`,

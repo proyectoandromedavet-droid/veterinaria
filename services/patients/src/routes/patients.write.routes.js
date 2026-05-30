@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const { requirePerm } = require('../../../../shared/serviceBase');
 const {
   body,
   db,
@@ -213,5 +214,33 @@ router.put('/:id',
     }
   }
 );
+
+router.delete('/:id', requirePerm('patients:delete'), async (req, res, next) => {
+  try {
+    const visiblePatient = await ensurePatientVisible(req.params.id, req.user);
+    if (!visiblePatient) return R.notFound(res, 'Patient not found');
+
+    const schema = await getPatientSchema();
+    const patientCols = schema.patients || new Set();
+
+    if (patientCols.has('deleted_at')) {
+      await db.query(
+        `UPDATE patients SET deleted_at = NOW(), updated_at = NOW() WHERE id = :id`,
+        { id: req.params.id }
+      );
+    } else {
+      await db.query(`DELETE FROM patients WHERE id = :id`, { id: req.params.id });
+    }
+
+    return R.noContent(res);
+  } catch (e) {
+    logPatientsError('DELETE /patients/:id', e, {
+      patientId: req.params.id,
+      branchId: req.user?.branchId,
+      orgId: req.user?.orgId,
+    });
+    next(e);
+  }
+});
 
 module.exports = router;
