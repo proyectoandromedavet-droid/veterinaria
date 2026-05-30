@@ -13,7 +13,14 @@ router.get('/:patientId', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post('/:patientId', body('preferredGroomingStyle').optional(), validate, async (req, res, next) => {
+router.post('/:patientId',
+  body('preferredGroomingStyle').optional(),
+  body('sedationHistory').optional().isArray({ max: 20 }),
+  body('sedationHistory.*.date').optional().isISO8601(),
+  body('sedationHistory.*.medication').optional().isString().trim().isLength({ max: 200 }),
+  body('sedationHistory.*.notes').optional().isString().trim().isLength({ max: 500 }),
+  validate,
+  async (req, res, next) => {
   try {
     const { preferredGroomingStyle, coatType, regularGroomingFrequency, behaviorWithGrooming, muzzleRequired, sedationHistory, preferredProducts, allergicToProducts, knownIssues, notes } = req.body;
     await db.query(

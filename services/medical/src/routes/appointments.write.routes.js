@@ -10,6 +10,8 @@ router.post('/',
   body('vetId').isInt(),
   body('scheduledDate').isISO8601(),
   body('durationMinutes').optional().isInt({ min: 5, max: 480 }),
+  body('reason').optional().isString().trim().isLength({ max: 500 }),
+  body('notes').optional().isString().trim().isLength({ max: 4000 }),
   validate,
   async (req, res, next) => {
     try {
@@ -69,7 +71,8 @@ router.patch('/:id/status',
 
 const postTriage = [
   body('priority').isIn(['immediate', 'urgent', 'less_urgent', 'non_urgent']),
-  body('chiefComplaint').notEmpty(),
+  body('chiefComplaint').isString().trim().notEmpty(),
+  body('notes').optional().isString().trim().isLength({ max: 4000 }),
   validate,
   async (req, res, next) => {
     try {

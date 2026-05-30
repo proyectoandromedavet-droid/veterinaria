@@ -5,8 +5,11 @@ const { Router, body, db, R, validate, logMedicalError, encrypt } = require('./m
 const router = Router();
 
 router.post('/:id/diagnoses',
-  body('diagnosisName').notEmpty(),
+  body('diagnosisName').isString().trim().isLength({ min: 1, max: 500 }),
   body('diagnosisType').isIn(['definitive', 'presumptive', 'differential', 'rule_out']),
+  body('diagnosisCode').optional().isString().trim().isLength({ max: 50 }),
+  body('notes').optional().isString().trim().isLength({ max: 2000 }),
+  body('prognosis').optional().isString().trim().isLength({ max: 500 }),
   validate,
   async (req, res, next) => {
     try {

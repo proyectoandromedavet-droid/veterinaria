@@ -11,6 +11,31 @@ const OCR_LANGS = ['spa', 'eng'];
 const OCR_TESSDATA_DIR = path.resolve(__dirname, '../../../../.cache/tessdata');
 const OCR_MIN_LENGTH = 80;
 
+// Mutex simple para serializar llamadas OCR concurrentes y evitar saturar CPU
+// con múltiples workers de Tesseract simultáneos.
+let _workerBusy = false;
+const _workerQueue = [];
+
+function acquireWorker() {
+  return new Promise((resolve) => {
+    if (!_workerBusy) {
+      _workerBusy = true;
+      resolve();
+    } else {
+      _workerQueue.push(resolve);
+    }
+  });
+}
+
+function releaseWorker() {
+  if (_workerQueue.length > 0) {
+    const next = _workerQueue.shift();
+    next();
+  } else {
+    _workerBusy = false;
+  }
+}
+
 class NodeCanvasFactory {
   create(width, height) {
     if (!(width > 0 && height > 0)) {
@@ -117,14 +142,16 @@ async function renderPdfPages(pdfBuffer, maxPages = 3) {
 }
 
 async function extractTextWithOcr(pdfBuffer, options = {}) {
+  await acquireWorker();
   const maxPages = Math.max(Number(options.maxPages) || 3, 1);
-  const tessdataDir = await ensureLanguageData();
-  const worker = await createWorker(OCR_LANGS, 1, {
-    langPath: tessdataDir,
-    gzip: true,
-  });
-
+  let worker;
   try {
+    const tessdataDir = await ensureLanguageData();
+    worker = await createWorker(OCR_LANGS, 1, {
+      langPath: tessdataDir,
+      gzip: true,
+    });
+
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.AUTO,
       preserve_interword_spaces: '1',
@@ -146,8 +173,13 @@ async function extractTextWithOcr(pdfBuffer, options = {}) {
       source: 'ocr',
       pagesProcessed: pages.length,
     };
+  } catch (err) {
+    throw err;
   } finally {
-    await worker.terminate();
+    if (worker) {
+      try { await worker.terminate(); } catch (_) { /* ignorar error de terminate */ }
+    }
+    releaseWorker();
   }
 }
 

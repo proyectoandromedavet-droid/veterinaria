@@ -13,12 +13,20 @@ router.get('/', async (req, res, next) => {
   try {
     const orgId = req.user?.orgId;
     const { type } = req.query;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 200);
+    const offset = Math.max((parseInt(req.query.page, 10) || 1) - 1, 0) * limit;
     const whereType = type ? 'AND rule_type = :type' : '';
-    const rules = await db.query(
-      `SELECT * FROM business_rules WHERE org_id = :orgId ${whereType} ORDER BY rule_type, priority`,
-      { orgId, type: type || null }
-    );
-    res.json({ success: true, data: rules });
+    const [rules, [countRow]] = await Promise.all([
+      db.query(
+        `SELECT * FROM business_rules WHERE org_id = :orgId ${whereType} ORDER BY rule_type, priority LIMIT :limit OFFSET :offset`,
+        { orgId, type: type || null, limit, offset }
+      ),
+      db.query(
+        `SELECT COUNT(*) AS total FROM business_rules WHERE org_id = :orgId ${whereType}`,
+        { orgId, type: type || null }
+      ),
+    ]);
+    res.json({ success: true, data: rules, total: countRow?.total ?? 0, limit, offset });
   } catch (err) {
     logMedicalError('rules.GET /rules', err, { orgId: req.user?.orgId, query: req.query });
     next(err);
