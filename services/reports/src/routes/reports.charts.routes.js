@@ -128,14 +128,13 @@ router.get('/charts/payment-methods', async (req, res, next) => {
     const { f, t } = chartDateRange(req.query, new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10));
 
     const rows = await db.query(
-      `SELECT pm.name AS method, COUNT(p.id) AS transactions, ROUND(SUM(p.amount),2) AS total,
+      `SELECT p.payment_method AS method, COUNT(p.id) AS transactions, ROUND(SUM(p.amount),2) AS total,
               ROUND(SUM(p.amount)*100.0/SUM(SUM(p.amount)) OVER(),2) AS pct
        FROM payments p
-       JOIN payment_methods pm ON p.payment_method_id=pm.id
        JOIN invoices i ON p.invoice_id=i.id AND i.branch_id=:bid
-       WHERE p.payment_date >= :from
-         AND p.payment_date < DATE_ADD(:to, INTERVAL 1 DAY)
-       GROUP BY pm.name ORDER BY total DESC`,
+       WHERE p.paid_at >= :from
+         AND p.paid_at < DATE_ADD(:to, INTERVAL 1 DAY)
+       GROUP BY p.payment_method ORDER BY total DESC`,
       { bid: req.user.branchId, from: f, to: t }
     );
     return R.ok(res, { labels: rows.map((r) => r.method), values: rows.map((r) => r.total), percents: rows.map((r) => r.pct), transactions: rows.map((r) => r.transactions) });

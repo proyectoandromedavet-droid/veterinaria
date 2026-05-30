@@ -62,7 +62,7 @@
           </div>
           <div class="patient-card__row">
             <span>🎂</span>
-            <span>{{ p.birthdate ? formatAge(p.birthdate) : '—' }}</span>
+            <span>{{ p.birth_date ? formatAge(p.birth_date) : '—' }}</span>
           </div>
           <div class="patient-card__row">
             <span>⚖️</span>
@@ -110,7 +110,7 @@
             <div class="detail-row" v-if="detailPatient.scientific_name"><b>Nombre científico:</b> {{ detailPatient.scientific_name }}</div>
             <div class="detail-row"><b>{{ t('patients.breed') }}:</b> {{ detailPatient.breed_name || detailPatient.breed || t('patients.noBreed') }}</div>
             <div class="detail-row"><b>{{ t('patients.sex') }}:</b> {{ sexLabel(detailPatient.sex) }}</div>
-            <div class="detail-row"><b>{{ t('patients.birthdate') }}:</b> {{ detailPatient.birthdate ? formatDate(detailPatient.birthdate) : '—' }}</div>
+            <div class="detail-row"><b>{{ t('patients.birthdate') }}:</b> {{ detailPatient.birth_date ? formatDate(detailPatient.birth_date) : '—' }}</div>
             <div class="detail-row"><b>{{ t('patients.weight') }}:</b> {{ detailPatient.weight_kg ? detailPatient.weight_kg + ' kg' : '—' }}</div>
             <div class="detail-row"><b>Condición corporal:</b> {{ detailPatient.body_condition_score || '—' }}</div>
             <div class="detail-row"><b>{{ t('patients.chip') }}:</b> {{ detailPatient.chip_number || '—' }}</div>
@@ -431,7 +431,7 @@ function openEdit(p) {
   // Preserve speciesId as display info when editing (can't change)
   form.speciesId = p.species_id || ''
   form.sex       = p.sex || 'unknown'
-  form.birthDate = p.birthdate ? (p.birthdate.includes('T') ? p.birthdate.split('T')[0] : p.birthdate.slice(0, 10)) : ''
+  form.birthDate = p.birth_date ? (p.birth_date.includes('T') ? p.birth_date.split('T')[0] : p.birth_date.slice(0, 10)) : ''
   form.weight    = p.weight_kg || ''
   form.microchip = p.chip_number || ''
   form.breedId   = p.breed_id || ''

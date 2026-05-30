@@ -70,7 +70,7 @@ router.post('/',
         if (!branchScope) return R.forbidden(res, 'Sucursal fuera de la organizacion');
       }
 
-      const r = await db.query(
+      const [r] = await db.query(
         `INSERT INTO appointments
            (patient_id, client_id, branch_id, scheduled_date, reason, notes, status, appointment_type_id, created_by_portal)
          VALUES (:pid, :cid, :bid, :date, :reason, :notes, 'requested', NULL, 1)`,

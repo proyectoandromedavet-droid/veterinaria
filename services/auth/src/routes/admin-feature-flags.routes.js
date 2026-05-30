@@ -27,17 +27,15 @@ function assertOrgAccess(req, res, orgId) {
 async function auditFeatureChange(req, previousValue, newValue) {
   await db.query(
     `INSERT INTO permission_change_audit
-       (org_id, actor_user_id, action_type, previous_value_json, new_value_json, request_id, ip_address)
+       (org_id, actor_id, change_type, detail_json, ip_address)
      VALUES
-       (:orgId, :actorUserId, :actionType, :previousValue, :newValue, :requestId, :ipAddress)`,
+       (:orgId, :actorId, :changeType, :detail, :ipAddress)`,
     {
-      orgId: req.user.orgId,
-      actorUserId: req.user.userId || null,
-      actionType: 'feature_flags_updated',
-      previousValue: JSON.stringify(previousValue || {}),
-      newValue: JSON.stringify(newValue || {}),
-      requestId: req.headers['x-request-id'] || req.requestId || null,
-      ipAddress: req.ip || null,
+      orgId     : req.user.orgId,
+      actorId   : req.user.userId || null,
+      changeType: 'feature_flag_changed',
+      detail    : JSON.stringify({ previousValue: previousValue || {}, newValue: newValue || {}, requestId: req.headers['x-request-id'] || null }),
+      ipAddress : req.ip || null,
     }
   ).catch(() => {});
 }

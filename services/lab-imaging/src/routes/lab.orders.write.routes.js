@@ -142,9 +142,11 @@ router.post('/orders/:id/results',
         const ref = refs[i];
         const criticalLow  = parseFloat(process.env.LAB_CRITICAL_LOW_FACTOR  || '0.7');
         const criticalHigh = parseFloat(process.env.LAB_CRITICAL_HIGH_FACTOR || '1.3');
-        const isCritical = ref && r.valueNumeric != null
-          ? (parseFloat(r.valueNumeric) < parseFloat(ref.min_value) * criticalLow
-            || parseFloat(r.valueNumeric) > parseFloat(ref.max_value) * criticalHigh)
+        const valNum   = r.valueNumeric != null ? parseFloat(r.valueNumeric) : NaN;
+        const minVal   = ref ? parseFloat(ref.min_value) : NaN;
+        const maxVal   = ref ? parseFloat(ref.max_value) : NaN;
+        const isCritical = Number.isFinite(valNum) && Number.isFinite(minVal) && Number.isFinite(maxVal)
+          ? (valNum < minVal * criticalLow || valNum > maxVal * criticalHigh)
           : false;
 
         return [

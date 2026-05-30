@@ -31,7 +31,7 @@ router.post('/', async (req, res, next) => {
     const invMatch = extRef.match(/^inv:(\d+)(?::org:(\d+))?(?::branch:(\d+))?$/);
     if (!invMatch) return res.status(200).json({ received: true });
 
-    const invoiceId = parseInt(invMatch[1]);
+    const invoiceId = parseInt(invMatch[1], 10);
     const extOrgId = invMatch[2] ? parseInt(invMatch[2], 10) : null;
     const extBranchId = invMatch[3] ? parseInt(invMatch[3], 10) : null;
 

@@ -13,15 +13,15 @@ router.post('/register',
     try {
       const { token, platform = 'web', deviceName } = req.body;
 
-      // BUG-007: evitar secuestro de token FCM — si el token ya pertenece a otro usuario,
+      // BUG-007: evitar secuestro de token FCM — si el token ya pertenece a otro cliente del portal,
       // des-registrarlo primero para que no reciba notificaciones de terceros
       await db.query(
-        `DELETE FROM user_fcm_tokens WHERE token = :token AND user_id <> :uid`,
+        `DELETE FROM portal_fcm_tokens WHERE token = :token AND client_id <> :uid`,
         { token, uid: req.owner.clientId }
       ).catch(() => {});
 
       await db.query(
-        `INSERT INTO user_fcm_tokens (user_id, org_id, token, platform, device_name, is_active, last_used_at)
+        `INSERT INTO portal_fcm_tokens (client_id, org_id, token, platform, device_name, is_active, last_used_at)
          VALUES (:uid, :oid, :token, :platform, :device, 1, NOW())
          ON DUPLICATE KEY UPDATE is_active=1, last_used_at=NOW()`,
         { uid: req.owner.clientId, oid: req.owner.orgId || 0, token, platform, device: deviceName || null }

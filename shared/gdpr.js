@@ -30,26 +30,23 @@ const { hashDocument } = require('./digitalSignature');
  * @param {string} [opts.version]    — versión del texto de política
  */
 async function recordConsent (opts) {
-  const { clientId, consentType, granted, source = 'portal', ip, userAgent, version } = opts;
+  const { clientId, orgId, consentType, granted, source = 'portal', ip, userAgent, version } = opts;
 
   const [r] = await db.query(
     `INSERT INTO gdpr_consents
-       (client_id, consent_type, granted, source, ip_address, user_agent, policy_version)
-     VALUES (:cid, :type, :granted, :source, :ip, :ua, :ver)
+       (client_id, org_id, consent_type, granted, ip_address, user_agent)
+     VALUES (:cid, :orgId, :type, :granted, :ip, :ua)
      ON DUPLICATE KEY UPDATE
-       granted       = VALUES(granted),
-       source        = VALUES(source),
-       ip_address    = VALUES(ip_address),
-       policy_version = VALUES(policy_version),
-       updated_at    = NOW()`,
+       granted    = VALUES(granted),
+       ip_address = VALUES(ip_address),
+       updated_at = NOW()`,
     {
-      cid     : clientId,
-      type    : consentType,
-      granted : granted ? 1 : 0,
-      source,
-      ip      : ip       || null,
-      ua      : userAgent || null,
-      ver     : version   || process.env.PRIVACY_POLICY_VERSION || '1.0',
+      cid    : clientId,
+      orgId  : orgId || null,
+      type   : consentType,
+      granted: granted ? 1 : 0,
+      ip     : ip       || null,
+      ua     : userAgent || null,
     }
   );
   return { id: r.insertId };
@@ -71,9 +68,9 @@ async function getConsents (clientId) {
 async function withdrawAllConsents (clientId, source = 'portal') {
   const nonEssential = ['marketing', 'analytics', 'third_party', 'photo', 'data_sharing'];
   await db.query(
-    `UPDATE gdpr_consents SET granted=0, source=:source, updated_at=NOW()
+    `UPDATE gdpr_consents SET granted=0, updated_at=NOW()
      WHERE client_id=:cid AND consent_type IN (:types)`,
-    { cid: clientId, source, types: nonEssential }
+    { cid: clientId, types: nonEssential }
   );
 }
 
@@ -96,7 +93,7 @@ async function createDataRequest (opts) {
 
   const [r] = await db.query(
     `INSERT INTO gdpr_data_requests
-       (client_id, request_type, status, notes, handled_by, due_date)
+       (client_id, request_type, status, notes, completed_by, due_date)
      VALUES (:cid, :type, 'pending', :notes, :uid, :due)`,
     {
       cid  : clientId,
@@ -115,7 +112,7 @@ async function createDataRequest (opts) {
 async function updateDataRequest (requestId, status, handledBy) {
   await db.query(
     `UPDATE gdpr_data_requests
-     SET status=:status, handled_by=:uid, resolved_at=IF(:status IN ('completed','rejected'), NOW(), NULL)
+     SET status=:status, completed_by=:uid, completed_at=IF(:status IN ('completed','rejected'), NOW(), NULL)
      WHERE id=:id`,
     { status, uid: handledBy, id: requestId }
   );
@@ -189,20 +186,22 @@ async function exportPersonalData (clientId, orgId) {
     // Mensajes enviados
     db.query(
       `SELECT ml.channel, ml.template_name, ml.status, ml.sent_at
-       FROM message_logs ml WHERE ml.client_id = :cid ORDER BY ml.sent_at DESC LIMIT 100`,
+       FROM message_logs ml
+       WHERE ml.related_entity_id = :cid AND ml.related_entity_type = 'client'
+       ORDER BY ml.sent_at DESC LIMIT 100`,
       { cid: clientId }
     ),
 
     // Consentimientos
     db.query(
-      `SELECT consent_type, granted, source, policy_version, created_at, updated_at
+      `SELECT consent_type, granted, created_at, updated_at
        FROM gdpr_consents WHERE client_id = :cid`,
       { cid: clientId }
     ),
 
     // Notificaciones
     db.query(
-      `SELECT type, title, body, is_read, created_at
+      `SELECT channel AS type, title, body, status, created_at
        FROM notification_logs WHERE client_id = :cid ORDER BY created_at DESC LIMIT 100`,
       { cid: clientId }
     ),
@@ -327,12 +326,12 @@ async function anonymizeClient (clientId, orgId, requestedBy) {
 
     // Registrar en audit trail
     await conn.query(
-      `INSERT INTO gdpr_audit_trail (client_id, action, performed_by, details)
-       VALUES (:cid, 'erasure.completed', :uid, :details)`,
+      `INSERT INTO gdpr_audit_trail (client_id, action, performed_by, detail_json)
+       VALUES (:cid, 'erasure.completed', :uid, :detail_json)`,
       {
-        cid    : clientId,
-        uid    : requestedBy,
-        details: JSON.stringify({ anonPrefix, timestamp: new Date().toISOString() }),
+        cid        : clientId,
+        uid        : requestedBy,
+        detail_json: JSON.stringify({ anonPrefix, timestamp: new Date().toISOString() }),
       }
     );
   });
@@ -347,29 +346,25 @@ async function anonymizeClient (clientId, orgId, requestedBy) {
  */
 async function reportBreach (opts) {
   const {
-    orgId, branchId, severity, affectedRecords,
-    description, discoveredBy, containmentMeasures,
+    orgId, severity, affectedRecords,
+    description, discoveredBy, responseNotes,
   } = opts;
-
-  const notifyDeadline = new Date(Date.now() + 72 * 3_600_000).toISOString();
 
   const [r] = await db.query(
     `INSERT INTO data_breaches
-       (org_id, branch_id, severity, affected_records, description,
-        discovered_by, containment_measures, notify_authority_deadline, status)
-     VALUES (:org, :bid, :sev, :count, :desc, :by, :contain, :deadline, 'open')`,
+       (org_id, severity, affected_records, description,
+        created_by, response_notes, status, detected_at)
+     VALUES (:org, :sev, :count, :desc, :by, :notes, 'detected', NOW())`,
     {
-      org     : orgId,
-      bid     : branchId || null,
-      sev     : severity,
-      count   : affectedRecords || 0,
-      desc    : description,
-      by      : discoveredBy,
-      contain : containmentMeasures || null,
-      deadline: notifyDeadline,
+      org  : orgId,
+      sev  : severity,
+      count: affectedRecords || 0,
+      desc : description,
+      by   : discoveredBy || null,
+      notes: responseNotes || null,
     }
   );
-  return { breachId: r.insertId, notifyDeadline };
+  return { breachId: r.insertId };
 }
 
 // ─── Políticas de retención ───────────────────────────────────────────────────

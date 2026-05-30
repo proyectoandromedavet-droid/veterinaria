@@ -95,8 +95,8 @@ async function transferPatient (opts) {
   const [r] = await db.query(
     `INSERT INTO patient_transfers
        (patient_id, from_branch_id, to_branch_id, client_id,
-        requested_by, reason, status, transfer_type)
-     VALUES (:pid, :from, :to, :cid, :uid, :reason, 'completed', :type)`,
+        requested_by, reason, status)
+     VALUES (:pid, :from, :to, :cid, :uid, :reason, 'completed')`,
     {
       pid    : patientId,
       from   : fromBranchId,
@@ -104,7 +104,6 @@ async function transferPatient (opts) {
       cid    : clientId,
       uid    : requestedByUserId,
       reason : reason || null,
-      type   : transferOwnership ? 'ownership' : 'visit',
     }
   );
 
@@ -166,11 +165,11 @@ async function transferStock (opts) {
     );
 
     await conn.query(
-      `INSERT INTO inventory_items (branch_id, name, category_id, stock_quantity, unit_cost, sale_price, sku)
-       SELECT ?, name, category_id, ?, unit_cost, sale_price, CONCAT(sku, '-TRF', ?)
+      `INSERT INTO inventory_items (branch_id, name, item_type, unit_cost, sale_price, sku, stock_quantity)
+       SELECT ?, name, item_type, unit_cost, sale_price, CONCAT(sku, '-TRF', ?), ?
        FROM inventory_items WHERE id = ?
        ON DUPLICATE KEY UPDATE stock_quantity = stock_quantity + ?`,
-      [toBranchId, quantity, transferId, itemId, quantity]
+      [toBranchId, transferId, quantity, itemId, quantity]
     );
   });
 
@@ -263,7 +262,7 @@ async function crossBranchPatientHistory (patientId, orgId) {
               b.name AS branch_name, b.id AS branch_id,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name,
               at2.name AS appointment_type,
-              mr.id AS record_id, mr.diagnosis AS diagnosis
+              mr.id AS record_id
        FROM appointments a
        JOIN branches b  ON a.branch_id = b.id AND b.organization_id = :orgId
        JOIN users    u  ON a.vet_id = u.id
@@ -280,30 +279,33 @@ async function crossBranchPatientHistory (patientId, orgId) {
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
        FROM lab_orders lo
        JOIN branches b ON lo.branch_id = b.id AND b.organization_id = :orgId
-       JOIN users    u ON lo.vet_id = u.id
+       JOIN users    u ON lo.ordered_by = u.id
        WHERE lo.patient_id = :pid ORDER BY lo.ordered_at DESC LIMIT 50`,
       { pid: patientId, orgId }
     ),
 
     db.query(
-      `SELECT v.id, v.vaccination_date, v.vaccine_name, v.batch_number, v.next_due_date,
+      `SELECT v.id, v.vaccination_date, vc.name AS vaccine_name, v.batch_number, v.next_due_date,
               b.name AS branch_name, b.id AS branch_id,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
        FROM vaccinations v
-       JOIN branches b ON v.branch_id = b.id AND b.organization_id = :orgId
-       JOIN users    u ON v.vet_id = u.id
+       JOIN vaccines vc   ON vc.id = v.vaccine_id
+       JOIN branches b    ON v.branch_id = b.id AND b.organization_id = :orgId
+       JOIN users    u    ON v.administered_by = u.id
        WHERE v.patient_id = :pid ORDER BY v.vaccination_date DESC`,
       { pid: patientId, orgId }
     ),
 
     db.query(
-      `SELECT pr.id, pr.prescribed_at, pr.status,
+      `SELECT pr.id, pr.created_at AS prescribed_at, pr.status,
               b.name AS branch_name, b.id AS branch_id,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
        FROM prescriptions pr
-       JOIN branches b ON pr.branch_id = b.id AND b.organization_id = :orgId
-       JOIN users    u ON pr.vet_id = u.id
-       WHERE pr.patient_id = :pid ORDER BY pr.prescribed_at DESC LIMIT 50`,
+       JOIN medical_records mr ON mr.id = pr.medical_record_id
+       JOIN appointments a     ON a.id = mr.appointment_id
+       JOIN branches b         ON b.id = a.branch_id AND b.organization_id = :orgId
+       JOIN users    u         ON pr.prescribed_by = u.id
+       WHERE mr.patient_id = :pid ORDER BY pr.created_at DESC LIMIT 50`,
       { pid: patientId, orgId }
     ),
 

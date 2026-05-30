@@ -27,6 +27,12 @@ router.post('/:id/anamnesis',
   body('feedingBrand').optional({ nullable: true }).isString().isLength({ max: 500 }),
   body('recentTravel').optional({ nullable: true }).isString().isLength({ max: 2000 }),
   body('ownerObservations').optional({ nullable: true }).isString().isLength({ max: 4000 }),
+  body('vomiting').optional({ nullable: true }).isBoolean().toBoolean(),
+  body('coughing').optional({ nullable: true }).isBoolean().toBoolean(),
+  body('sneezing').optional({ nullable: true }).isBoolean().toBoolean(),
+  body('pruritus').optional({ nullable: true }).isBoolean().toBoolean(),
+  body('locomotionIssues').optional({ nullable: true }).isBoolean().toBoolean(),
+  body('contactWithAnimals').optional({ nullable: true }).isBoolean().toBoolean(),
   validate,
   async (req, res, next) => {
     try {

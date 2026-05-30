@@ -13,7 +13,7 @@ const { getSecret } = require('./secrets');
 let _redis = null;
 async function _getRedis() {
   if (!_redis) {
-    try { _redis = require('./redis').getRedisSingleton(); } catch { _redis = null; }
+    try { _redis = await require('./redis').getRedisSingleton('internal-auth', 'internal-auth'); } catch { _redis = null; }
   }
   return _redis;
 }
@@ -87,7 +87,7 @@ function verifySignature(method, path, orgId, headerValue) {
   return { ok: true, _nonce: `t=${t}.s=${sig}` };
 }
 
-function requireInternalSig(req, res, next) {
+async function requireInternalSig(req, res, next) {
   if (!_secret() && getInternalAuthMode() !== 'strict') {
     _warn();
     return next();
@@ -105,14 +105,21 @@ function requireInternalSig(req, res, next) {
   if (ok && result._nonce) {
     // BUG-1: nonce store para prevenir replay dentro de la ventana TTL
     const ttl = _ttl() + 5;
-    _getRedis().then((redis) => {
-      if (redis) redis.set(`iauth:nonce:${result._nonce}`, '1', 'NX', 'EX', ttl).then((res2) => {
-        if (res2 === null) {
-          // Ya fue usado — pero ya pasamos ok=true, solo logueamos (async)
+    try {
+      const redis = await _getRedis();
+      if (redis) {
+        const stored = await redis.set(`iauth:nonce:${result._nonce}`, '1', { NX: true, EX: ttl });
+        if (stored === null) {
           log.warn('internal-auth: nonce replay detectado', { nonce: result._nonce, path: req.originalUrl });
+          return res.status(401).json({
+            success: false,
+            error: { message: 'Unauthorized', code: 'INTERNAL_AUTH_REPLAY' },
+          });
         }
-      }).catch(() => {});
-    }).catch(() => {});
+      }
+    } catch (redisErr) {
+      log.warn('internal-auth: nonce Redis check failed', { err: redisErr.message });
+    }
   }
 
   if (!ok) {

@@ -19,13 +19,15 @@ router.get('/', portalAuth, async (req, res, next) => {
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
        FROM tele_sessions ts
+       JOIN branches b     ON b.id=ts.branch_id
        JOIN patients p     ON ts.patient_id=p.id
        JOIN species sp     ON p.species_id=sp.id
        JOIN users u        ON ts.vet_id=u.id
-       JOIN patient_owners po ON po.patient_id=p.id AND po.client_id=:cid
+       JOIN patient_owners po ON po.patient_id=p.id AND po.client_id=:cid AND po.deleted_at IS NULL
        LEFT JOIN tele_ratings tr ON tr.session_id = ts.id
+       WHERE b.organization_id=:orgId
        ORDER BY ts.scheduled_at DESC`,
-      { cid: req.owner.clientId }
+      { cid: req.owner.clientId, orgId: req.owner.orgId }
     );
     return R.ok(res, rows);
   } catch (e) { next(e); }

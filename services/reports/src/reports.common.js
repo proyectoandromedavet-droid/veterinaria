@@ -136,12 +136,13 @@ async function getBranchDashboard(branchId, from, to) {
     ),
     safeQuery(
       `SELECT COUNT(*) AS total_payments,
-              ROUND(COALESCE(SUM(amount), 0), 2) AS paid_amount
-       FROM payments
-       WHERE branch_id = :bid
-         AND payment_date >= :from
-         AND payment_date < DATE_ADD(:to, INTERVAL 1 DAY)
-         AND COALESCE(payment_status, 'completed') != 'cancelled'`,
+              ROUND(COALESCE(SUM(p.amount), 0), 2) AS paid_amount
+       FROM payments p
+       JOIN invoices i ON i.id = p.invoice_id
+       WHERE i.branch_id = :bid
+         AND p.paid_at >= :from
+         AND p.paid_at < DATE_ADD(:to, INTERVAL 1 DAY)
+         AND COALESCE(p.payment_status, 'completed') != 'cancelled'`,
       { bid: branchId, from, to },
       [{ total_payments: 0, paid_amount: 0 }]
     ),

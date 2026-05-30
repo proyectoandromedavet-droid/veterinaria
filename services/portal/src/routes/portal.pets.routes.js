@@ -6,16 +6,22 @@ const { db, R, portalAuth, decryptRows } = require('../portal.common');
 const router = Router();
 
 async function requireOwnership(clientId, patientId) {
-  return db.queryOne(`SELECT 1 FROM patient_owners WHERE patient_id=:pid AND client_id=:cid`, { pid: patientId, cid: clientId });
+  return db.queryOne(
+    `SELECT 1 FROM patient_owners WHERE patient_id=:pid AND client_id=:cid AND deleted_at IS NULL`,
+    { pid: patientId, cid: clientId }
+  );
 }
 
 router.get('/', portalAuth, async (req, res, next) => {
   try {
     const pets = await db.query(
-      `SELECT p.id, p.name, p.birth_date, p.sex, p.color, p.microchip_number,
+      `SELECT p.id, p.name,
+              COALESCE(p.birthdate, p.birth_date) AS birth_date,
+              p.sex, p.color,
+              COALESCE(p.chip_number, p.microchip_number) AS microchip_number,
               p.photo_url, sp.common_name AS species, br.name AS breed, p.is_active
        FROM patients p
-       JOIN patient_owners po ON po.patient_id = p.id AND po.client_id = :cid
+       JOIN patient_owners po ON po.patient_id = p.id AND po.client_id = :cid AND po.deleted_at IS NULL
        JOIN species sp ON p.species_id = sp.id
        LEFT JOIN breeds br ON p.breed_id = br.id
        WHERE p.is_active = 1
@@ -29,11 +35,14 @@ router.get('/', portalAuth, async (req, res, next) => {
 router.get('/:id', portalAuth, async (req, res, next) => {
   try {
     const pet = await db.queryOne(
-      `SELECT p.id, p.name, p.birth_date, p.sex, p.color, p.microchip_number,
+      `SELECT p.id, p.name,
+              COALESCE(p.birthdate, p.birth_date) AS birth_date,
+              p.sex, p.color,
+              COALESCE(p.chip_number, p.microchip_number) AS microchip_number,
               p.photo_url, p.is_active, p.is_deceased, p.weight_kg,
               sp.common_name AS species, br.name AS breed
        FROM patients p
-       JOIN patient_owners po ON po.patient_id=p.id AND po.client_id=:cid
+       JOIN patient_owners po ON po.patient_id=p.id AND po.client_id=:cid AND po.deleted_at IS NULL
        JOIN species sp ON p.species_id=sp.id
        LEFT JOIN breeds br ON p.breed_id=br.id
        WHERE p.id=:pid`,
@@ -75,13 +84,14 @@ router.get('/:id/vaccinations', portalAuth, async (req, res, next) => {
     const owned = await requireOwnership(req.owner.clientId, req.params.id);
     if (!owned) return R.forbidden(res, 'Sin acceso a esta mascota');
     const rows = await db.query(
-      `SELECT v.id, v.vaccine_name, v.administered_date, v.next_due_date,
-              v.lot_number, v.manufacturer,
+      `SELECT v.id, vc.name AS vaccine_name, v.vaccination_date AS administered_date,
+              v.next_due_date, v.batch_number AS lot_number, vc.manufacturer,
               CONCAT(u.first_name,' ',u.last_name) AS applied_by
        FROM vaccinations v
+       JOIN vaccines vc ON vc.id = v.vaccine_id
        LEFT JOIN users u ON v.administered_by = u.id
        WHERE v.patient_id=:pid
-       ORDER BY v.administered_date DESC
+       ORDER BY v.vaccination_date DESC
        LIMIT 200`,
       { pid: req.params.id }
     );

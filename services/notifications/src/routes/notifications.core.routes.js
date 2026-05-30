@@ -158,7 +158,7 @@ router.post('/push', async (req, res, next) => {
       if (uidInts.length !== targetUserIds.length) return R.badRequest(res, 'targetUserIds contiene valores inválidos');
 
       const belongRows = await db.query(
-        `SELECT id FROM users WHERE id IN (:uids) AND org_id = :orgId`,
+        `SELECT u.id FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id IN (:uids) AND b.organization_id = :orgId`,
         { uids: uidInts, orgId }
       );
       if (belongRows.length !== uidInts.length) {

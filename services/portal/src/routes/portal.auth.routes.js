@@ -71,7 +71,7 @@ router.post('/register',
         return R.forbidden(res, 'Token de activacion no corresponde a la organizacion');
       }
 
-      const scopeOrgId = activation?.org_id || orgId || null;
+      const scopeOrgId = activation?.org_id || null;
       const existingOrgCond = scopeOrgId ? 'AND (c.organization_id = :scopeOrgId OR b.organization_id = :scopeOrgId)' : '';
       const existing = await db.queryOne(
         `SELECT c.id
@@ -217,7 +217,7 @@ router.post('/login',
         { id: client.id, ip }
       ).catch((err) => {
         log.warn('login history lookup failed', { err: err.message });
-        return true;
+        return false;
       });
 
       if (!seenBefore) {

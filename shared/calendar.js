@@ -211,19 +211,19 @@ async function _saveTokens (userId, tokens) {
 
   await db.query(
     `INSERT INTO google_calendar_tokens
-       (user_id, access_token, refresh_token, expiry_date, scope)
+       (user_id, access_token, refresh_token, expires_at, scope)
      VALUES (:uid, :at, :rt, :exp, :scope)
      ON DUPLICATE KEY UPDATE
        access_token  = VALUES(access_token),
        refresh_token = IF(VALUES(refresh_token) IS NOT NULL, VALUES(refresh_token), refresh_token),
-       expiry_date   = VALUES(expiry_date),
+       expires_at    = VALUES(expires_at),
        updated_at    = NOW()`,
     {
       uid   : userId,
       at    : encAt,
       rt    : encRt,
-      exp   : tokens.expiry_date   || null,
-      scope : tokens.scope         || null,
+      exp   : tokens.expires_at || tokens.expiry_date || null,
+      scope : tokens.scope      || null,
     }
   );
 }

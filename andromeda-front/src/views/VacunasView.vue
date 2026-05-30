@@ -111,7 +111,7 @@
                   <span class="sub">{{ v.manufacturer || '' }}</span>
                 </div>
               </td>
-              <td>{{ formatDate(v.vaccination_date) }}</td>
+              <td>{{ formatDate(v.administered_date) }}</td>
               <td :class="dueDateClass(v.next_dose_due)">{{ formatDate(v.next_dose_due) }}</td>
               <td class="sub">{{ v.lot_number || '-' }}</td>
               <td class="sub">

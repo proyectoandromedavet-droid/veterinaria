@@ -83,7 +83,7 @@ router.post('/movements',
            VALUES (:item, :bid, :type, :qty, :cost, :ref, :notes, :uid)`,
           {
             item: itemId, bid: req.user.branchId, type: movementType,
-            qty: quantity, cost: unitCost || null, ref: reference || null,
+            qty: quantity, cost: unitCost ?? null, ref: reference || null,
             notes: notes || null, uid: req.user.userId,
           }
         );
@@ -228,12 +228,12 @@ router.post('/batches',
       );
       if (!itemOwner) return R.notFound(res, 'Item de inventario no encontrado en esta sucursal');
 
-      const r = await db.query(
+      const [r] = await db.query(
         `INSERT INTO inventory_batches
            (item_id, branch_id, supplier_id, lot_number, manufacture_date, expiry_date,
             quantity_received, quantity_available, unit_cost, notes, created_by)
          VALUES (:iid, :bid, :sup, :lot, :mfg, :exp, :qty, :qty, :cost, :notes, :uid)` ,
-        { iid: itemId, bid: req.user.branchId, sup: supplierId||null, lot: lotNumber, mfg: manufactureDate||null, exp: expiryDate||null, qty: quantityReceived, cost: unitCost||null, notes: notes||null, uid: req.user.userId }
+        { iid: itemId, bid: req.user.branchId, sup: supplierId||null, lot: lotNumber, mfg: manufactureDate||null, exp: expiryDate||null, qty: quantityReceived, cost: unitCost ?? null, notes: notes||null, uid: req.user.userId }
       );
       await db.query(
         `UPDATE inventory_stock SET quantity_available = quantity_available + :qty
@@ -243,7 +243,7 @@ router.post('/batches',
       await db.query(
         `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, unit_cost, reference, batch_id, created_by)
          VALUES (:iid, :bid, 'purchase', :qty, :cost, :lot, :batchId, :uid)`,
-        { iid: itemId, bid: req.user.branchId, qty: quantityReceived, cost: unitCost||null, lot: lotNumber, batchId: r.insertId, uid: req.user.userId }
+        { iid: itemId, bid: req.user.branchId, qty: quantityReceived, cost: unitCost ?? null, lot: lotNumber, batchId: r.insertId, uid: req.user.userId }
       );
       return R.created(res, { id: r.insertId });
     } catch (e) {

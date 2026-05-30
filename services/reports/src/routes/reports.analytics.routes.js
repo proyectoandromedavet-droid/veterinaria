@@ -64,8 +64,8 @@ router.get('/revenue-by-service', async (req, res, next) => {
     const rows = await db.query(
       `SELECT sc.name AS category,
               COUNT(ii.id) AS line_items,
-              SUM(ii.total_price) AS revenue,
-              ROUND(SUM(ii.total_price) * 100.0 / SUM(SUM(ii.total_price)) OVER (), 2) AS pct
+              SUM(ii.subtotal) AS revenue,
+              ROUND(SUM(ii.subtotal) * 100.0 / SUM(SUM(ii.subtotal)) OVER (), 2) AS pct
        FROM invoice_items ii
        JOIN invoices i ON ii.invoice_id = i.id
        LEFT JOIN services_catalog svc ON ii.service_id = svc.id
@@ -95,7 +95,7 @@ router.get('/top-clients', async (req, res, next) => {
               COUNT(DISTINCT p.id) AS total_patients
        FROM clients cl
        JOIN invoices i ON i.client_id = cl.id
-       LEFT JOIN appointments a ON a.branch_id = cl.branch_id
+       LEFT JOIN appointments a ON a.client_id = cl.id AND a.branch_id = cl.branch_id
        LEFT JOIN patient_owners po ON po.client_id = cl.id AND po.ownership_type = 'primary'
        LEFT JOIN patients p ON po.patient_id = p.id
        WHERE cl.branch_id = :bid
@@ -359,11 +359,11 @@ router.get('/security', async (req, res, next) => {
       ),
       safeQuery(
         `SELECT * FROM security_alerts
-         WHERE (branch_id = :bid OR org_id = :orgId)
-           AND COALESCE(is_resolved, resolved, 0) = FALSE
+         WHERE org_id = :orgId
+           AND acknowledged = FALSE
          ORDER BY created_at DESC
          LIMIT 50`,
-        { bid: req.user.branchId, orgId: req.user.orgId },
+        { orgId: req.user.orgId },
         []
       ),
     ]);

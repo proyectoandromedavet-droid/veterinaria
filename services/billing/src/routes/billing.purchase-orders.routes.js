@@ -76,29 +76,31 @@ router.post('/',
       );
       if (!supplier) return R.notFound(res, 'Proveedor no encontrado');
 
-      const [{ count }] = await db.query(
-        `SELECT COUNT(*)+1 AS count FROM purchase_orders WHERE branch_id=:bid`,
-        { bid: req.user.branchId }
-      );
-      const poNumber = `PO-${String(count).padStart(5, '0')}`;
       const r2 = (n) => Math.round(n * 100) / 100;
       const subtotal = r2(items.reduce((s, i) => s + r2(Number(i.quantity) * Number(i.unitCost)), 0));
 
-      const [r] = await db.query(
-        `INSERT INTO purchase_orders (branch_id, supplier_id, po_number, status, ordered_date, expected_date, subtotal, total_amount, notes, created_by)
-         VALUES (:bid, :sup, :poNum, 'draft', :ordered, :expected, :sub, :total, :notes, :uid)`,
-        { bid: req.user.branchId, sup: supplierId, poNum: poNumber, ordered: orderedDate||null, expected: expectedDate||null, sub: subtotal, total: subtotal, notes: notes||null, uid: req.user.userId }
-      );
-
-      for (const item of items) {
-        await db.query(
-          `INSERT INTO purchase_order_items (purchase_order_id, item_id, quantity_ordered, unit_cost, lot_number, expiry_date, notes)
-           VALUES (:poid, :iid, :qty, :cost, :lot, :exp, :notes)`,
-          { poid: r.insertId, iid: item.itemId, qty: item.quantity, cost: item.unitCost, lot: item.lotNumber||null, exp: item.expiryDate||null, notes: item.notes||null }
+      const { insertId, poNumber } = await db.transaction(async (conn) => {
+        const [{ count }] = await conn.query(
+          `SELECT COUNT(*)+1 AS count FROM purchase_orders WHERE branch_id=:bid FOR UPDATE`,
+          { bid: req.user.branchId }
         );
-      }
+        const poNum = `PO-${String(count).padStart(5, '0')}`;
+        const [row] = await conn.query(
+          `INSERT INTO purchase_orders (branch_id, supplier_id, po_number, status, ordered_date, expected_date, subtotal, total_amount, notes, created_by)
+           VALUES (:bid, :sup, :poNum, 'draft', :ordered, :expected, :sub, :total, :notes, :uid)`,
+          { bid: req.user.branchId, sup: supplierId, poNum, ordered: orderedDate||null, expected: expectedDate||null, sub: subtotal, total: subtotal, notes: notes||null, uid: req.user.userId }
+        );
+        for (const item of items) {
+          await conn.query(
+            `INSERT INTO purchase_order_items (purchase_order_id, item_id, quantity_ordered, unit_cost, lot_number, expiry_date, notes)
+             VALUES (:poid, :iid, :qty, :cost, :lot, :exp, :notes)`,
+            { poid: row.insertId, iid: item.itemId, qty: item.quantity, cost: item.unitCost, lot: item.lotNumber||null, exp: item.expiryDate||null, notes: item.notes||null }
+          );
+        }
+        return { insertId: row.insertId, poNumber: poNum };
+      });
 
-      return R.created(res, { id: r.insertId, poNumber });
+      return R.created(res, { id: insertId, poNumber });
     } catch (e) {
       logBillingError('POST /purchase-orders', e, { branchId: req.user?.branchId, body: req.body });
       next(e);

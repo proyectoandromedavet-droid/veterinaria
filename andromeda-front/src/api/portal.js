@@ -184,7 +184,7 @@ export const portalApi = {
   invoices: {
     list: (params) => portalHttp.get('/portal/invoices', { params }).then(unwrap),
     get: (id) => portalHttp.get(`/portal/invoices/${id}`).then(unwrap),
-    pay: (id) => portalHttp.post(`/portal/invoices/${id}/pay`, {}).then(unwrap),
+    pay: (id, amount) => portalHttp.post(`/portal/invoices/${id}/pay`, amount != null ? { amount } : {}).then(unwrap),
   },
   notifications: {
     list: (params) => portalHttp.get('/portal/notifications', { params }).then(unwrap),

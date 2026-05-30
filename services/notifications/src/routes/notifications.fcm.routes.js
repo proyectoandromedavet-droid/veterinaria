@@ -162,6 +162,13 @@ router.post('/broadcast', requirePerm('notifications:send'), async (req, res, ne
       if (req.user.branchId && Number(effectiveBranchId) !== Number(req.user.branchId)) {
         return R.forbidden(res, 'Sucursal fuera del alcance del usuario', 'FCM_BRANCH_FORBIDDEN');
       }
+      if (!req.user.branchId && orgId) {
+        const branchOwned = await db.queryOne(
+          `SELECT id FROM branches WHERE id = :bid AND organization_id = :orgId`,
+          { bid: effectiveBranchId, orgId }
+        );
+        if (!branchOwned) return R.forbidden(res, 'Sucursal fuera de la organización', 'FCM_BRANCH_FORBIDDEN');
+      }
       try {
         await fcm.sendToTopic(`branch_${effectiveBranchId}`, payload);
       } catch (err) {

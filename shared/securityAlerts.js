@@ -17,16 +17,15 @@ async function createAlert({ orgId, userId = null, type, severity = 'warning', d
 
   await db.query(
     `INSERT INTO security_alerts
-       (organization_id, user_id, alert_type, severity, description, metadata, created_at)
+       (org_id, user_id, alert_type, severity, details, created_at)
      VALUES
-       (:orgId, :userId, :type, :severity, :description, :metadata, NOW())`,
+       (:orgId, :userId, :type, :severity, :details, NOW())`,
     {
       orgId,
       userId,
       type,
       severity,
-      description,
-      metadata: serialisedMetadata,
+      details: serialisedMetadata,
     }
   ).catch(() => {});
 }

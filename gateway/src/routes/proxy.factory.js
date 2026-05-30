@@ -141,6 +141,11 @@ function makeProxy(target, pathRewrite = {}, name) {
           proxyReq.setHeader('Content-Length', req.rawBody.length);
           proxyReq.write(req.rawBody);
         } else if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+          const ct = (req.headers['content-type'] || '').toLowerCase();
+          if (ct.includes('multipart/form-data') || ct.includes('application/x-www-form-urlencoded')) {
+            // rawBody is required for non-JSON content types — skip re-serialization to avoid corruption
+            return;
+          }
           const bodyData = JSON.stringify(req.body);
           proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
           proxyReq.write(bodyData);

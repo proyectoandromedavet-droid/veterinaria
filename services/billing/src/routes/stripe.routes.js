@@ -14,7 +14,8 @@ const { Router } = require('express');
 const { body, validationResult } = require('express-validator');
 const db     = require('../../../../shared/db');
 const stripe = require('../../../../shared/stripe');
-const logger = require('../../../../shared/logger');
+const { createLogger } = require('../../../../shared/logger');
+const logger = createLogger('stripe');
 const R = require('../../../../shared/response');
 const { logBillingError } = require('./billing.common');
 

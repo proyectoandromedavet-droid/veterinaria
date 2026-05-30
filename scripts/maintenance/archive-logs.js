@@ -65,14 +65,14 @@ async function archiveSecurityAlerts(retentionDays) {
     insertSql: `INSERT INTO security_alerts_archive
        (created_at, organization_id, user_id, alert_type, severity, status, title, description, metadata_json)
      SELECT created_at,
-            organization_id,
+            org_id,
             user_id,
             alert_type,
             severity,
-            COALESCE(status, 'closed'),
-            COALESCE(title, alert_type),
-            description,
-            metadata
+            'archived',
+            alert_type,
+            details,
+            details
      FROM security_alerts
      WHERE created_at < DATE_SUB(NOW(), INTERVAL :days DAY)`,
     deleteSql: `DELETE FROM security_alerts

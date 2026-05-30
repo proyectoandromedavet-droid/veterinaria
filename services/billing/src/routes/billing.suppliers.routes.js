@@ -28,7 +28,7 @@ router.post('/',
   async (req, res, next) => {
     try {
       const { name, taxId, contactName, email, phone, address, paymentTerms = 30, notes } = req.body;
-      const result = await db.query(
+      const [result] = await db.query(
         `INSERT INTO suppliers (org_id, name, tax_id, contact_name, email, phone, address, payment_terms, notes)
          VALUES (:oid, :name, :taxId, :contact, :email, :phone, :address, :terms, :notes)`,
         { oid: req.user.orgId, name, taxId: taxId||null, contact: contactName||null, email: email||null, phone: phone||null, address: address||null, terms: paymentTerms, notes: notes||null }

@@ -18,6 +18,7 @@ const db          = require('../../../../shared/db');
 const R           = require('../../../../shared/response');
 const { requireInternalSig } = require('../../../../shared/internalAuth');
 const { enqueueJob }         = require('../../../../shared/notificationRetry');
+const { fromHeaders }        = require('../../../../shared/requestContext');
 
 const router = Router();
 
@@ -40,18 +41,6 @@ function validate(req, res, next) {
   next();
 }
 
-function fromHeaders(req, _res, next) {
-  req.user = {
-    userId:   req.headers['x-user-id'],
-    orgId:    req.headers['x-org-id'],
-    branchId: req.headers['x-branch-id'],
-    roles:    (req.headers['x-user-roles'] || '').split(',').filter(Boolean),
-    email:    req.headers['x-user-email'],
-    authType: req.headers['x-auth-type'] || null,
-  };
-  next();
-}
-
 function requireAdmin(req, res, next) {
   if (req.user.authType === 'api_key') {
     return R.forbidden(res, 'Admin endpoints require an interactive user session');
@@ -71,21 +60,16 @@ async function auditPermissionChange(req, {
 }) {
   await db.query(
     `INSERT INTO permission_change_audit
-       (org_id, actor_user_id, target_user_id, target_role_name, action_type,
-        previous_value_json, new_value_json, request_id, ip_address)
+       (org_id, actor_id, target_user_id, change_type, detail_json, ip_address)
      VALUES
-       (:orgId, :actorUserId, :targetUserId, :targetRoleName, :actionType,
-        :previousValue, :newValue, :requestId, :ipAddress)`,
+       (:orgId, :actorId, :targetUserId, :changeType, :detail, :ipAddress)`,
     {
-      orgId: req.user.orgId,
-      actorUserId: req.user.userId || null,
+      orgId      : req.user.orgId,
+      actorId    : req.user.userId || null,
       targetUserId,
-      targetRoleName,
-      actionType,
-      previousValue: previousValue ? JSON.stringify(previousValue) : null,
-      newValue: newValue ? JSON.stringify(newValue) : null,
-      requestId: req.headers['x-request-id'] || req.requestId || null,
-      ipAddress: req.ip || null,
+      changeType : actionType,
+      detail     : JSON.stringify({ targetRoleName, previousValue: previousValue || null, newValue: newValue || null, requestId: req.headers['x-request-id'] || null }),
+      ipAddress  : req.ip || null,
     }
   ).catch(() => {});
 }

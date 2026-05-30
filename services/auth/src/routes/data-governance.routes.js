@@ -181,14 +181,14 @@ router.post('/enforce', async (req, res, next) => {
         let affected = 0;
 
         if (policy.action === 'delete' && policy.data_type === 'audit_logs') {
-          const result = await db.query(
+          const [result] = await db.query(
             'DELETE FROM audit_logs WHERE org_id = :orgId AND created_at < :cutoff LIMIT 1000',
             { orgId, cutoff },
           );
           affected = result.affectedRows || 0;
         } else if (policy.action === 'anonymize' && policy.data_type === 'clients') {
           const clientCols = await getTableColumns('clients');
-          const result = await db.query(
+          const [result] = await db.query(
             `UPDATE clients SET
                ${clientCols.has('first_name') ? "first_name = CONCAT('ANON-', id)," : ''}
                ${clientCols.has('last_name') ? "last_name = 'REDACTED'," : ''}
@@ -200,7 +200,7 @@ router.post('/enforce', async (req, res, next) => {
                ${clientCols.has('notes') ? 'notes = NULL,' : ''}
                ${clientCols.has('is_anonymized') ? 'is_anonymized = 1,' : ''}
                updated_at = NOW()
-             WHERE org_id = :orgId AND updated_at < :cutoff
+             WHERE organization_id = :orgId AND updated_at < :cutoff
                AND ${activePredicate(clientCols)}
                ${clientCols.has('is_anonymized') ? 'AND is_anonymized = 0' : ''}
              LIMIT 100`,
@@ -209,21 +209,20 @@ router.post('/enforce', async (req, res, next) => {
           affected = result.affectedRows || 0;
         } else if (policy.action === 'archive' && policy.data_type === 'appointments') {
           const cols = await getTableColumns('appointments');
-          const result = await db.query(
-            `UPDATE appointments
-             SET ${cols.has('status') ? "status = 'archived'," : ''}
-                 updated_at = NOW()
-                 ${deletedSet(cols)}
-             WHERE organization_id = :orgId
-               AND updated_at < :cutoff
-               AND ${activePredicate(cols)}
+          const [result] = await db.query(
+            `UPDATE appointments a
+             JOIN patients pa ON pa.id = a.patient_id
+             SET ${cols.has('status') ? "a.status = 'archived'," : ''}
+                 a.updated_at = NOW()
+             WHERE pa.organization_id = :orgId
+               AND a.updated_at < :cutoff
              LIMIT 500`,
             { orgId, cutoff },
           );
           affected = result.affectedRows || 0;
         } else if (policy.action === 'anonymize' && policy.data_type === 'patients') {
           const cols = await getTableColumns('patients');
-          const result = await db.query(
+          const [result] = await db.query(
             `UPDATE patients
              SET name = CONCAT('Paciente ', id),
                  ${cols.has('chip_number') ? 'chip_number = NULL,' : ''}
@@ -243,16 +242,17 @@ router.post('/enforce', async (req, res, next) => {
           affected = result.affectedRows || 0;
         } else if (policy.action === 'anonymize' && policy.data_type === 'staff') {
           const cols = await getTableColumns('users');
-          const result = await db.query(
-            `UPDATE users
-             SET first_name = CONCAT('STAFF-', id),
-                 last_name = 'REDACTED',
-                 email = CONCAT('staff-', id, '@redacted.local'),
-                 ${cols.has('phone') ? 'phone = NULL,' : ''}
-                 updated_at = NOW()
+          const [result] = await db.query(
+            `UPDATE users u
+             JOIN branches b ON b.id = u.branch_id
+             SET u.first_name = CONCAT('STAFF-', u.id),
+                 u.last_name = 'REDACTED',
+                 u.email = CONCAT('staff-', u.id, '@redacted.local'),
+                 ${cols.has('phone') ? 'u.phone = NULL,' : ''}
+                 u.updated_at = NOW()
                  ${deletedSet(cols)}
-             WHERE organization_id = :orgId
-               AND updated_at < :cutoff
+             WHERE b.organization_id = :orgId
+               AND u.updated_at < :cutoff
                AND ${activePredicate(cols)}
              LIMIT 200`,
             { orgId, cutoff },
@@ -260,13 +260,14 @@ router.post('/enforce', async (req, res, next) => {
           affected = result.affectedRows || 0;
         } else if (policy.action === 'archive' && policy.data_type === 'invoices') {
           const cols = await getTableColumns('invoices');
-          const result = await db.query(
-            `UPDATE invoices
-             SET ${cols.has('status') ? "status = 'archived'," : ''}
-                 updated_at = NOW()
+          const [result] = await db.query(
+            `UPDATE invoices i
+             JOIN branches b ON b.id = i.branch_id
+             SET ${cols.has('status') ? "i.status = 'archived'," : ''}
+                 i.updated_at = NOW()
                  ${deletedSet(cols)}
-             WHERE org_id = :orgId
-               AND updated_at < :cutoff
+             WHERE b.organization_id = :orgId
+               AND i.updated_at < :cutoff
                AND ${activePredicate(cols)}
              LIMIT 500`,
             { orgId, cutoff },

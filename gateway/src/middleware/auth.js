@@ -43,6 +43,8 @@ async function authenticate(req, res, next) {
     return R.unauthorized(res, msg, err.name === 'TokenExpiredError' ? 'AUTH_003' : 'AUTH_002');
   }
 
+  if (!decoded.jti) return R.unauthorized(res, 'Token missing identifier', 'AUTH_005');
+
   if (decoded.jti) {
     const revocationMode = getRevocationMode();
     try {

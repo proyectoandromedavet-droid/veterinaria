@@ -136,9 +136,9 @@ router.post('/',
                AND po.client_id = :clientId
                AND po.deleted_at IS NULL
                AND pc.branch_id = :branchId
-               AND (p.organization_id = :orgId OR :orgId IS NULL)
+               AND p.organization_id = :orgId
              LIMIT 1`,
-            { patientId, clientId, branchId: req.user.branchId, orgId: req.user.orgId || null }
+            { patientId, clientId, branchId: req.user.branchId, orgId: req.user.orgId }
           );
           if (!patient) throw Object.assign(new Error('Paciente fuera del alcance de la sucursal'), { http: 403, code: 'PATIENT_SCOPE_DENIED' });
         }
@@ -281,7 +281,12 @@ router.patch('/:id/pay', async (req, res, next) => {
         throw error;
       }
 
-      const amount = Math.max(0, Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0));
+      const remaining = Math.max(0, Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0));
+      const requestedAmount = req.body.amount != null ? Number(req.body.amount) : null;
+      if (requestedAmount !== null && (isNaN(requestedAmount) || requestedAmount <= 0)) {
+        throw Object.assign(new Error('El monto del pago debe ser mayor a cero'), { http: 400 });
+      }
+      const amount = requestedAmount != null ? Math.min(requestedAmount, remaining) : remaining;
       if (amount <= 0) return { id: invoice.id, status: invoice.status, paid_amount: invoice.paid_amount };
 
       await conn.query(
@@ -301,7 +306,7 @@ router.patch('/:id/pay', async (req, res, next) => {
       const [updateResult] = await conn.query(
         `UPDATE invoices
             SET paid_amount = paid_amount + :amount,
-                status = 'paid',
+                status = CASE WHEN paid_amount + :amount >= total_amount THEN 'paid' ELSE 'partial' END,
                 updated_at = NOW()
           WHERE id = :id AND branch_id = :bid`,
         { amount, id: invoice.id, bid: req.user.branchId }
@@ -312,7 +317,9 @@ router.patch('/:id/pay', async (req, res, next) => {
         throw err;
       }
 
-      return { id: invoice.id, status: 'paid', paid_amount: Number(invoice.paid_amount || 0) + amount };
+      const newPaid = Number(invoice.paid_amount || 0) + amount;
+      const newStatus = newPaid >= Number(invoice.total_amount || 0) ? 'paid' : 'partial';
+      return { id: invoice.id, status: newStatus, paid_amount: newPaid };
     });
 
     if (!payment) return R.notFound(res);

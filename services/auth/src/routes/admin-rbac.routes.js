@@ -65,20 +65,15 @@ async function auditPermissionChange(req, {
   try {
     await db.query(
       `INSERT INTO permission_change_audit
-         (org_id, actor_user_id, target_role_name, action_type,
-          previous_value_json, new_value_json, request_id, ip_address)
+         (org_id, actor_id, change_type, detail_json, ip_address)
        VALUES
-         (:orgId, :actorUserId, :targetRoleName, :actionType,
-          :previousValue, :newValue, :requestId, :ipAddress)`,
+         (:orgId, :actorId, :changeType, :detail, :ipAddress)`,
       {
-        orgId: req.user.orgId,
-        actorUserId: req.user.userId || null,
-        targetRoleName,
-        actionType,
-        previousValue: previousValue ? JSON.stringify(previousValue) : null,
-        newValue: newValue ? JSON.stringify(newValue) : null,
-        requestId: req.headers['x-request-id'] || req.requestId || null,
-        ipAddress: req.ip || null,
+        orgId     : req.user.orgId,
+        actorId   : req.user.userId || null,
+        changeType: actionType,
+        detail    : JSON.stringify({ targetRoleName, previousValue: previousValue || null, newValue: newValue || null, requestId: req.headers['x-request-id'] || null }),
+        ipAddress : req.ip || null,
       }
     );
   } catch (err) {
@@ -106,8 +101,8 @@ router.get('/orgs/:orgId/overrides',
       );
       const data = rows.map(r => ({
         role:    r.role_name,
-        grant:   typeof r.added_permissions   === 'string' ? JSON.parse(r.added_permissions)   : (r.added_permissions   || []),
-        revoke:  typeof r.removed_permissions === 'string' ? JSON.parse(r.removed_permissions) : (r.removed_permissions || []),
+        grant:   parsePermissionList(r.added_permissions),
+        revoke:  parsePermissionList(r.removed_permissions),
         updated: r.updated_at,
       }));
       res.json({ success: true, data });
