@@ -20,6 +20,11 @@ No reemplazas el criterio del veterinario tratante.`;
 
 const schemaCache = new Map();
 
+function sanitizeForPrompt(str, maxLen = 200) {
+  if (!str) return '';
+  return String(str).replace(/[\r\n\t]/g, ' ').slice(0, maxLen);
+}
+
 function validate(req, res, next) {
   return validateRequest(req, res, next);
 }
@@ -101,11 +106,11 @@ function buildImagePrompt(imageType, patient, region, clinicalContext) {
   return `Sos un especialista en diagnostico por imagenes veterinarias. Analizá esta imagen de tipo: ${imageType}.
 
 CONTEXTO CLINICO:
-- Especie: ${patient.species || 'desconocida'}
-- Raza: ${patient.breed || 'desconocida'}
+- Especie: ${sanitizeForPrompt(patient.species, 50) || 'desconocida'}
+- Raza: ${sanitizeForPrompt(patient.breed, 80) || 'desconocida'}
 - Edad: ${ageText}
-- Región anatómica: ${region || 'no especificada'}
-- Motivo del estudio: ${clinicalContext || 'no especificado'}
+- Región anatómica: ${sanitizeForPrompt(region, 100) || 'no especificada'}
+- Motivo del estudio: ${sanitizeForPrompt(clinicalContext, 200) || 'no especificado'}
 
 Respondé ÚNICAMENTE con este JSON:
 {
@@ -131,6 +136,7 @@ module.exports = {
   buildPatientSelect,
   buildDiagnosisPrompt,
   buildImagePrompt,
+  sanitizeForPrompt,
   CHAT_SYSTEM_PROMPT,
   log,
 };

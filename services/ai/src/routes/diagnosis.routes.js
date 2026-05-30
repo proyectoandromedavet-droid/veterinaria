@@ -23,6 +23,7 @@ router.post('/',
   body('symptoms').isArray({ min: 1 }),
   body('symptoms.*').isString().trim().notEmpty(),
   body('anamnesis').optional().isString(),
+  body('contextLines').optional().isInt({ min: 1, max: 20 }).toInt(),
   validate,
   async (req, res, next) => {
     try {

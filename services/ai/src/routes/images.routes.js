@@ -20,7 +20,13 @@ router.post('/analyze',
   body('patientId').isInt({ min: 1 }),
   body('imageType').isIn(['xray', 'ultrasound', 'blood_smear', 'cytology', 'histology', 'fundoscopy', 'ecg', 'other']),
   body('imageUrl').optional().isURL(),
-  body('imageBase64').optional().isString(),
+  body('imageBase64').optional().isString().custom((val) => {
+    if (val !== undefined && !val.startsWith('data:image/')) {
+      throw new Error('imageBase64 debe incluir el prefijo data:image/<type>;base64,');
+    }
+    return true;
+  }),
+  body('labResultId').optional().isInt({ min: 1 }).toInt(),
   body('region').optional().isString(),
   body('clinicalContext').optional().isString(),
   validate,

@@ -136,13 +136,33 @@ async function syncGmail(account) {
   return { records, settings: nextSettings };
 }
 
+const SSRF_BLOCKED_RE = /^(?:localhost|127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|0\.0\.0\.0|::1|fc00:|fd|0{0,4}:0{0,4}:0{0,4}:0{0,4}:0{0,4}:0{0,4}:0{0,4}:0*1|::ffff:(?:127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.))/i;
+
+const ALLOWED_IMAP_PORTS = new Set([143, 993]);
+
+function validateImapHost(host, port) {
+  const numPort = parseInt(port, 10);
+  if (!ALLOWED_IMAP_PORTS.has(numPort)) {
+    throw new Error(`Puerto IMAP no permitido: ${numPort}. Solo se permiten 143 y 993`);
+  }
+  if (!host || typeof host !== 'string') {
+    throw new Error('IMAP host inválido');
+  }
+  const normalized = host.trim().toLowerCase();
+  if (SSRF_BLOCKED_RE.test(normalized)) {
+    throw new Error(`Host IMAP bloqueado por política SSRF: ${host}`);
+  }
+}
+
 function buildImapClient(settings = {}, account) {
   if (!settings.host || !settings.username || !settings.password) {
     throw new Error('IMAP settings require host, username and password');
   }
+  const port = Number(settings.port || 993);
+  validateImapHost(settings.host, port);
   return new ImapFlow({
     host: settings.host,
-    port: Number(settings.port || 993),
+    port,
     secure: settings.secure !== false,
     auth: {
       user: settings.username || account.email_address,

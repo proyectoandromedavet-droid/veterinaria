@@ -7,6 +7,7 @@ const {
   R,
   ai,
   CHAT_SYSTEM_PROMPT,
+  sanitizeForPrompt,
   requirePerm,
   validate,
   getUser,
@@ -43,7 +44,7 @@ router.post('/',
         );
         if (p) {
           const age = p.birthdate ? Math.floor((Date.now() - new Date(p.birthdate)) / (365.25 * 86_400_000)) : null;
-          patientContext = `\n\nPACIENTE EN CONTEXTO: ${p.name} | ${p.species || ''} ${p.breed || ''} | ${age ? age + ' años' : ''} | Sexo: ${p.sex || 'N/A'} | Peso: ${p.weight ? p.weight + 'kg' : 'N/A'}`;
+          patientContext = `\n\nPACIENTE EN CONTEXTO: ${sanitizeForPrompt(p.name, 100)} | ${sanitizeForPrompt(p.species, 50)} ${sanitizeForPrompt(p.breed, 80)} | ${age ? age + ' años' : ''} | Sexo: ${sanitizeForPrompt(p.sex, 20) || 'N/A'} | Peso: ${p.weight ? p.weight + 'kg' : 'N/A'}`;
         }
       }
 
