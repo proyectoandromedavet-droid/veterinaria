@@ -23,11 +23,13 @@ const currentApiVersion = process.env.API_VERSION || 'v1';
 const supportedApiVersions = [...new Set(readCsv('API_VERSIONS', ['v1', 'v2', currentApiVersion]))];
 const defaultApiVersion = process.env.API_DEFAULT_VERSION || currentApiVersion;
 
-// Validar JSON_BODY_LIMIT contra un conjunto de valores aceptados para evitar
-// que un valor de entorno malicioso cause OOM (e.g. "999gb").
-const ALLOWED_BODY_LIMITS = new Set(['100kb', '256kb', '512kb', '1mb', '2mb', '5mb']);
-const _rawBodyLimit = (process.env.JSON_BODY_LIMIT || '512kb').toLowerCase();
-const _jsonBodyLimit = ALLOWED_BODY_LIMITS.has(_rawBodyLimit) ? _rawBodyLimit : '512kb';
+const _metricsTokenRaw = getSecret('METRICS_TOKEN', { defaultValue: '' }) || '';
+if (
+  (process.env.NODE_ENV === 'production') &&
+  (_metricsTokenRaw === 'CHANGE_ME' || _metricsTokenRaw === '')
+) {
+  throw new Error('METRICS_TOKEN must be set to a secure value in production (current value is missing or default "CHANGE_ME")');
+}
 
 const config = {
   env: process.env.NODE_ENV || 'development',
@@ -35,8 +37,8 @@ const config = {
   apiVersion: currentApiVersion,
   defaultApiVersion,
   supportedApiVersions,
-  jsonBodyLimit: _jsonBodyLimit,
-  metricsToken: getSecret('METRICS_TOKEN', { defaultValue: '' }) || '',
+  jsonBodyLimit: process.env.JSON_BODY_LIMIT || '512kb',
+  metricsToken: _metricsTokenRaw,
   swaggerEnabled: process.env.NODE_ENV !== 'production' || readBoolean('SWAGGER_ENABLED', false),
   openApiValidate: process.env.OPENAPI_VALIDATE !== 'false',
   webhookWorkerEnabled: process.env.WEBHOOK_WORKER !== 'false',

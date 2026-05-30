@@ -10,6 +10,7 @@ const {
   webrtc,
   fcm,
   sendTemplate,
+  log,
 } = require('./_common');
 
 const router = Router();
@@ -327,10 +328,10 @@ router.post('/:id/room', async (req, res, next) => {
       }).catch(() => {});
     }
     await fcm.sendToTopic(`owner_${session.client_id}`, {
-      title: 'ðŸ“¹ Tu videoconsulta estÃ¡ lista',
+      title: 'ðŸ”¹ Tu videoconsulta estÃ¡ lista',
       body: `Dr. ${session.vet_name} estÃ¡ listo. HacÃ© click para unirte.`,
       data: { sessionId: String(session.id), roomUrl: room.roomUrl || '' },
-    }).catch(() => {});
+    }).catch((err) => log.warn('fcm.send.failed', { err: err.message, sessionId: session.id }));
 
     return R.created(res, { roomId, roomName: room.roomName, roomUrl: room.roomUrl, provider: webrtc.PROVIDER });
   } catch (e) { next(e); }
