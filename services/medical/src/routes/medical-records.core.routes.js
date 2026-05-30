@@ -126,6 +126,13 @@ router.post('/',
       }
 
       if (!appointmentId) {
+        const canAutoCreateAppt = req.user.roles?.includes('vet');
+        if (!canAutoCreateAppt) {
+          return R.badRequest(res, 'Se requiere appointmentId para usuarios sin rol de veterinario');
+        }
+
+        const vetId = req.body.vetId || req.user.userId;
+
         let branchId = req.user.branchId || null;
         if (!branchId && req.user.userId) {
           const u = await db.queryOne('SELECT branch_id FROM users WHERE id = :uid', { uid: req.user.userId });
@@ -142,12 +149,12 @@ router.post('/',
           `INSERT INTO appointments
              (branch_id, patient_id, vet_id, scheduled_date, duration_minutes,
               status, reason, notes, is_emergency)
-           VALUES (:bid, :pid, :uid, NOW(), 30,
+           VALUES (:bid, :pid, :vid, NOW(), 30,
                    'in_progress', :reason, NULL, 0)`,
           {
             bid: branchId,
             pid: patientId,
-            uid: req.user.userId,
+            vid: vetId,
             reason: encrypt(chiefComplaint),
           }
         );

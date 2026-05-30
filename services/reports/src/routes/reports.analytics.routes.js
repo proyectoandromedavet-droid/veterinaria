@@ -145,9 +145,8 @@ router.get('/appointments', async (req, res, next) => {
 
 router.get('/new-patients', async (req, res, next) => {
   try {
-    const { from, to, groupBy = 'month' } = req.query;
-    const f = from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const t = to || new Date().toISOString().slice(0, 10);
+    const { groupBy = 'month' } = req.query;
+    const { from: f, to: t } = dateRange(req.query);
     const fmt = groupBy === 'week' ? '%x-W%v' : '%Y-%m';
 
     const rows = await db.query(
