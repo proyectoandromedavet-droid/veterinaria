@@ -108,6 +108,8 @@ export async function listInvoices(filters = {}) {
   if (filters.status) params.status = filters.status
   if (filters.from) params.from = filters.from
   if (filters.to) params.to = filters.to
+  // Pasar búsqueda a la API para que opere sobre todos los registros, no solo la página actual
+  if (filters.search && filters.search.trim()) params.search = filters.search.trim()
 
   const { data } = await billingApi.invoices.list(params)
   const rows = asArray(data?.data || data?.invoices || data).map(normalizeInvoice).filter(Boolean)

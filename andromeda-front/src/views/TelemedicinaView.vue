@@ -120,6 +120,13 @@
       </div>
     </div>
 
+    <!-- Paginación sesiones -->
+    <div v-if="totalPages > 1" class="pagination">
+      <button type="button" :disabled="page <= 1" @click="loadPage(page - 1)">{{ t('common.previous') }}</button>
+      <span>{{ page }} / {{ totalPages }}</span>
+      <button type="button" :disabled="page >= totalPages" @click="loadPage(page + 1)">{{ t('common.next') }}</button>
+    </div>
+
     <!-- Modal -->
     <Transition name="modal">
       <div v-if="showModal" class="modal-backdrop" @click.self="closeModal()">
@@ -204,7 +211,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/client'
 import { adminUsersApi } from '../api/adminUsers'
@@ -273,12 +280,18 @@ function normalizePatient(row) {
   }
 }
 
-const items = ref([])
-const loading = ref(false)
-const error   = ref('')
-const search  = ref('')
+const allItems = ref([])
+const items    = ref([])
+const loading  = ref(false)
+const error    = ref('')
+const search   = ref('')
 const dateFilter   = ref(new Date().toISOString().split('T')[0])
 const statusFilter = ref('')
+
+const page     = ref(1)
+const pageSize = ref(20)
+const totalSessions = computed(() => allItems.value.length)
+const totalPages    = computed(() => Math.max(1, Math.ceil(totalSessions.value / pageSize.value)))
 
 const STATUS = { scheduled: t('telemedicine.statusScheduled'), in_progress: t('telemedicine.statusInProgress'), completed: t('telemedicine.statusCompleted'), cancelled: t('telemedicine.statusCancelled'), no_show: t('telemedicine.statusNoShow') }
 
@@ -292,6 +305,16 @@ function formatTime(dt) {
   return new Date(dt).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' })
 }
 
+function applyPage() {
+  const start = (page.value - 1) * pageSize.value
+  items.value = allItems.value.slice(start, start + pageSize.value)
+}
+
+function loadPage(newPage) {
+  page.value = Math.max(1, Math.min(newPage, totalPages.value))
+  applyPage()
+}
+
 async function load() {
   loading.value = true; error.value = ''
   try {
@@ -301,11 +324,13 @@ async function load() {
     const { data } = await http.get('/tele/sessions', { params })
     const rows = asArray(data?.data || data?.consultations || data).map(normalizeTeleSession).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
-    items.value = needle
+    allItems.value = needle
       ? rows.filter((row) => [row.patient_name, row.client_name, row.vet_name, row.platform_name]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(needle)))
       : rows
+    page.value = 1
+    applyPage()
   } catch (e) {
     error.value = e.response?.data?.message || t('telemedicine.loadError')
   } finally { loading.value = false }
@@ -576,6 +601,10 @@ onMounted(() => { load(); loadStats(); loadVets(); loadPlatforms() })
 @keyframes spin { to { transform: rotate(360deg); } }
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
+.pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
+.pagination button:hover:not(:disabled) { background: var(--surface-2); }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 @media (max-width: 600px) {
   .tele-card { flex-wrap: wrap; }
   .form-grid { grid-template-columns: 1fr; }

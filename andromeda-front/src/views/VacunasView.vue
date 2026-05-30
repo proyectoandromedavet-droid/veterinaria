@@ -404,7 +404,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import http from '../api/client'
 import { t } from '../i18n'
 import { logError } from '../utils/errors'
@@ -787,6 +787,13 @@ onMounted(() => {
   loadVaccines()
   loadDew()
   loadDewProducts()
+})
+
+onUnmounted(() => {
+  clearTimeout(timer)
+  clearTimeout(dewTimer)
+  clearTimeout(patientTimer)
+  clearTimeout(dewPatientTimer)
 })
 </script>
 

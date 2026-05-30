@@ -550,9 +550,9 @@ async function load(page = 1) {
       status: statusFilter.value,
       from: dateFrom.value,
       to: dateTo.value,
+      search: search.value, // búsqueda server-side para operar sobre todos los registros
     })
-    const rowsFiltered = filterInvoicesBySearch(rows, search.value)
-    items.value = rowsFiltered
+    items.value = rows
     pagination.value = meta
     computeSummary()
   } catch (e) {
