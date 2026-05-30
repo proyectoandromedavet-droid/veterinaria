@@ -602,6 +602,22 @@ function resetForm() {
 function validate() {
   Object.keys(fe).forEach(k => delete fe[k])
   if (!form.clientId) fe.clientId = 'Requerido'
+  for (const item of form.items) {
+    if ((item.quantity || 0) < 1) {
+      saveError.value = 'La cantidad debe ser mayor a 0'
+      return false
+    }
+    if ((item.unit_price || 0) < 0) {
+      saveError.value = 'El precio unitario no puede ser negativo'
+      return false
+    }
+    const tax = parseFloat(item.tax_pct) || 0
+    const disc = parseFloat(item.discount_pct) || 0
+    if (tax < 0 || tax > 100 || disc < 0 || disc > 100) {
+      saveError.value = 'Los porcentajes deben estar entre 0 y 100'
+      return false
+    }
+  }
   return Object.keys(fe).length === 0
 }
 

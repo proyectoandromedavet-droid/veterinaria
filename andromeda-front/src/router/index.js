@@ -48,8 +48,18 @@ const router = createRouter({
   routes,
 })
 
+const IS_DEV_MODE = import.meta.env.DEV
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
+
+  if (IS_DEV_MODE) {
+    if (to.path === '/login' && auth.isAuthenticated) return '/';
+    // En DEV, no verificamos roles/permisos pero sí autenticación básica
+    if (to.meta?.requiresAuth && !auth.isAuthenticated) return '/login';
+    return true; // Roles y permisos se relajan en DEV
+  }
+
   if (to.meta.requiresAuth && !auth.isAuthenticated) return '/login'
   if (to.path === '/login' && auth.isAuthenticated) return '/'
 })

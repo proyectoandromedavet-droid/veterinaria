@@ -204,7 +204,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import http from '../api/client'
 import { adminUsersApi } from '../api/adminUsers'
@@ -477,6 +477,10 @@ async function handleCreate() {
 }
 
 onMounted(() => { load(); loadStats(); loadVets(); loadPlatforms() })
+onUnmounted(() => {
+  clearTimeout(timer)
+  clearTimeout(patientTimer)
+})
 </script>
 
 <style scoped>

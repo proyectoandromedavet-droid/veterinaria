@@ -510,7 +510,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { t } from '../i18n'
 import {
   cancelPurchaseOrder as cancelPurchaseOrderRequest,
@@ -902,6 +902,9 @@ async function cancelOrder(id) {
 // INIT
 // ---------------------------------------------------------------
 onMounted(load)
+onUnmounted(() => {
+  clearTimeout(timer)
+})
 </script>
 
 <style scoped>

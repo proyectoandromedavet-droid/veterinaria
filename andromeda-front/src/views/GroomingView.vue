@@ -197,7 +197,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import http from '../api/client'
 import { t } from '../i18n'
 import { extractErrorMessage, logError } from '../utils/errors'
@@ -505,6 +505,10 @@ async function handleRecord() {
 }
 
 onMounted(() => { load(); loadGroomers(); loadServiceTypes() })
+onUnmounted(() => {
+  clearTimeout(timer)
+  clearTimeout(patientTimer)
+})
 </script>
 
 <style scoped>
