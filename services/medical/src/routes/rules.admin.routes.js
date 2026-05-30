@@ -35,6 +35,7 @@ router.post('/',
   body('conditions.*.operator').isIn(VALID_OPS),
   body('conditions.*.value').optional().isLength({ max: 500 }),
   body('action').optional().isIn(['block', 'warn', 'alert']),
+  body('priority').optional().isInt({ min: 0, max: 9999 }).toInt(),
   validate,
   async (req, res, next) => {
     try {
@@ -87,6 +88,7 @@ router.put('/:id',
   body('conditions.*.value').optional().isLength({ max: 500 }),
   body('action').optional().isIn(['block', 'warn', 'alert']),
   body('is_active').optional().isBoolean(),
+  body('priority').optional().isInt({ min: 0, max: 9999 }).toInt(),
   validate,
   async (req, res, next) => {
     try {

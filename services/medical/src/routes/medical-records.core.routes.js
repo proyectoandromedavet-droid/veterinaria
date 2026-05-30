@@ -76,19 +76,19 @@ router.get('/:id', async (req, res, next) => {
     const [anamnesis, physExam, diagnoses, treatments, prescriptions] = await Promise.all([
       db.queryOne(`SELECT * FROM anamnesis WHERE medical_record_id = :mid`, { mid: req.params.id }),
       db.queryOne(`SELECT * FROM physical_examinations WHERE medical_record_id = :mid`, { mid: req.params.id }),
-      db.query(`SELECT * FROM diagnoses WHERE medical_record_id = :mid ORDER BY is_primary DESC, created_at`, { mid: req.params.id }),
+      db.query(`SELECT * FROM diagnoses WHERE medical_record_id = :mid ORDER BY is_primary DESC, created_at LIMIT 100`, { mid: req.params.id }),
       db.query(
         `SELECT t.*, m.name AS medication_name, m.unit, m.concentration
          FROM treatments t
          LEFT JOIN medications m ON t.medication_id = m.id
-         WHERE t.medical_record_id = :mid ORDER BY t.created_at`,
+         WHERE t.medical_record_id = :mid ORDER BY t.created_at LIMIT 100`,
         { mid: req.params.id }
       ),
       db.query(
         `SELECT p.*, pi.medication_name, pi.dose, pi.frequency, pi.duration_days
          FROM prescriptions p
          LEFT JOIN prescription_items pi ON pi.prescription_id = p.id
-         WHERE p.medical_record_id = :mid`,
+         WHERE p.medical_record_id = :mid LIMIT 50`,
         { mid: req.params.id }
       ),
     ]);
