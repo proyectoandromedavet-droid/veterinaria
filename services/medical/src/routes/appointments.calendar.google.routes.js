@@ -1,17 +1,69 @@
 'use strict';
 
 const { Router } = require('express');
+const { v4: uuidv4 } = require('uuid');
 const { db, R, calendar, logAppointmentsError } = require('./appointments.common');
+const { getRedisSingleton } = require('../../../../shared/redis');
+const { createLogger } = require('../../../../shared/logger');
 
 const router = Router();
+const log = createLogger('appointments-calendar');
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 router.get('/calendar/connect', async (req, res, next) => {
+  const userId = req.user?.userId;
+  if (!userId) return R.unauthorized(res, 'Unauthorized');
+
+  const nonce = uuidv4();
+
   try {
-    const url = calendar.getAuthUrl(req.user.userId);
+    const redis = await getRedisSingleton('medical-oauth', 'medical-oauth');
+    await redis.setEx(`oauth:nonce:${nonce}`, 600, String(userId));
+  } catch (err) {
+    logAppointmentsError('GET /appointments/calendar/connect redis', err, { userId });
+    return R.error(res, 503, 'Service temporarily unavailable', { message: err.message }, 'SVC_005');
+  }
+
+  try {
+    const url = calendar.getAuthUrl(nonce);
     return R.ok(res, { authUrl: url });
   } catch (e) {
-    logAppointmentsError('GET /appointments/calendar/connect', e, { userId: req.user?.userId });
+    logAppointmentsError('GET /appointments/calendar/connect', e, { userId });
     next(e);
+  }
+});
+
+router.get('/calendar/callback', async (req, res) => {
+  const { code, state: nonce, error: oauthError } = req.query;
+
+  if (oauthError) {
+    return res.redirect(`${FRONTEND_URL}/settings/integrations?error=${encodeURIComponent(oauthError)}`);
+  }
+  if (!code || !nonce) {
+    return res.redirect(`${FRONTEND_URL}/settings/integrations?error=invalid_request`);
+  }
+
+  let userId;
+  try {
+    const redis = await getRedisSingleton('medical-oauth', 'medical-oauth');
+    userId = await redis.get(`oauth:nonce:${nonce}`);
+    if (userId) await redis.del(`oauth:nonce:${nonce}`);
+  } catch (err) {
+    log.error('calendar.callback.redis_failed', { err: err.message });
+    return res.redirect(`${FRONTEND_URL}/settings/integrations?error=internal_error`);
+  }
+
+  if (!userId) {
+    return res.redirect(`${FRONTEND_URL}/settings/integrations?error=invalid_state`);
+  }
+
+  try {
+    await calendar.exchangeCode(userId, code);
+    return res.redirect(`${FRONTEND_URL}/settings/integrations?calendar=connected`);
+  } catch (err) {
+    log.error('calendar.callback.exchange_failed', { err: err.message, userId });
+    return res.redirect(`${FRONTEND_URL}/settings/integrations?error=exchange_failed`);
   }
 });
 
