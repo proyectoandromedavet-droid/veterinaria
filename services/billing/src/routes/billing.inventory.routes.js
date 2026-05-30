@@ -278,7 +278,7 @@ router.patch('/alerts/:id/resolve', async (req, res, next) => {
     const [resolveResult] = await db.query(
       `UPDATE stock_alerts
        SET resolved=1, resolved_at=NOW()
-       WHERE id=:id AND branch_id=:bid AND ${notDeleted('stock_alerts')}`,
+       WHERE id=:id AND branch_id=:bid AND resolved = 0 AND ${notDeleted('stock_alerts')}`,
       { id: req.params.id, bid: req.user.branchId }
     );
     if (!resolveResult.affectedRows) return R.notFound(res, 'Alerta no encontrada');
