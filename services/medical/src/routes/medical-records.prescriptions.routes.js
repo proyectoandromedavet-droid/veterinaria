@@ -47,6 +47,11 @@ const postPrescriptions = [
   validate,
   async (req, res, next) => {
     try {
+      const userRoles = req.user.roles || [];
+      if (!userRoles.includes('vet') && !userRoles.includes('admin') && !userRoles.includes('superadmin') && !userRoles.includes('org_admin')) {
+        return R.forbidden(res, 'Solo veterinarios pueden crear prescripciones');
+      }
+
       const { items, notes, refills = 0 } = req.body;
       const schema = await getPrescriptionSchema();
       const prescriptionCols = schema.prescriptions || new Set();

@@ -24,6 +24,19 @@ router.post('/',
         branchId = vet?.branch_id || null;
       }
 
+      // Verificar solapamiento de horarios ANTES del INSERT
+      const overlap = await db.queryOne(
+        `SELECT id FROM appointments
+         WHERE vet_id = :vid
+           AND status NOT IN ('cancelled', 'no_show')
+           AND scheduled_date < DATE_ADD(:sched, INTERVAL :dur MINUTE)
+           AND DATE_ADD(scheduled_date, INTERVAL COALESCE(duration_minutes, 30) MINUTE) > :sched
+           AND branch_id = :bid
+         LIMIT 1 FOR UPDATE`,
+        { vid: vetId, sched: scheduledDate, dur: durationMinutes || 30, bid: branchId }
+      );
+      if (overlap) return R.conflict(res, 'El veterinario ya tiene un turno en ese horario');
+
       const [r] = await db.query(
         `INSERT INTO appointments
            (branch_id, patient_id, vet_id, scheduled_date, duration_minutes,

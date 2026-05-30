@@ -164,12 +164,27 @@ async function evaluate(ruleType, orgId, branchId, context) {
  * Invalida el cache de reglas de un org (llamar al crear/modificar reglas).
  */
 async function invalidateCache(orgId) {
+  let rc;
   try {
-    const rc = await cache.getClient();
-    // Redis no tiene glob delete fácil, usar scan o simplemente dejar expirar
-    // Alternativa: guardar una versión del cache y cambiarla
-    logger.info('[rulesEngine] Cache invalidation requested', { orgId });
-  } catch { /* ignorar */ }
+    rc = await cache.getClient();
+  } catch {
+    logger.warn('[rulesEngine] invalidateCache: Redis not available', { orgId });
+    return;
+  }
+  try {
+    const pattern = `rules:${orgId}:*`;
+    let cursor = 0;
+    do {
+      const reply = await rc.scan(cursor, { MATCH: pattern, COUNT: 100 });
+      cursor = reply.cursor;
+      if (reply.keys && reply.keys.length > 0) {
+        await rc.del(reply.keys);
+      }
+    } while (cursor !== 0);
+    logger.info('[rulesEngine] invalidateCache: cleared', { orgId });
+  } catch (err) {
+    logger.error('[rulesEngine] invalidateCache: failed', { err: err.message, orgId });
+  }
 }
 
 module.exports = { evaluate, getRules, invalidateCache };

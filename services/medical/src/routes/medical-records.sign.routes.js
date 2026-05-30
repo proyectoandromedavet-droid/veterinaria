@@ -6,6 +6,8 @@ const router = Router();
 
 router.post('/:id/sign', async (req, res, next) => {
   try {
+    const isAdmin = req.user.roles?.some(r => ['admin', 'org_admin', 'superadmin'].includes(r));
+
     const [result] = await db.query(
       `UPDATE medical_records mr
        JOIN patients p ON mr.patient_id = p.id
@@ -14,11 +16,13 @@ router.post('/:id/sign', async (req, res, next) => {
            mr.signed_by = :uid,
            mr.updated_at = NOW()
        WHERE mr.id = :id
-         AND p.organization_id = :orgId`,
+         AND p.organization_id = :orgId
+         AND (mr.vet_id = :uid OR :isAdmin = 1)`,
       {
         id: req.params.id,
         uid: req.user.userId,
         orgId: req.user.orgId,
+        isAdmin: isAdmin ? 1 : 0,
       }
     );
 
