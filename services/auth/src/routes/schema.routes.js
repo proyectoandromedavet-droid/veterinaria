@@ -50,8 +50,12 @@ router.get('/:table', async (req, res, next) => {
   }
 });
 
-// GET /schema/:table/typescript
+// GET /schema/:table/typescript — solo superadmin (generación de código expone modelo de datos)
 router.get('/:table/typescript', async (req, res, next) => {
+  const roles = (req.headers['x-user-roles'] || '').split(',').map(r => r.trim());
+  if (!roles.includes('superadmin')) {
+    return R.error(res, 403, 'Solo superadmins pueden acceder al schema de código', null, 'RBAC_002');
+  }
   try {
     const ts = await generateTypeScript(req.params.table);
     res.type('text/plain').send(ts);
@@ -61,8 +65,12 @@ router.get('/:table/typescript', async (req, res, next) => {
   }
 });
 
-// GET /schema/:table/zod
+// GET /schema/:table/zod — solo superadmin (generación de código expone modelo de datos)
 router.get('/:table/zod', async (req, res, next) => {
+  const roles = (req.headers['x-user-roles'] || '').split(',').map(r => r.trim());
+  if (!roles.includes('superadmin')) {
+    return R.error(res, 403, 'Solo superadmins pueden acceder al schema de código', null, 'RBAC_002');
+  }
   try {
     const zod = await generateZodSchema(req.params.table);
     res.type('text/plain').send(zod);
