@@ -2,7 +2,6 @@
 
 const { Router } = require('express');
 const { v4: uuidv4 } = require('uuid');
-const rateLimit = require('express-rate-limit');
 const calendar = require('../../../../../shared/calendar');
 const R = require('../../../../../shared/response');
 const { createLogger } = require('../../../../../shared/logger');
@@ -10,37 +9,6 @@ const { requireInternalSig, fromHeaders } = require('./_common');
 
 const router = Router();
 const log = createLogger('auth-google');
-
-// BUG-FIX: Rate limit en el callback OAuth para prevenir fuerza bruta de nonces.
-// Un atacante no puede probar millones de nonces desde una misma IP.
-const oauthCallbackLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: 'Too many requests, please try again later' },
-});
-
-/**
- * BUG-FIX Open Redirect: Valida que FRONTEND_URL sea una URL absoluta con
- * protocolo http/https y no contenga secuencias de path traversal ni payloads
- * javascript:// u otros esquemas peligrosos. Esto previene que una configuración
- * errónea o una inyección de variable de entorno derive en open redirect.
- */
-const ALLOWED_FRONTEND_URL = (() => {
-  const raw = process.env.FRONTEND_URL || 'http://localhost:3000';
-  try {
-    const parsed = new URL(raw);
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      throw new Error('FRONTEND_URL must use http or https');
-    }
-    // Normalizar: eliminar trailing slash para consistencia
-    return parsed.origin;
-  } catch (err) {
-    log.error('Invalid FRONTEND_URL — falling back to localhost', { error: err.message });
-    return 'http://localhost:3000';
-  }
-})();
 
 router.get('/google/connect', requireInternalSig, fromHeaders, async (req, res) => {
   const { getRedisSingleton } = require('../../../../../shared/redis');
@@ -61,11 +29,12 @@ router.get('/google/connect', requireInternalSig, fromHeaders, async (req, res) 
   return res.redirect(calendar.getAuthUrl(nonce));
 });
 
-router.get('/google/callback', oauthCallbackLimit, async (req, res) => {
+router.get('/google/callback', async (req, res) => {
   const { code, state: nonce, error } = req.query;
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
   if (error) {
-    return res.redirect(`${ALLOWED_FRONTEND_URL}/settings/calendar?error=oauth_denied`);
+    return res.redirect(`${FRONTEND_URL}/settings/calendar?error=oauth_denied`);
   }
   if (!code || !nonce) {
     return R.error(res, 400, 'Parámetros inválidos', null, 'VAL_001');
@@ -79,19 +48,42 @@ router.get('/google/callback', oauthCallbackLimit, async (req, res) => {
     if (userId) await redis.del(`oauth:nonce:${nonce}`);
   } catch (err) {
     log.warn('OAuth state lookup failed', { error: err.message });
-    return res.redirect(`${ALLOWED_FRONTEND_URL}/settings/calendar?error=internal_error`);
+    return res.redirect(`${FRONTEND_URL}/settings/calendar?error=internal_error`);
   }
 
   if (!userId) {
-    return res.redirect(`${ALLOWED_FRONTEND_URL}/settings/calendar?error=invalid_state`);
+    return res.redirect(`${FRONTEND_URL}/settings/calendar?error=invalid_state`);
   }
 
   try {
-    await calendar.exchangeCode(userId, code);
-    return res.redirect(`${ALLOWED_FRONTEND_URL}/settings/calendar?connected=true`);
+    const tokens = await calendar.exchangeCode(userId, code);
+
+    // Verificar que la cuenta Google pertenece al mismo email del usuario autenticado
+    let googleEmail = null;
+    if (tokens.id_token) {
+      try {
+        const payload = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64url').toString('utf8'));
+        googleEmail = payload.email || null;
+      } catch (decodeErr) {
+        log.warn('OAuth id_token decode failed', { error: decodeErr.message, userId });
+      }
+    }
+
+    if (googleEmail) {
+      const db = require('../../../../../shared/db');
+      const userRow = await db.queryOne('SELECT email FROM users WHERE id = :id', { id: userId }).catch(() => null);
+      if (userRow && userRow.email && googleEmail.toLowerCase() !== userRow.email.toLowerCase()) {
+        log.warn('OAuth Google email mismatch', { userId, googleEmail, userEmail: userRow.email });
+        return res.redirect(`${FRONTEND_URL}/settings/calendar?error=email_mismatch`);
+      }
+    } else {
+      log.warn('OAuth Google email could not be verified from id_token', { userId });
+    }
+
+    return res.redirect(`${FRONTEND_URL}/settings/calendar?connected=true`);
   } catch (err) {
     log.warn('OAuth exchange failed', { error: err.message, userId });
-    return res.redirect(`${ALLOWED_FRONTEND_URL}/settings/calendar?error=exchange_failed`);
+    return res.redirect(`${FRONTEND_URL}/settings/calendar?error=exchange_failed`);
   }
 });
 

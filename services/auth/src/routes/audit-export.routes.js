@@ -41,9 +41,7 @@ async function getSecurityAlertsColumns() {
   return securityAlertsSchemaPromise;
 }
 
-// /export and /alerts/scan require internal signature (internal-only operations)
-// /alerts is accessible to admin users through the gateway without internal sig
-router.get('/export', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
+router.get('/export', requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const orgId = req.user.orgId;
     if (!orgId) return R.unauthorized(res, 'Missing org context');
@@ -86,7 +84,7 @@ router.get('/export', fromHeaders, requireOrgContext, requireAdminRole, async (r
   } catch (e) { next(e); }
 });
 
-router.get('/alerts', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
+router.get('/alerts', requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const cols = await getSecurityAlertsColumns();
     const orgColumn = cols.has('organization_id') ? 'organization_id' : (cols.has('org_id') ? 'org_id' : null);
@@ -109,7 +107,7 @@ router.get('/alerts', fromHeaders, requireOrgContext, requireAdminRole, async (r
   } catch (e) { next(e); }
 });
 
-router.post('/alerts/scan', requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
+router.post('/alerts/scan', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const generated = await scanSuspiciousAccessPatterns(parseInt(req.body?.windowMinutes || '1', 10));
     return R.ok(res, { generated });

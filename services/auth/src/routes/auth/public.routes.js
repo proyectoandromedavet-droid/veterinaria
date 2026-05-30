@@ -29,7 +29,14 @@ router.post('/login',
   ctrl.login
 );
 
-router.post('/refresh', ctrl.refresh);
+const refreshLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many refresh attempts' },
+});
+router.post('/refresh', refreshLimiter, ctrl.refresh);
 router.get('/sso/:provider/connect', ctrl.ssoConnect);
 router.get('/sso/:provider/callback', ctrl.ssoCallback);
 
