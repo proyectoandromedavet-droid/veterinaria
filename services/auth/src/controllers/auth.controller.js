@@ -402,7 +402,8 @@ async function login(req, res) {
 
   // ── 2FA gate — if enabled, issue a short-lived pending token ─────────────
   if (user.two_factor_enabled) {
-    const pendingToken = jwt.signAccess({ scope: '2fa_pending', userId: user.id });
+    const pendingJti = uuidv4();
+    const pendingToken = jwt.signAccess({ scope: '2fa_pending', userId: user.id, jti: pendingJti });
     return R.ok(res, { requiresTwoFactor: true, pendingToken });
   }
 

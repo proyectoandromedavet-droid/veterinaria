@@ -56,7 +56,30 @@ router.get('/google/callback', async (req, res) => {
   }
 
   try {
-    await calendar.exchangeCode(userId, code);
+    const tokens = await calendar.exchangeCode(userId, code);
+
+    // Verificar que la cuenta Google pertenece al mismo email del usuario autenticado
+    let googleEmail = null;
+    if (tokens.id_token) {
+      try {
+        const payload = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64url').toString('utf8'));
+        googleEmail = payload.email || null;
+      } catch (decodeErr) {
+        log.warn('OAuth id_token decode failed', { error: decodeErr.message, userId });
+      }
+    }
+
+    if (googleEmail) {
+      const db = require('../../../../../shared/db');
+      const userRow = await db.queryOne('SELECT email FROM users WHERE id = :id', { id: userId }).catch(() => null);
+      if (userRow && userRow.email && googleEmail.toLowerCase() !== userRow.email.toLowerCase()) {
+        log.warn('OAuth Google email mismatch', { userId, googleEmail, userEmail: userRow.email });
+        return res.redirect(`${FRONTEND_URL}/settings/calendar?error=email_mismatch`);
+      }
+    } else {
+      log.warn('OAuth Google email could not be verified from id_token', { userId });
+    }
+
     return res.redirect(`${FRONTEND_URL}/settings/calendar?connected=true`);
   } catch (err) {
     log.warn('OAuth exchange failed', { error: err.message, userId });

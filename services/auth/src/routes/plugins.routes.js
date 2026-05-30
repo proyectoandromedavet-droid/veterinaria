@@ -51,6 +51,10 @@ router.post('/:id/enable', param('id').isString(), async (req, res, next) => {
     const userId   = req.headers['x-user-id'];
     const pluginId = req.params.id;
 
+    const allPlugins = registry.listPlugins();
+    const validIds = new Set(allPlugins.map(p => p.id));
+    if (!validIds.has(pluginId)) return R.notFound(res, 'Plugin no encontrado en el registry');
+
     await db.query(
       `INSERT INTO org_plugins (org_id, plugin_id, is_active, enabled_by)
        VALUES (:orgId, :pluginId, TRUE, :userId)
@@ -68,6 +72,10 @@ router.post('/:id/disable', param('id').isString(), async (req, res, next) => {
   try {
     const orgId    = req.headers['x-org-id'];
     const pluginId = req.params.id;
+
+    const allPlugins = registry.listPlugins();
+    const validIds = new Set(allPlugins.map(p => p.id));
+    if (!validIds.has(pluginId)) return R.notFound(res, 'Plugin no encontrado en el registry');
 
     await db.query(
       'UPDATE org_plugins SET is_active = FALSE, updated_at = NOW() WHERE org_id = :orgId AND plugin_id = :pluginId',

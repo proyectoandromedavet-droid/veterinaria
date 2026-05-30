@@ -16,7 +16,7 @@ const TABLES = [
   { key: 'appointment_types',   label: 'Tipos de Turno',          filter: 'none',   description: 'Categorías de consultas disponibles' },
   { key: 'vaccinations',        label: 'Vacunaciones',            filter: 'branch', description: 'Historial de vacunas aplicadas' },
   { key: 'vaccines',            label: 'Vacunas (catálogo)',       filter: 'none',   description: 'Vacunas disponibles en el sistema' },
-  { key: 'medical_records',     label: 'Fichas Médicas',          filter: 'none',   description: 'Registro de cada consulta veterinaria' },
+  { key: 'medical_records',     label: 'Fichas Médicas',          filter: 'branch', description: 'Registro de cada consulta veterinaria' },
   { key: 'species',             label: 'Especies',                filter: 'none',   description: 'Catálogo de especies animales' },
   { key: 'breeds',              label: 'Razas',                   filter: 'none',   description: 'Razas por especie' },
   { key: 'inventory_items',     label: 'Inventario',              filter: 'branch', description: 'Medicamentos e insumos de la clínica' },

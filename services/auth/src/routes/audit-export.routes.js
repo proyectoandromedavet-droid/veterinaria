@@ -24,6 +24,7 @@ const db = require('../../../../shared/db');
 const R = require('../../../../shared/response');
 const { fromHeaders, requireOrgContext } = require('../../../../shared/requestContext');
 const { requireAdminRole } = require('../../../../shared/adminAuth');
+const { requireInternalSig } = require('../../../../shared/internalAuth');
 
 const router = Router();
 let securityAlertsSchemaPromise;
@@ -40,7 +41,7 @@ async function getSecurityAlertsColumns() {
   return securityAlertsSchemaPromise;
 }
 
-router.get('/export', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
+router.get('/export', requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const orgId = req.user.orgId;
     if (!orgId) return R.unauthorized(res, 'Missing org context');
@@ -83,7 +84,7 @@ router.get('/export', fromHeaders, requireOrgContext, requireAdminRole, async (r
   } catch (e) { next(e); }
 });
 
-router.get('/alerts', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
+router.get('/alerts', requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const cols = await getSecurityAlertsColumns();
     const orgColumn = cols.has('organization_id') ? 'organization_id' : (cols.has('org_id') ? 'org_id' : null);
