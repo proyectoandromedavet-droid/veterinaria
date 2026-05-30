@@ -9,6 +9,10 @@ const router = Router();
 router.get('/', async (req, res, next) => {
   try {
     const { status, supplierId, page = 1, limit = 20 } = req.query;
+    const VALID_PO_STATUSES = new Set(['draft', 'sent', 'partial', 'received', 'cancelled']);
+    if (status && !VALID_PO_STATUSES.has(status)) {
+      return R.badRequest(res, 'Estado de orden de compra inválido');
+    }
     const offset = (page - 1) * limit;
     const conds = ['po.branch_id = :bid'];
     const p = { bid: req.user.branchId, limit: parseInt(limit), offset: parseInt(offset) };
