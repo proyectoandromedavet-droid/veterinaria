@@ -75,7 +75,11 @@ export function sexLabel(sex) {
 }
 
 export function formatPatientAge(birthDate) {
-  const diff = Date.now() - new Date(birthDate).getTime()
+  if (!birthDate) return '—'
+  const date = new Date(birthDate)
+  if (isNaN(date.getTime())) return '—'
+  const diff = Date.now() - date.getTime()
+  if (diff < 0) return 'Fecha inválida'
   const years = Math.floor(diff / (1000 * 60 * 60 * 24 * 365))
   const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30))
   if (years >= 1) return `${years} año${years !== 1 ? 's' : ''}`

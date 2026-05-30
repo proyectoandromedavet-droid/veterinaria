@@ -3,7 +3,7 @@
 
     <div class="page-header">
       <div class="page-header__left">
-        <span class="page-emoji" aria-hidden="true">&#x1F43E;</span>
+        <span class="page-emoji" aria-hidden="true">💉</span>
         <div>
           <h2 class="page-title">{{ t('vaccines.title') }}</h2>
           <p class="page-sub">{{ t('vaccines.subtitle') }}</p>
@@ -31,28 +31,28 @@
       <!-- Stats rápidos -->
       <div class="stats-row">
         <div class="stat-card" style="--c:#D6F3EC;--ct:#1A9E7F">
-          <span class="stat-card__icon" aria-hidden="true">&#x2713;</span>
+          <span class="stat-card__icon" aria-hidden="true">✅</span>
           <div>
             <strong>{{ stats.upToDate }}</strong>
             <span>{{ t('vaccines.upToDate') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#FFF3CC;--ct:#8A6200">
-          <span class="stat-card__icon" aria-hidden="true">&#x1F43E;</span>
+          <span class="stat-card__icon" aria-hidden="true">⚠️</span>
           <div>
             <strong>{{ stats.dueSoon }}</strong>
             <span>{{ t('vaccines.dueSoon') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#FDEAEA;--ct:#c0392b">
-          <span class="stat-card__icon" aria-hidden="true">&#x1F43E;</span>
+          <span class="stat-card__icon" aria-hidden="true">🔴</span>
           <div>
             <strong>{{ stats.overdue }}</strong>
             <span>{{ t('vaccines.overdue') }}</span>
           </div>
         </div>
         <div class="stat-card" style="--c:#D6EEFF;--ct:#1A5FAA">
-          <span class="stat-card__icon" aria-hidden="true">&#x1F43E;</span>
+          <span class="stat-card__icon" aria-hidden="true">📋</span>
           <div>
             <strong>{{ stats.total }}</strong>
             <span>{{ t('vaccines.totalRecords') }}</span>
@@ -73,10 +73,10 @@
         </select>
       </div>
 
-      <div v-if="loading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingVaccines') }}</div>
-      <div v-else-if="error" class="alert alert--error">{{ error }}</div>
+      <div v-if="loading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('vaccines.loadingVaccines') }}</div>
+      <div v-else-if="error" class="alert alert--error" role="alert" aria-live="assertive">{{ error }}</div>
       <div v-else-if="items.length === 0" class="empty-state">
-        <span class="empty-state__emoji" aria-hidden="true">&#x1F43E;</span>
+        <span class="empty-state__emoji" aria-hidden="true">🐾</span>
         <p>{{ t('vaccines.emptyVaccines') }}</p>
       </div>
 
@@ -148,10 +148,10 @@
         <input id="dew-search" name="dew-search" v-model.trim="dewSearch" type="search" :placeholder="t('vaccines.searchDewormingPlaceholder')" class="filter-input filter-input--grow" @input="debouncedLoadDew()" />
       </div>
 
-      <div v-if="dewLoading" class="loading-state" role="status"><span class="spin spin--dark" /> {{ t('vaccines.loadingDeworming') }}</div>
-      <div v-else-if="dewError" class="alert alert--error">{{ dewError }}</div>
+      <div v-if="dewLoading" class="loading-state" role="status" aria-live="polite"><span class="spin spin--dark" /> {{ t('vaccines.loadingDeworming') }}</div>
+      <div v-else-if="dewError" class="alert alert--error" role="alert" aria-live="assertive">{{ dewError }}</div>
       <div v-else-if="dewItems.length === 0" class="empty-state">
-        <span class="empty-state__emoji" aria-hidden="true">&#x1F43E;</span>
+        <span class="empty-state__emoji" aria-hidden="true">🐛</span>
         <p>{{ t('vaccines.emptyDeworming') }}</p>
       </div>
 
@@ -208,7 +208,7 @@
         </table>
       </div>
 
-      <!-- Paginacion deworming -->
+      <!-- PaginaciÃ³n deworming -->
       <div v-if="dewPagination.totalPages > 1" class="pagination">
         <button type="button" :disabled="dewPagination.page <= 1" @click="loadDew(dewPagination.page - 1)">{{ t('common.previous') }}</button>
         <span>{{ dewPagination.page }} / {{ dewPagination.totalPages }}</span>
@@ -238,7 +238,7 @@
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
                   </div>
-                  <div v-if="form.patientId" class="selected-patient">&#x2713; {{ selectedPatientLabel }}</div>
+                  <div v-if="form.patientId" class="selected-patient">✅ {{ selectedPatientLabel }}</div>
                   <span v-if="fe.patientId" class="field-error">{{ fe.patientId }}</span>
                 </div>
                 <div class="field field--full">
@@ -329,7 +329,7 @@
                       <span class="autocomplete__owner">— {{ pt.primary_owner || '' }}</span>
                     </button>
                   </div>
-                  <div v-if="dewForm.patientId" class="selected-patient">&#x2713; {{ dewSelectedPatientLabel }}</div>
+                  <div v-if="dewForm.patientId" class="selected-patient">✅ {{ dewSelectedPatientLabel }}</div>
                   <span v-if="dewFe.patientId" class="field-error">{{ dewFe.patientId }}</span>
                 </div>
 
@@ -404,10 +404,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { patientsApi, vaccinationsApi } from '../api'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import http from '../api/client'
 import { t } from '../i18n'
-import { extractDetailedErrorMessage, logError } from '../utils/errors'
+import { logError } from '../utils/errors'
 
 function asArray(value) {
   if (Array.isArray(value)) return value
@@ -467,10 +467,10 @@ function normalizeDewRecord(row) {
   }
 }
 
-// -----------------------------------------------------------------------------
+// â”€â”€ Tab principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const mainTab = ref('vacunas')
 
-// -----------------------------------------------------------------------------
+// â”€â”€ Helpers compartidos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function petEmoji(s) {
   if (!s) return '\u{1F43E}'
   const sl = s.toLowerCase()
@@ -509,7 +509,7 @@ function routeLabel(route) {
   return { oral: 'Oral', topical: 'Tópica', injectable: 'Inyectable', other: 'Otra' }[route] || route || '—'
 }
 
-// -----------------------------------------------------------------------------
+// â”€â”€ Modal compartido â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const showModal = ref(false)
 const saving    = ref(false)
 
@@ -529,9 +529,9 @@ function openModal()  {
 }
 function closeModal() { showModal.value = false; resetForm(); resetDewForm() }
 
-// -----------------------------------------------------------------------------
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  VACUNAS
-// -----------------------------------------------------------------------------
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const items       = ref([])
 const loading     = ref(false)
 const error       = ref('')
@@ -543,7 +543,7 @@ const vaccineList = ref([])
 
 async function loadVaccines() {
   try {
-    const { data } = await vaccinationsApi.vaccines()
+    const { data } = await http.get('/vaccinations/vaccines')
     vaccineList.value = asArray(data?.data || data?.vaccines || data).map(normalizeVaccine).filter(Boolean)
   } catch (error) { logError('vacunas.loadVaccinesCatalog', error); vaccineList.value = [] }
 }
@@ -577,7 +577,7 @@ async function searchPatients() {
   if (patientSearch.value.length < 2) { patientResults.value = []; return }
   patientTimer = setTimeout(async () => {
     try {
-      const { data } = await patientsApi.list({ search: patientSearch.value, limit: 8 })
+      const { data } = await http.get('/patients', { params: { search: patientSearch.value, limit: 8 } })
       patientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch (error) { logError('vacunas.searchPatients', error, { search: patientSearch.value }); patientResults.value = [] }
   }, 300)
@@ -593,7 +593,7 @@ async function load(page = 1) {
   loading.value = true; error.value = ''
   try {
     const pageSize = 20
-    const { data } = await vaccinationsApi.list()
+    const { data } = await http.get('/vaccinations')
     let rows = asArray(data?.data || data?.vaccinations || data).map(normalizeVaccine).filter(Boolean)
     const needle = search.value.trim().toLowerCase()
     if (needle) {
@@ -613,15 +613,14 @@ async function load(page = 1) {
     const safePage = Math.min(page, totalPages)
     items.value = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
     pagination.value = { page: safePage, totalPages }
-    computeStats()
+    computeStats(rows)
   } catch (e) {
-    logError('vacunas.loadVaccines', e)
-    error.value = extractDetailedErrorMessage(e, t('vaccines.loadVaccinesError'), { context: 'Carga de vacunas' })
+    error.value = e.response?.data?.message || t('vaccines.loadVaccinesError')
   } finally { loading.value = false }
 }
 
-function computeStats() {
-  const all = items.value
+function computeStats(allRecords) {
+  const all = allRecords || items.value
   stats.value.total    = all.length
   stats.value.overdue  = all.filter(v => vacStatus(v) === 'badge--red').length
   stats.value.dueSoon  = all.filter(v => vacStatus(v) === 'badge--yellow').length
@@ -656,8 +655,8 @@ async function handleCreate() {
   saving.value = true; saveError.value = ''
   try {
     const payload = {
-      patientId:       parseInt(form.patientId, 10),
-      vaccineId:       parseInt(form.vaccineId, 10),
+      patientId:       parseInt(form.patientId),
+      vaccineId:       parseInt(form.vaccineId),
       vaccinationDate: form.vaccinationDate,
     }
     if (form.lotNumber)   payload.batchNumber = form.lotNumber
@@ -666,18 +665,18 @@ async function handleCreate() {
     if (form.expiryDate)  payload.expiryDate = form.expiryDate
     if (form.route)       payload.route = form.route
     if (form.administrationSite) payload.administrationSite = form.administrationSite
-    if (form.medicalRecordId) payload.medicalRecordId = parseInt(form.medicalRecordId, 10)
+    if (form.medicalRecordId) payload.medicalRecordId = parseInt(form.medicalRecordId)
     if (form.notes)       payload.notes       = form.notes
-    await vaccinationsApi.create(payload)
+    await http.post('/vaccinations', payload)
     closeModal(); await load()
   } catch (e) {
-    saveError.value = extractDetailedErrorMessage(e, t('vaccines.createVaccinationError'), { context: 'Registro de vacuna' })
+    saveError.value = e.response?.data?.message || t('vaccines.createVaccinationError')
   } finally { saving.value = false }
 }
 
-// -----------------------------------------------------------------------------
-//  DESPARASITACION
-// -----------------------------------------------------------------------------
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  DESPARASITACIÃ“N
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const dewItems      = ref([])
 const dewLoading    = ref(false)
 const dewError      = ref('')
@@ -687,7 +686,7 @@ const dewProductList = ref([])
 
 async function loadDewProducts() {
   try {
-    const { data } = await vaccinationsApi.deworming.products()
+    const { data } = await http.get('/vaccinations/deworming/products')
     dewProductList.value = asArray(data?.data || data?.products || data).map(normalizeDewProduct).filter(Boolean)
   } catch (error) { logError('vacunas.loadDewormingProducts', error); dewProductList.value = [] }
 }
@@ -696,7 +695,7 @@ async function loadDew(page = 1) {
   dewLoading.value = true; dewError.value = ''
   try {
     const pageSize = 20
-    const { data } = await vaccinationsApi.deworming.list()
+    const { data } = await http.get('/vaccinations/deworming')
     const rows = asArray(data?.data || data?.deworming || data).map(normalizeDewRecord).filter(Boolean)
     const needle = dewSearch.value.trim().toLowerCase()
     const filtered = needle
@@ -709,8 +708,7 @@ async function loadDew(page = 1) {
     dewItems.value = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
     dewPagination.value = { page: safePage, totalPages }
   } catch (e) {
-    logError('vacunas.loadDeworming', e)
-    dewError.value = extractDetailedErrorMessage(e, t('vaccines.loadDewormingError'), { context: 'Carga de desparasitaciones' })
+    dewError.value = e.response?.data?.message || t('vaccines.loadDewormingError')
   } finally { dewLoading.value = false }
 }
 
@@ -730,7 +728,7 @@ async function searchDewPatients() {
   if (dewPatientSearch.value.length < 2) { dewPatientResults.value = []; return }
   dewPatientTimer = setTimeout(async () => {
     try {
-      const { data } = await patientsApi.list({ search: dewPatientSearch.value, limit: 8 })
+      const { data } = await http.get('/patients', { params: { search: dewPatientSearch.value, limit: 8 } })
       dewPatientResults.value = asArray(data?.data || data?.patients || data).map(normalizePatient).filter(Boolean)
     } catch (error) { logError('vacunas.searchDewormingPatients', error, { search: dewPatientSearch.value }); dewPatientResults.value = [] }
   }, 300)
@@ -767,8 +765,8 @@ async function handleCreateDew() {
   saving.value = true; dewSaveError.value = ''
   try {
     const payload = {
-      patientId:    parseInt(dewForm.patientId, 10),
-      productId:    parseInt(dewForm.productId, 10),
+      patientId:    parseInt(dewForm.patientId),
+      productId:    parseInt(dewForm.productId),
       dewormingDate: dewForm.dewormingDate,
     }
     if (dewForm.weightAtTreatment) payload.weightAtTreatment = parseFloat(dewForm.weightAtTreatment)
@@ -776,19 +774,24 @@ async function handleCreateDew() {
     if (dewForm.route)             payload.route             = dewForm.route
     if (dewForm.nextDueDate)       payload.nextDueDate       = dewForm.nextDueDate
     if (dewForm.notes)             payload.notes             = dewForm.notes
-    await vaccinationsApi.deworming.create(payload)
+    await http.post('/vaccinations/deworming', payload)
     closeModal(); await loadDew()
   } catch (e) {
-    dewSaveError.value = extractDetailedErrorMessage(e, t('vaccines.createDewormingError'), { context: 'Registro de desparasitacion' })
+    dewSaveError.value = e.response?.data?.message || t('vaccines.createDewormingError')
   } finally { saving.value = false }
 }
 
-// -----------------------------------------------------------------------------
+// â”€â”€ InicializaciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 onMounted(() => {
   load()
   loadVaccines()
   loadDew()
   loadDewProducts()
+})
+
+onUnmounted(() => {
+  clearTimeout(timer)
+  clearTimeout(dewTimer)
 })
 </script>
 
@@ -840,7 +843,7 @@ onMounted(() => {
 .badge--red     { background: #FDEAEA; color: #c0392b; }
 .badge--neutral { background: var(--surface-2); color: var(--text-3); }
 
-/* Paginacion */
+/* PaginaciÃ³n */
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 0.85rem; color: var(--text-2); }
 .pagination button { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 0.82rem; color: var(--text-2); }
 .pagination button:hover:not(:disabled) { background: var(--surface-2); }

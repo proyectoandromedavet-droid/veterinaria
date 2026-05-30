@@ -292,7 +292,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import {
   createOwnerAndPatient,
@@ -475,6 +475,10 @@ async function handleSave() {
 onMounted(() => {
   loadSpecies()
   load()
+})
+
+onUnmounted(() => {
+  clearTimeout(timer)
 })
 
 function boolLabel(value) {
