@@ -18,18 +18,60 @@ const {
 } = require('../../../shared/notificationLogSchema');
 const { createLogger } = require('../../../shared/logger');
 const rateLimit = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
+const { getRedisSingleton } = require('../../../shared/redis');
 const { body: vBody, validationResult: vResult } = require('express-validator');
 
 const log = createLogger('portal');
 const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?])/;
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: { message: 'Demasiados intentos. Intente de nuevo en 15 minutos.' } },
-});
+/**
+ * authLimiter — rate limit para rutas de autenticación del portal.
+ * Usa RedisStore para funcionar correctamente en entornos multi-instancia.
+ * Fallback a MemoryStore si Redis no está disponible.
+ */
+let _authLimiterInstance = null;
+let _authLimiterBuilding = false;
+const _authLimiterQueue = [];
+
+async function _buildAuthLimiter() {
+  let store;
+  try {
+    const client = await getRedisSingleton('portal-rate-limit', 'portal-rate-limit');
+    if (client.isReady) {
+      store = new RedisStore({
+        sendCommand: (...args) => client.sendCommand(args),
+        prefix: 'rl:portal:auth:',
+      });
+    }
+  } catch (err) {
+    log.warn('Portal rate limiter RedisStore unavailable - using MemoryStore fallback', { err: err.message });
+  }
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    store,
+    message: { success: false, error: { message: 'Demasiados intentos. Intente de nuevo en 15 minutos.' } },
+  });
+}
+
+const authLimiter = async function (req, res, next) {
+  if (_authLimiterInstance) return _authLimiterInstance(req, res, next);
+  if (!_authLimiterBuilding) {
+    _authLimiterBuilding = true;
+    _authLimiterInstance = await _buildAuthLimiter().catch((err) => {
+      log.warn('Portal auth limiter build failed - fallback to MemoryStore', { err: err.message });
+      return rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+    });
+    _authLimiterQueue.forEach((fn) => fn());
+    _authLimiterQueue.length = 0;
+  } else {
+    await new Promise((resolve) => _authLimiterQueue.push(resolve));
+  }
+  return _authLimiterInstance(req, res, next);
+};
 
 function validate(req, res, next) {
   const errors = vResult(req);

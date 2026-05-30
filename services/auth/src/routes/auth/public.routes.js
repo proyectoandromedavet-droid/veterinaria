@@ -36,8 +36,15 @@ const refreshLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many refresh attempts' },
 });
+const ssoConnectLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { message: 'Too many SSO requests', code: 'RATE_LIMIT_EXCEEDED' } },
+});
 router.post('/refresh', refreshLimiter, ctrl.refresh);
-router.get('/sso/:provider/connect', ctrl.ssoConnect);
+router.get('/sso/:provider/connect', ssoConnectLimiter, ctrl.ssoConnect);
 router.get('/sso/:provider/callback', ctrl.ssoCallback);
 
 router.post('/password-reset/request',

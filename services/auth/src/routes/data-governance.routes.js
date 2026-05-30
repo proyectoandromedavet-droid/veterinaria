@@ -150,6 +150,11 @@ router.post('/enforce', async (req, res, next) => {
     const orgId    = req.user.orgId;
     const { data_type } = req.body; // opcional: tipo específico o todos
 
+    // Validar data_type si se especificó
+    if (data_type && !VALID_DATA_TYPES.includes(data_type)) {
+      return R.error(res, 400, `data_type inválido. Debe ser uno de: ${VALID_DATA_TYPES.join(', ')}`, null, 'VALIDATION_ERROR');
+    }
+
     const saved = await db.query(
       'SELECT * FROM data_retention_policies WHERE org_id = :orgId AND is_active = TRUE',
       { orgId },
@@ -275,6 +280,26 @@ router.post('/enforce', async (req, res, next) => {
       } catch (err) {
         results.push({ data_type: policy.data_type, error: err.message });
       }
+    }
+
+    // Registrar auditoría del actor que ejecutó el enforcement manual
+    const totalAffected = results.reduce((sum, r) => sum + (r.affected || 0), 0);
+    try {
+      await db.query(
+        `INSERT INTO audit_logs (org_id, action, resource, resource_id, user_id, metadata, created_at)
+         VALUES (:orgId, 'manual_enforce', 'data_governance', NULL, :userId, :meta, NOW())`,
+        {
+          orgId,
+          userId: req.user.userId || null,
+          meta: JSON.stringify({
+            data_type: data_type || 'all',
+            affected:  totalAffected,
+            results:   results.map(r => ({ data_type: r.data_type, affected: r.affected || 0 })),
+          }),
+        },
+      );
+    } catch (auditErr) {
+      logger.warn('[data-governance] Failed to write enforcement audit trail', { err: auditErr.message });
     }
 
     res.json({ success: true, data: results });
