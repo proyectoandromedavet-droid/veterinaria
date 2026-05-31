@@ -79,21 +79,22 @@
     </div>
 
     <div v-else class="tele-list">
-      <div v-for="t in items" :key="t.id" class="tele-card">
+      <div v-for="t in items" :key="t.id" :id="`tele-session-${t.id}`" class="tele-card">
         <div class="tele-card__left">
-          <div class="tele-time">{{ formatTime(t.scheduled_date || t.start_time) }}</div>
-          <span class="badge" :class="`status--${t.status}`">{{ STATUS[t.status] || t.status }}</span>
+          <div class="tele-time" :id="`tele-session-${t.id}-time`">{{ formatTime(t.scheduled_date || t.start_time) }}</div>
+          <span class="badge" :class="`status--${t.status}`" :id="`tele-session-${t.id}-status`">{{ STATUS[t.status] || t.status }}</span>
         </div>
         <div class="tele-card__mid">
           <div class="tele-pet">
             <span>{{ petEmoji(t.patient?.species) }}</span>
             <div>
-              <strong>{{ t.patient?.name || t.patient_name || '—' }}</strong>
-              <span class="sub">{{ t.patient?.owner?.full_name || t.owner_name || '' }}</span>
+              <strong :id="`tele-session-${t.id}-patient`">{{ t.patient?.name || t.patient_name || '—' }}</strong>
+              <span class="sub" :id="`tele-session-${t.id}-owner`">{{ t.patient?.owner?.full_name || t.owner_name || '' }}</span>
             </div>
           </div>
-          <p class="tele-reason">{{ t.reason || t.chief_complaint || t('telemedicine.generalConsultation') }}</p>
-          <p class="tele-vet" v-if="t.vet_name">👨‍⚕️ {{ t.vet_name }}</p>
+          <p class="tele-reason" :id="`tele-session-${t.id}-reason`">{{ t.reason || t.chief_complaint || t('telemedicine.generalConsultation') }}</p>
+          <p class="tele-vet" v-if="t.vet_name" :id="`tele-session-${t.id}-vet`">👨‍⚕️ {{ t.vet_name }}</p>
+          <p class="tele-phone" v-if="t.client_phone" :id="`tele-session-${t.id}-phone`">📞 {{ t.client_phone }}</p>
         </div>
         <div class="tele-card__right">
           <button
@@ -240,6 +241,7 @@ function normalizeTeleSession(row) {
     id: row.id ?? row.session_id ?? row.sessionId ?? null,
     patient_name: row.patient_name ?? row.patient?.name ?? row.patientName ?? '',
     client_name: row.client_name ?? row.client?.name ?? row.clientName ?? '',
+    client_phone: row.client_phone ?? row.clientPhone ?? row.owner_phone ?? '',
     vet_name: row.vet_name ?? row.vet?.name ?? row.vetName ?? '',
     platform_name: row.platform_name ?? row.platform?.name ?? row.platformName ?? '',
     status: row.status ?? '',
@@ -548,6 +550,7 @@ onMounted(() => { load(); loadStats(); loadVets(); loadPlatforms() })
 .sub { font-size: 0.75rem; color: var(--text-3); }
 .tele-reason { font-size: 0.83rem; color: var(--text-2); margin-top: 2px; }
 .tele-vet    { font-size: 0.78rem; color: var(--text-3); }
+.tele-phone  { font-size: 0.78rem; color: var(--text-3); }
 
 .tele-card__right { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 

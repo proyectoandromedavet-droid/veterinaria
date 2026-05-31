@@ -249,10 +249,14 @@
               <div>
                 <h5>Historia medica</h5>
                 <div v-if="petHistory.length" class="mini-list">
-                  <article v-for="row in petHistory" :key="row.id">
-                    <strong>{{ formatDate(row.visit_date) }}</strong>
-                    <p>{{ row.reason_for_visit || row.chief_complaint || 'Sin detalle' }}</p>
-                    <small>{{ row.vet_name || 'Equipo medico' }}</small>
+                  <article v-for="row in petHistory" :key="row.id" :id="`portal-history-${row.id}`">
+                    <strong :id="`portal-history-${row.id}-date`">{{ formatDate(row.visit_date) }}</strong>
+                    <p :id="`portal-history-${row.id}-reason`">{{ row.reason_for_visit || row.chief_complaint || 'Sin detalle' }}</p>
+                    <small v-if="row.weight_kg || row.temperature_celsius" :id="`portal-history-${row.id}-vitals`">
+                      {{ [row.weight_kg ? `${row.weight_kg} kg` : null, row.temperature_celsius ? `${row.temperature_celsius}°C` : null].filter(Boolean).join(' · ') }}
+                    </small>
+                    <small :id="`portal-history-${row.id}-vet`">{{ row.vet_name || 'Equipo medico' }}</small>
+                    <span v-if="row.status" :id="`portal-history-${row.id}-status`" class="status-pill">{{ row.status }}</span>
                   </article>
                 </div>
                 <p v-else class="empty-state">No hay historia disponible.</p>
@@ -261,10 +265,12 @@
               <div>
                 <h5>Vacunaciones</h5>
                 <div v-if="petVaccinations.length" class="mini-list">
-                  <article v-for="row in petVaccinations" :key="row.id">
-                    <strong>{{ row.vaccine_name }}</strong>
-                    <p>{{ formatDate(row.administered_date) }} - {{ row.applied_by || 'Sin profesional' }}</p>
-                    <small>Proxima: {{ formatDate(row.next_due_date) }}</small>
+                  <article v-for="row in petVaccinations" :key="row.id" :id="`portal-vaccination-${row.id}`">
+                    <strong :id="`portal-vaccination-${row.id}-name`">{{ row.vaccine_name }}</strong>
+                    <p :id="`portal-vaccination-${row.id}-date`">{{ formatDate(row.administered_date) }} - {{ row.applied_by || 'Sin profesional' }}</p>
+                    <small :id="`portal-vaccination-${row.id}-next`">Proxima: {{ formatDate(row.next_due_date) }}</small>
+                    <small v-if="row.lot_number" :id="`portal-vaccination-${row.id}-lot`">Lote: {{ row.lot_number }}</small>
+                    <small v-if="row.manufacturer" :id="`portal-vaccination-${row.id}-manufacturer`">{{ row.manufacturer }}</small>
                   </article>
                 </div>
                 <p v-else class="empty-state">No hay vacunaciones cargadas.</p>
@@ -273,10 +279,14 @@
               <div>
                 <h5>Prescripciones</h5>
                 <div v-if="petPrescriptions.length" class="mini-list">
-                  <article v-for="row in petPrescriptions" :key="row.id">
-                    <strong>{{ row.medication_name || 'Receta' }}</strong>
-                    <p>{{ row.instructions || 'Sin instrucciones' }}</p>
-                    <small>{{ row.prescribed_by || 'Sin profesional' }}</small>
+                  <article v-for="row in petPrescriptions" :key="row.id" :id="`portal-prescription-${row.id}`">
+                    <strong :id="`portal-prescription-${row.id}-name`">{{ row.medication_name || 'Receta' }}</strong>
+                    <p v-if="row.dosage || row.frequency" :id="`portal-prescription-${row.id}-dosage`">
+                      {{ [row.dosage, row.frequency].filter(Boolean).join(' — ') }}<span v-if="row.duration_days"> · {{ row.duration_days }} días</span>
+                    </p>
+                    <p :id="`portal-prescription-${row.id}-instructions`">{{ row.instructions || 'Sin instrucciones' }}</p>
+                    <small :id="`portal-prescription-${row.id}-professional`">{{ row.prescribed_by || 'Sin profesional' }}</small>
+                    <small v-if="row.refills_allowed != null" :id="`portal-prescription-${row.id}-refills`">Recargas permitidas: {{ row.refills_allowed }}</small>
                   </article>
                 </div>
                 <p v-else class="empty-state">No hay prescripciones cargadas.</p>
@@ -323,10 +333,10 @@
           </form>
 
           <div class="list-block">
-            <article v-for="item in appointments" :key="item.id" class="list-item">
+            <article v-for="item in appointments" :key="item.id" :id="`portal-appointment-item-${item.id}`" class="list-item">
               <div>
-                <strong>{{ item.patient_name }}</strong>
-                <p>{{ formatDateTime(item.appointment_date) }} - {{ item.clinic_name || 'Clinica' }}</p>
+                <strong :id="`portal-appointment-item-${item.id}-patient`">{{ item.patient_name }}</strong>
+                <p :id="`portal-appointment-item-${item.id}-date`">{{ formatDateTime(item.appointment_date) }} - {{ item.clinic_name || 'Clinica' }}</p>
               </div>
               <div class="list-item__right">
                 <span class="status-pill" :class="statusClass(item.status)">{{ item.status }}</span>
@@ -352,11 +362,11 @@
           </div>
 
           <div class="list-block">
-            <article v-for="invoice in invoices" :key="invoice.id" class="invoice-row">
+            <article v-for="invoice in invoices" :key="invoice.id" :id="`portal-invoice-${invoice.id}`" class="invoice-row">
               <div>
-                <strong>{{ invoice.invoice_number }}</strong>
-                <p>{{ invoice.patient_name || 'Mascota no asociada' }} - {{ invoice.clinic_name }}</p>
-                <small>{{ formatDate(invoice.issued_date) }} - Vence {{ formatDate(invoice.due_date) }}</small>
+                <strong :id="`portal-invoice-${invoice.id}-number`">{{ invoice.invoice_number }}</strong>
+                <p :id="`portal-invoice-${invoice.id}-patient`">{{ invoice.patient_name || 'Mascota no asociada' }} - {{ invoice.clinic_name }}</p>
+                <small :id="`portal-invoice-${invoice.id}-dates`">{{ formatDate(invoice.issued_date) }} - Vence {{ formatDate(invoice.due_date) }}</small>
               </div>
               <div class="invoice-row__right">
                 <span>{{ formatMoney(invoice.total_amount - (invoice.paid_amount || 0), invoice.currency) }}</span>
