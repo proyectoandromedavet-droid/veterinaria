@@ -54,6 +54,14 @@ router.get('/export', requireInternalSig, fromHeaders, requireOrgContext, requir
       (req.headers['accept'] || '').includes('application/x-ndjson');
     const source = req.query.source === 'immutable' ? 'immutable' : 'audit_logs';
 
+    // B-5: la fuente inmutable solo puede ser accedida por owner o superadmin
+    if (source === 'immutable') {
+      const roles = req.user?.roles || [];
+      if (!roles.includes('owner') && !roles.includes('superadmin')) {
+        return R.forbidden(res, 'El acceso a la fuente inmutable requiere rol owner', 'IMMUTABLE_OWNER_ONLY');
+      }
+    }
+
     // Sanitizar limit para evitar que NaN llegue a Math.min dentro de exportAuditLogs
     const rawLimit  = parseInt(req.query.limit, 10);
     const safeLimit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 10000) : 1000;

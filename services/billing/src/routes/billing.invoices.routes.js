@@ -10,7 +10,7 @@ router.get('/', async (req, res, next) => {
   try {
     const page  = Math.max(parseInt(req.query.page  || '1',  10) || 1,  1);
     const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10) || 20, 1), 100);
-    const { status, clientId, from, to } = req.query;
+    const { status, clientId, from, to, search } = req.query;
     const offset = (page - 1) * limit;
     const conds = ['i.branch_id = :bid'];
     const p = { bid: req.user.branchId, limit, offset };
@@ -22,6 +22,12 @@ router.get('/', async (req, res, next) => {
     if (clientId) { conds.push('i.client_id = :clientId'); p.clientId = clientId; }
     if (from) { conds.push('i.issued_date >= :from'); p.from = from; }
     if (to) { conds.push('i.issued_date <= :to'); p.to = to; }
+    // T-2: búsqueda server-side por número de factura o nombre de cliente
+    if (search) {
+      const s = String(search).trim().slice(0, 100);
+      conds.push("(i.invoice_number LIKE :search OR CONCAT(cl.first_name,' ',cl.last_name) LIKE :search)");
+      p.search = `%${s}%`;
+    }
 
     const where = `WHERE ${conds.join(' AND ')}`;
     const rows = await db.query(
@@ -39,9 +45,12 @@ router.get('/', async (req, res, next) => {
        LIMIT :limit OFFSET :offset`,
       p
     );
+    const countP = { ...p };
+    delete countP.limit;
+    delete countP.offset;
     const [{ total }] = await db.query(
-      `SELECT COUNT(*) AS total FROM invoices i ${where}`,
-      { bid: req.user.branchId, ...(status && { status }), ...(clientId && { clientId }), ...(from && { from }), ...(to && { to }) }
+      `SELECT COUNT(*) AS total FROM invoices i JOIN clients cl ON i.client_id = cl.id ${where}`,
+      countP
     );
     return R.paginated(res, rows, total, page, limit);
   } catch (e) {

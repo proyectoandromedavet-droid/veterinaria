@@ -719,14 +719,34 @@ export async function loadRelatedOrders(record) {
   }
 }
 
-let _recordCreating = false
+// B-8: lock multi-tab via localStorage para evitar doble-guardado desde distintas pestañas
+const CREATING_KEY = 'vetapp_evolution_creating'
+const CREATING_TIMEOUT_MS = 30_000
+
+function _acquireCreateLock() {
+  try {
+    const existing = localStorage.getItem(CREATING_KEY)
+    if (existing) {
+      const ts = parseInt(existing, 10)
+      if (Date.now() - ts < CREATING_TIMEOUT_MS) return false
+    }
+    localStorage.setItem(CREATING_KEY, String(Date.now()))
+    return true
+  } catch {
+    return true // si localStorage no está disponible, permitir y confiar en el servidor
+  }
+}
+
+function _releaseCreateLock() {
+  try { localStorage.removeItem(CREATING_KEY) } catch { /* ignorar */ }
+}
+
 export async function createMedicalRecordWithAttachments(form) {
-  if (_recordCreating) throw new Error('Guardado en progreso, por favor espere')
-  _recordCreating = true
+  if (!_acquireCreateLock()) throw new Error('Guardado en progreso en otra pestaña, por favor espere')
   try {
     return await _doCreateMedicalRecordWithAttachments(form)
   } finally {
-    _recordCreating = false
+    _releaseCreateLock()
   }
 }
 

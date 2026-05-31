@@ -58,6 +58,16 @@ router.post('/',
         if (!branch) return R.forbidden(res, 'Sucursal fuera de organizacion');
       }
 
+      // B-10: límite de reglas por organización para evitar abuso de recursos
+      const MAX_RULES = parseInt(process.env.MAX_BUSINESS_RULES_PER_ORG || '500', 10);
+      const [{ ruleCount }] = await db.query(
+        'SELECT COUNT(*) AS ruleCount FROM business_rules WHERE org_id = :orgId AND is_active = TRUE',
+        { orgId }
+      );
+      if (Number(ruleCount) >= MAX_RULES) {
+        return R.error(res, 429, `Límite de reglas por organización alcanzado (máx ${MAX_RULES})`, null, 'RULES_LIMIT_EXCEEDED');
+      }
+
       const result = await db.query(
         `INSERT INTO business_rules
            (org_id, branch_id, rule_type, name, description, conditions, action, action_message, priority, created_by)

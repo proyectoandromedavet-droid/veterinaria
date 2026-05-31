@@ -356,12 +356,6 @@ router.post('/password-reset/confirm',
   confirmPasswordReset
 );
 
-router.post('/reset-password',
-  authLimiter,
-  vBody('token').notEmpty(),
-  vBody('newPassword').isLength({ min: 10 }).matches(PASSWORD_POLICY),
-  validate,
-  confirmPasswordReset
-);
+// B-6: alias legacy removido para evitar ruta duplicada — usar /password-reset/confirm
 
 module.exports = router;

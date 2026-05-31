@@ -92,7 +92,8 @@ router.post('/manual',
 
       return R.created(res, { createdIds, count: createdIds.length });
     } catch (err) {
-      logDocumentsError('POST /inbox/manual', err, { orgId: req.user?.orgId, body: req.body });
+      // B-9: no loguear body completo — puede contener datos de adjuntos grandes
+      logDocumentsError('POST /inbox/manual', err, { orgId: req.user?.orgId, attachmentCount: req.body.attachments?.length, fromEmail: req.body.fromEmail });
       next(err);
     }
   }

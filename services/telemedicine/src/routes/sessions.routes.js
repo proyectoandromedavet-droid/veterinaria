@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const rateLimit = require('express-rate-limit');
 const {
   crypto,
   body,
@@ -14,6 +15,16 @@ const {
 } = require('./_common');
 
 const router = Router();
+
+// B-7: rate limit específico para creación de sesiones de telemedicina
+const createSessionLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => `tele-session-create:${req.user?.branchId || req.ip}`,
+  message: { error: 'Demasiadas sesiones creadas. Intente más tarde.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const getWebrtcConfig = [(_req, res) => R.ok(res, { ...webrtc.getIceServers(), provider: webrtc.PROVIDER })];
 
@@ -48,7 +59,16 @@ router.get('/', async (req, res, next) => {
        LIMIT :limit OFFSET :offset`,
       p
     );
-    return R.ok(res, rows);
+    // T-1: paginación server-side — incluir total para que el frontend pagine correctamente
+    const countP = { bid: req.user.branchId };
+    if (status) countP.status = status;
+    if (vetId) countP.vetId = vetId;
+    if (date) countP.date = date;
+    const [{ total }] = await db.query(
+      `SELECT COUNT(*) AS total FROM tele_sessions ts WHERE ${conds.join(' AND ')}`,
+      countP
+    );
+    return R.paginated(res, rows, total, parseInt(page), Math.min(parseInt(limit), 100));
   } catch (e) { next(e); }
 });
 
@@ -106,6 +126,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 router.post('/',
+  createSessionLimiter,
   body('patientId').isInt(),
   body('clientId').isInt(),
   body('vetId').isInt(),

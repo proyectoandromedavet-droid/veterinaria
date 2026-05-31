@@ -11,16 +11,19 @@ const OCR_LANGS = ['spa', 'eng'];
 const OCR_TESSDATA_DIR = path.resolve(__dirname, '../../../../.cache/tessdata');
 const OCR_MIN_LENGTH = 80;
 
-// Mutex simple para serializar llamadas OCR concurrentes y evitar saturar CPU
-// con múltiples workers de Tesseract simultáneos.
+// Mutex para serializar llamadas OCR concurrentes y evitar saturar CPU.
+// T-3: límite de cola para evitar acumulación ilimitada de trabajos en memoria.
+const OCR_QUEUE_MAX = parseInt(process.env.OCR_QUEUE_MAX || '50', 10);
 let _workerBusy = false;
 const _workerQueue = [];
 
 function acquireWorker() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (!_workerBusy) {
       _workerBusy = true;
       resolve();
+    } else if (_workerQueue.length >= OCR_QUEUE_MAX) {
+      reject(Object.assign(new Error('OCR queue llena — intente más tarde'), { http: 503 }));
     } else {
       _workerQueue.push(resolve);
     }

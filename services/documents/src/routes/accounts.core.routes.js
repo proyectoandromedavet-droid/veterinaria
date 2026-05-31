@@ -2,7 +2,7 @@
 
 const { Router } = require('express');
 const { body, param, query, validationResult } = require('express-validator');
-const { db, R, sanitizeSettings, mergeSettings, loadAccount, logDocumentsError } = require('./accounts.common');
+const { db, R, sanitizeSettings, mergeSettings, encryptSecretFields, decryptSecretFields, loadAccount, logDocumentsError } = require('./accounts.common');
 const { validate } = require('../documents.common');
 
 const router = Router();
@@ -30,7 +30,7 @@ router.get('/',
       return R.ok(res, rows.map((row) => ({
         ...row,
         is_active: Boolean(row.is_active),
-        settings: sanitizeSettings(row.provider, require('../documents.common').parseJson(row.settings_json, {})),
+        settings: sanitizeSettings(row.provider, decryptSecretFields(require('../documents.common').parseJson(row.settings_json, {}))),
       })));
     } catch (err) {
       logDocumentsError('GET /mail-accounts', err, { orgId: req.user?.orgId, query: req.query });
@@ -63,7 +63,7 @@ router.post('/',
           displayName: req.body.displayName || null,
           folderName: req.body.folderName || 'INBOX',
           isActive: req.body.isActive === false ? 0 : 1,
-          settingsJson: JSON.stringify(req.body.settings || {}),
+          settingsJson: JSON.stringify(encryptSecretFields(req.body.settings || {})),
         }
       );
 
@@ -98,7 +98,7 @@ router.patch('/:id',
       if (Object.prototype.hasOwnProperty.call(req.body, 'folderName')) { fields.push('folder_name = :folderName'); params.folderName = req.body.folderName || 'INBOX'; }
       if (Object.prototype.hasOwnProperty.call(req.body, 'settings')) {
         fields.push('settings_json = :settingsJson');
-        params.settingsJson = JSON.stringify(mergeSettings(require('../documents.common').parseJson(account.settings_json, {}), req.body.settings || {}));
+        params.settingsJson = JSON.stringify(encryptSecretFields(mergeSettings(decryptSecretFields(require('../documents.common').parseJson(account.settings_json, {})), req.body.settings || {})));
       }
       if (Object.prototype.hasOwnProperty.call(req.body, 'isActive')) { fields.push('is_active = :isActive'); params.isActive = req.body.isActive ? 1 : 0; }
       if (!fields.length) return R.badRequest(res, 'No fields to update');
