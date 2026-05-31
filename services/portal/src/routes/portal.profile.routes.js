@@ -70,17 +70,20 @@ router.put('/password',
         return R.badRequest(res, 'Contrasena actual incorrecta');
       }
 
-      await db.query(
-        `UPDATE clients SET portal_password_hash=:hash, updated_at=NOW() WHERE id=:id`,
-        { hash: await pwHash.hash(newPassword), id: req.owner.clientId }
-      );
+      const newHash = await pwHash.hash(newPassword);
 
-      // BUG-016: invalidar todas las sesiones activas del cliente tras el cambio de contraseña
-      // Esto revoca los refresh tokens almacenados — el access token actual expirará en su TTL natural
-      await db.query(
-        `DELETE FROM client_sessions WHERE client_id=:id`,
-        { id: req.owner.clientId }
-      ).catch((err) => log.warn('portal session invalidation failed', { err: err.message }));
+      // BUG-016: actualizar contraseña e invalidar sesiones en una sola transacción
+      // Si la invalidación falla, la operación completa se revierte para evitar estado inconsistente
+      await db.transaction(async (conn) => {
+        await conn.query(
+          `UPDATE clients SET portal_password_hash=:hash, updated_at=NOW() WHERE id=:id`,
+          { hash: newHash, id: req.owner.clientId }
+        );
+        await conn.query(
+          `DELETE FROM client_sessions WHERE client_id=:id`,
+          { id: req.owner.clientId }
+        );
+      });
 
       return R.ok(res, { message: 'Contrasena actualizada. Por favor, inicia sesion nuevamente.' });
     } catch (e) {

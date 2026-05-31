@@ -53,7 +53,7 @@ router.post('/',
         { pid: patientId, org: user.orgId, n: contextLines }
       );
       const recentHistory = records.length
-        ? records.map((r) => {
+        ? '<patient_history>\n' + records.map((r) => {
             const when = r.created_at?.toISOString?.().slice(0, 10) ?? '';
             const diagnoses = (r.diagnoses || '')
               .split('||')
@@ -61,8 +61,9 @@ router.post('/',
               .map(decrypt)
               .join(', ') || 'N/A';
             const notes = decrypt(r.notes) || 'N/A';
-            return `[${when}] Motivo: ${decrypt(r.chief_complaint) || 'N/A'} | Dx: ${diagnoses} | Notas: ${notes}`;
-          }).join('\n')
+            const complaint = decrypt(r.chief_complaint) || 'N/A';
+            return `<entry date="${when}"><chief_complaint>${complaint}</chief_complaint><diagnoses>${diagnoses}</diagnoses><notes>${notes}</notes></entry>`;
+          }).join('\n') + '\n</patient_history>'
         : null;
 
       const messages = buildDiagnosisPrompt(patient, symptoms, anamnesis, recentHistory);

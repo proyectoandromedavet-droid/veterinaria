@@ -33,6 +33,10 @@ router.get('/search/patients', async (req, res, next) => {
     const parsedPage   = Math.max(parseInt(`${page}`, 10) || 1, 1);
     const offset = (parsedPage - 1) * parsedLimit;
     const search = `%${q}%`;
+    const pii = hasPiiAccess(req);
+
+    // Sin acceso PII no se permite buscar por email/teléfono para evitar oracle attack sobre datos sensibles
+    const piiFilter = pii ? 'OR cl.phone LIKE :s OR cl.email LIKE :s' : '';
 
     const rows = await db.query(
       `SELECT p.id, p.name AS patient_name, p.chip_number,
@@ -47,7 +51,7 @@ router.get('/search/patients', async (req, res, next) => {
        JOIN species sp ON p.species_id = sp.id
        WHERE (p.name LIKE :s OR p.chip_number LIKE :s
               OR CONCAT(cl.first_name,' ',cl.last_name) LIKE :s
-              OR cl.phone LIKE :s OR cl.email LIKE :s)
+              ${piiFilter})
          AND p.is_active = TRUE
        ORDER BY p.name
        LIMIT :limit OFFSET :offset`,
@@ -77,6 +81,10 @@ router.get('/search/clients', async (req, res, next) => {
     const parsedPage   = Math.max(parseInt(`${page}`, 10) || 1, 1);
     const offset = (parsedPage - 1) * parsedLimit;
     const search = `%${q}%`;
+    const pii = hasPiiAccess(req);
+
+    // Sin acceso PII no se permite buscar por email/teléfono/DNI para evitar oracle attack sobre datos sensibles
+    const piiFilter = pii ? 'OR cl.email LIKE :s OR cl.phone LIKE :s OR cl.dni LIKE :s' : '';
 
     const rows = await db.query(
       `SELECT cl.id, CONCAT(cl.first_name,' ',cl.last_name) AS client_name,
@@ -87,7 +95,7 @@ router.get('/search/clients', async (req, res, next) => {
        JOIN branches b ON cl.branch_id = b.id AND b.organization_id = :orgId
        LEFT JOIN patient_owners po ON po.client_id = cl.id AND po.ownership_type = 'primary'
        WHERE (CONCAT(cl.first_name,' ',cl.last_name) LIKE :s
-              OR cl.email LIKE :s OR cl.phone LIKE :s OR cl.dni LIKE :s)
+              ${piiFilter})
          AND cl.is_active = TRUE
        GROUP BY cl.id ORDER BY client_name
        LIMIT :limit OFFSET :offset`,

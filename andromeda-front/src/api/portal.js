@@ -3,6 +3,7 @@ import { http, ensureCsrfToken } from './client'
 import { logError } from '../utils/errors'
 
 const STORAGE_KEY_ACCESS = 'portal.owner.accessToken'
+const STORAGE_KEY_REFRESH = 'portal.owner.refreshToken'
 const STORAGE_KEY_PERSIST = 'portal.owner.session'
 const SAFE_METHODS = new Set(['get', 'head', 'options'])
 
@@ -14,14 +15,11 @@ function readStoredSession() {
   if (typeof window === 'undefined') return { accessToken: null, refreshToken: null, owner: null }
   try {
     const accessToken = window.sessionStorage.getItem(STORAGE_KEY_ACCESS) || null
+    // refreshToken en sessionStorage (no en localStorage) para evitar extracción por XSS cross-sesión
+    const refreshToken = window.sessionStorage.getItem(STORAGE_KEY_REFRESH) || null
     const raw = window.localStorage.getItem(STORAGE_KEY_PERSIST)
-    if (!raw) return { accessToken, refreshToken: null, owner: null }
-    const parsed = JSON.parse(raw)
-    return {
-      accessToken,
-      refreshToken: parsed.refreshToken || null,
-      owner: parsed.owner || null,
-    }
+    const owner = raw ? (JSON.parse(raw).owner || null) : null
+    return { accessToken, refreshToken, owner }
   } catch (error) {
     logError('portal.readSession', error)
     return { accessToken: null, refreshToken: null, owner: null }
@@ -35,16 +33,19 @@ function writeStoredSession(session) {
   } else {
     window.sessionStorage.removeItem(STORAGE_KEY_ACCESS)
   }
-  const payload = {
-    refreshToken: session?.refreshToken || null,
-    owner: session?.owner || null,
+  if (session?.refreshToken) {
+    window.sessionStorage.setItem(STORAGE_KEY_REFRESH, session.refreshToken)
+  } else {
+    window.sessionStorage.removeItem(STORAGE_KEY_REFRESH)
   }
-  window.localStorage.setItem(STORAGE_KEY_PERSIST, JSON.stringify(payload))
+  // Solo persistir metadata no sensible en localStorage (owner info para UI)
+  window.localStorage.setItem(STORAGE_KEY_PERSIST, JSON.stringify({ owner: session?.owner || null }))
 }
 
 function clearStoredSession() {
   if (typeof window === 'undefined') return
   window.sessionStorage.removeItem(STORAGE_KEY_ACCESS)
+  window.sessionStorage.removeItem(STORAGE_KEY_REFRESH)
   window.localStorage.removeItem(STORAGE_KEY_PERSIST)
 }
 

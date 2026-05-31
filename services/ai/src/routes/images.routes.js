@@ -20,7 +20,7 @@ router.post('/analyze',
   body('patientId').isInt({ min: 1 }),
   body('imageType').isIn(['xray', 'ultrasound', 'blood_smear', 'cytology', 'histology', 'fundoscopy', 'ecg', 'other']),
   body('imageUrl').optional().isURL(),
-  body('imageBase64').optional().isString().custom((val) => {
+  body('imageBase64').optional().isString().isLength({ max: 8_388_608 }).withMessage('imageBase64 no puede superar 8 MB').custom((val) => {
     if (val !== undefined && !val.startsWith('data:image/')) {
       throw new Error('imageBase64 debe incluir el prefijo data:image/<type>;base64,');
     }
