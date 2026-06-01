@@ -10,6 +10,7 @@ const R              = require('../../../../shared/response');
 const { getRedisSingleton } = require('../../../../shared/redis');
 const twoFactor      = require('../../../../shared/twoFactor');
 const { enforcePassword } = require('../../../../shared/passwordPolicy');
+const passwordHash = require('../../../../shared/passwordHash');
 const { captureFingerprint } = require('../../../../shared/deviceFingerprint');
 const { enqueueJob } = require('../../../../shared/notificationRetry');
 const oidc = require('../../../../shared/oidc');
@@ -344,7 +345,7 @@ async function login(req, res) {
     { email }
   );
 
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+  if (!user || !(await passwordHash.verify(password, user.password_hash))) {
     // Redis: backoff exponencial por IP+email y por cuenta
     await recordFailedAttempt(email, ip);
     // BD: registrar intento fallido y aplicar lockout a nivel de cuenta
@@ -722,7 +723,7 @@ async function changePassword(req, res) {
     { id: req.user.userId }
   );
 
-  if (!(await bcrypt.compare(currentPassword, user.password_hash))) {
+  if (!(await passwordHash.verify(currentPassword, user.password_hash))) {
     return R.badRequest(res, 'Current password is incorrect');
   }
 
@@ -741,7 +742,7 @@ async function changePassword(req, res) {
   }
 
   // Verificar que la nueva contraseña no sea igual a la actual
-  if (await bcrypt.compare(newPassword, user.password_hash)) {
+  if (await passwordHash.verify(newPassword, user.password_hash)) {
     return R.badRequest(res, 'La nueva contraseña no puede ser igual a la actual');
   }
 
