@@ -211,7 +211,8 @@ const pendingToken = ref(null)
 const year = new Date().getFullYear()
 
 const form = reactive({ email: '', password: '', code: '' })
-const captchaSiteKey = ref(import.meta.env.VITE_HCAPTCHA_SITE_KEY || '')
+const DEFAULT_HCAPTCHA_SITE_KEY = import.meta.env.PROD ? 'ddf45312-6ab8-41cc-b2ee-3a8c1ef668f6' : ''
+const captchaSiteKey = ref(import.meta.env.VITE_HCAPTCHA_SITE_KEY || DEFAULT_HCAPTCHA_SITE_KEY)
 const captchaEnabled = ref(Boolean(captchaSiteKey.value) && import.meta.env.VITE_CAPTCHA_ENABLED !== 'false')
 const captchaConfigLoading = ref(true)
 const loginCaptchaToken = ref('')
@@ -244,6 +245,11 @@ function applyCaptchaConfig(config = {}) {
 }
 
 async function loadCaptchaConfig() {
+  if (captchaSiteKey.value) {
+    captchaConfigLoading.value = false
+    return
+  }
+
   try {
     const res = await getCaptchaConfig()
     applyCaptchaConfig(res.data?.data || res.data || {})
