@@ -181,12 +181,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = normalizeUser({ ...user.value, ...payload })
   }
 
-  async function logout() {
-    try {
-      await authApi.logout()
-    } catch (error) {
-      logError('auth.logout', error)
-    }
+  function clearSession() {
     localStorage.removeItem('vet_session')
     localStorage.removeItem(PREVIEW_AUTH_KEY)
     accessToken.value = null
@@ -195,6 +190,17 @@ export const useAuthStore = defineStore('auth', () => {
     hydrating.value = false
     hydratePromise = null
     clearCsrfToken()
+  }
+
+  async function logout() {
+    try {
+      await authApi.logout()
+    } catch (error) {
+      if (error?.response?.status !== 401) {
+        logError('auth.logout', error)
+      }
+    }
+    clearSession()
   }
 
   function getUserFacingError(error, fallback) {
@@ -329,6 +335,7 @@ export const useAuthStore = defineStore('auth', () => {
     refresh,
     fetchMe,
     bootstrap,
+    clearSession,
     logout,
     getUserFacingError,
     allowedMenu,

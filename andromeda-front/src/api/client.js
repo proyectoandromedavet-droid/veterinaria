@@ -128,7 +128,7 @@ http.interceptors.response.use(
         queue.forEach(({ reject }) => reject(refreshError))
         queue = []
         const auth = useAuthStore()
-        await auth.logout()
+        auth.clearSession()
         return Promise.reject(refreshError)
       } finally {
         refreshing = false

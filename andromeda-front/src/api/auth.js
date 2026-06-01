@@ -11,8 +11,8 @@ export const authApi = {
     const suffix = params ? `?${params}` : ''
     window.location.href = `${http.defaults.baseURL}/auth/sso/${provider}/connect${suffix}`
   },
-  refresh:      ()              => http.post('/auth/refresh', {}, { timeout: AUTH_BOOTSTRAP_TIMEOUT_MS }),
-  logout:       ()              => http.post('/auth/logout', {}),
+  refresh:      ()              => http.post('/auth/refresh', {}, { timeout: AUTH_BOOTSTRAP_TIMEOUT_MS, _noAutoRefresh: true }),
+  logout:       ()              => http.post('/auth/logout', {}, { _noAutoRefresh: true }),
   me:           (cfg = {})      => http.get('/auth/me', { timeout: AUTH_BOOTSTRAP_TIMEOUT_MS, ...cfg }),
   changePassword: (data)        => http.post('/auth/change-password', data),
   resetRequest: (email, captchaToken) => http.post('/auth/password-reset/request', {
