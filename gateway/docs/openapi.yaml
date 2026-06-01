@@ -290,6 +290,27 @@ paths:
         '401': { description: Credenciales inválidas }
         '429': { description: 'Demasiados intentos, cuenta bloqueada' }
 
+  /auth/captcha/config:
+    get:
+      tags: [Auth]
+      summary: Obtener configuracion publica de CAPTCHA
+      security: []
+      responses:
+        '200':
+          description: Configuracion publica de CAPTCHA
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      enabled: { type: boolean }
+                      provider: { type: string, nullable: true, example: hcaptcha }
+                      siteKey: { type: string, nullable: true }
+
   /auth/refresh:
     post:
       tags: [Auth]
