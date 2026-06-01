@@ -49,6 +49,7 @@ const ssoConnectLimiter = rateLimit({
   message: { success: false, error: { message: 'Too many SSO requests', code: 'RATE_LIMIT_EXCEEDED' } },
 });
 router.post('/refresh', refreshLimiter, ctrl.refresh);
+router.post('/logout', ctrl.logout);
 router.get('/sso/:provider/connect', ssoConnectLimiter, ctrl.ssoConnect);
 router.get('/sso/:provider/callback', ctrl.ssoCallback);
 

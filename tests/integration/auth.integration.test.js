@@ -312,6 +312,12 @@ describe('POST /logout', () => {
 
     expect(res.status).toBe(204);
   });
+
+  test('204 — logout is idempotent without an active session', async () => {
+    const res = await request(app).post('/logout');
+
+    expect(res.status).toBe(204);
+  });
 });
 
 // ── Tests: GET /health ─────────────────────────────────────────────────────────

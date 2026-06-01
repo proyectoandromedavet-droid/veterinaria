@@ -30,6 +30,7 @@ const AUTH_PUBLIC_PATHS = [
   '/captcha/config',
   '/login',
   '/refresh',
+  '/logout',
   '/password-reset/request',
   '/password-reset/confirm',
   '/.well-known/jwks.json',

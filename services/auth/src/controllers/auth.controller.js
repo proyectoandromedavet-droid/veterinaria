@@ -550,8 +550,8 @@ async function refresh(req, res) {
  * POST /auth/logout
  */
 async function logout(req, res) {
-  const userId = req.user.userId;
-  const jti    = req.user.jti;
+  const userId = req.user?.userId;
+  const jti    = req.user?.jti;
 
   // Revoke current token
   if (jti) {
@@ -561,11 +561,13 @@ async function logout(req, res) {
   }
 
   // Mark session as revoked
-  await db.query(
-    `UPDATE sessions SET is_revoked = TRUE, revoked_at = NOW()
-     WHERE jti = :jti AND user_id = :userId`,
-    { jti, userId }
-  );
+  if (jti && userId) {
+    await db.query(
+      `UPDATE sessions SET is_revoked = TRUE, revoked_at = NOW()
+       WHERE jti = :jti AND user_id = :userId`,
+      { jti, userId }
+    );
+  }
 
   clearSessionCookies(res);
   return R.noContent(res);

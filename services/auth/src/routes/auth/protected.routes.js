@@ -12,7 +12,6 @@ const {
 
 const router = Router();
 
-router.post('/logout', requireInternalSig, fromHeaders, ctrl.logout);
 router.post('/logout-all', requireInternalSig, fromHeaders, ctrl.logoutAll);
 router.get('/me', requireInternalSig, fromHeaders, ctrl.me);
 

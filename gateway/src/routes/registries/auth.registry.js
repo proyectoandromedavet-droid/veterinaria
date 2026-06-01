@@ -1,11 +1,11 @@
 'use strict';
 
-const { authMiddleware } = require('../../middleware/auth');
+const { authMiddleware, optionalAuth } = require('../../middleware/auth');
 const { authLimiter, authBackoffLimiter, passwordResetLimiter, tenantLimiter } = require('../../middleware/rateLimiter');
 const { tenantMismatchGuard } = require('../../middleware/subdomain');
 const { makeServiceProxy } = require('../proxy.factory');
 
-const AUTH_PUBLIC = ['/captcha', '/login', '/refresh', '/register', '/password-reset', '/google', '/sso', '/.well-known'];
+const AUTH_PUBLIC = ['/captcha', '/login', '/refresh', '/logout', '/register', '/password-reset', '/google', '/sso', '/.well-known'];
 // Ancla de límite de palabra (\b o /) para evitar que /api/v1/auth@evil.com
 // coincida y deje "@evil.com/..." como path reescrito.
 const STRIP_AUTH_PREFIX = (_path, req) => req.originalUrl.replace(/^\/api\/v[12]\/auth(?=\/|$|\?)/, '') || '/';
@@ -28,6 +28,7 @@ function registerAuthRoutes(app, registerVersioned) {
 
   const authProxy = makeServiceProxy('auth', STRIP_AUTH_PREFIX);
   registerVersioned(app, 'use', 'auth', blockPublicInternalAuth);
+  registerVersioned(app, 'use', 'auth/logout', optionalAuth, authProxy);
   registerVersioned(app, 'use', 'auth', (req, res, next) => {
     if (AUTH_PUBLIC.some((p) => req.path === p || req.path.startsWith(`${p}/`))) {
       return authProxy(req, res, next);
