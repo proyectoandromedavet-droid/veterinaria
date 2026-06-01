@@ -41,6 +41,9 @@ components:
         password:
           type: string
           minLength: 6
+        captchaToken:
+          type: string
+          description: hCaptcha response token when CAPTCHA is enabled
 
     LoginResponse:
       type: object
@@ -86,6 +89,9 @@ components:
         email:
           type: string
           format: email
+        captchaToken:
+          type: string
+          description: hCaptcha response token when CAPTCHA is enabled
 
     PasswordResetConfirm:
       type: object
@@ -157,6 +163,30 @@ paths:
                 $ref: '#/components/schemas/InternalOrgLookupResponse'
         '404':
           description: Organization not found
+
+  /captcha/config:
+    get:
+      summary: Get public CAPTCHA settings
+      responses:
+        '200':
+          description: Public CAPTCHA configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    enum: [true]
+                  data:
+                    type: object
+                    required: [enabled, siteKey]
+                    properties:
+                      enabled:
+                        type: boolean
+                      siteKey:
+                        type: string
 
   /login:
     post:

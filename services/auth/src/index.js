@@ -27,6 +27,7 @@ const alertScanWindowMinutes = parseInt(process.env.SECURITY_ALERT_SCAN_WINDOW_M
 const revocationSyncIntervalMs = Math.max(30000, parseInt(process.env.AUTH_REVOCATION_SYNC_INTERVAL_MS || '60000', 10));
 
 const AUTH_PUBLIC_PATHS = [
+  '/captcha/config',
   '/login',
   '/refresh',
   '/password-reset/request',

@@ -5,7 +5,7 @@ const { authLimiter, authBackoffLimiter, passwordResetLimiter, tenantLimiter } =
 const { tenantMismatchGuard } = require('../../middleware/subdomain');
 const { makeServiceProxy } = require('../proxy.factory');
 
-const AUTH_PUBLIC = ['/login', '/refresh', '/register', '/password-reset', '/google', '/sso', '/.well-known'];
+const AUTH_PUBLIC = ['/captcha', '/login', '/refresh', '/register', '/password-reset', '/google', '/sso', '/.well-known'];
 // Ancla de límite de palabra (\b o /) para evitar que /api/v1/auth@evil.com
 // coincida y deje "@evil.com/..." como path reescrito.
 const STRIP_AUTH_PREFIX = (_path, req) => req.originalUrl.replace(/^\/api\/v[12]\/auth(?=\/|$|\?)/, '') || '/';

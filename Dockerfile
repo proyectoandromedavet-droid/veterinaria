@@ -1,11 +1,17 @@
 # ── Stage 1: build frontend ───────────────────────────────────────────────────
 FROM node:20.18.3-alpine3.21 AS frontend-build
 WORKDIR /app/frontend
+ARG VITE_CAPTCHA_ENABLED
+ARG VITE_HCAPTCHA_SITE_KEY
+ARG CAPTCHA_ENABLED
+ARG HCAPTCHA_SITE_KEY
 COPY andromeda-front/package.json andromeda-front/package-lock.json ./
 RUN npm ci
 COPY andromeda-front/ .
 # Sin VITE_API_URL → baseURL queda relativo (/api/v1) — funciona con el mismo origen
-RUN npm run build
+RUN VITE_CAPTCHA_ENABLED="${VITE_CAPTCHA_ENABLED:-$CAPTCHA_ENABLED}" \
+    VITE_HCAPTCHA_SITE_KEY="${VITE_HCAPTCHA_SITE_KEY:-$HCAPTCHA_SITE_KEY}" \
+    npm run build
 
 # ── Stage 2: backend + frontend dist ─────────────────────────────────────────
 FROM node:20.18.3-alpine3.21

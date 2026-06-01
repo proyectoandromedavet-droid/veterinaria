@@ -13,6 +13,7 @@ describe('Service OpenAPI coverage', () => {
     ['auth', '../../services/auth/src/openapi.yaml', [
       '/internal/validate-api-key',
       '/internal/orgs/by-slug/{slug}',
+      '/captcha/config',
       '/login',
       '/refresh',
       '/password-reset/request',

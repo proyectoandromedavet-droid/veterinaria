@@ -8,6 +8,25 @@ const HCAPTCHA_URL = 'https://hcaptcha.com/siteverify';
 const { createLogger } = require('./logger');
 const captchaLog = createLogger('captcha');
 
+function parseBooleanFlag(value) {
+  if (value === undefined || value === null || value === '') return null;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function isCaptchaEnabled() {
+  const explicit = parseBooleanFlag(process.env.CAPTCHA_ENABLED);
+  if (explicit !== null) return explicit;
+  return Boolean(process.env.HCAPTCHA_SECRET);
+}
+
+function getCaptchaPublicConfig() {
+  const siteKey = process.env.HCAPTCHA_SITE_KEY || process.env.VITE_HCAPTCHA_SITE_KEY || '';
+  return {
+    enabled: isCaptchaEnabled(),
+    siteKey: isCaptchaEnabled() ? siteKey : '',
+  };
+}
+
 async function verifyCaptcha(token, remoteip) {
   const secret = process.env.HCAPTCHA_SECRET;
   if (!secret) return true; // bypass en dev/test
@@ -43,6 +62,7 @@ async function verifyCaptcha(token, remoteip) {
  */
 function captchaMiddleware(req, res, next) {
   if (process.env.NODE_ENV === 'test') return next();
+  if (!isCaptchaEnabled()) return next();
   if (!process.env.HCAPTCHA_SECRET) {
     if (process.env.NODE_ENV === 'production') {
       return res.status(503).json({ error: 'CAPTCHA service not configured' });
@@ -71,4 +91,4 @@ function captchaMiddleware(req, res, next) {
   }).catch(next);
 }
 
-module.exports = { captchaMiddleware, verifyCaptcha };
+module.exports = { captchaMiddleware, verifyCaptcha, isCaptchaEnabled, getCaptchaPublicConfig };

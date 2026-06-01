@@ -432,6 +432,8 @@ services:
       args:
         VITE_API_URL: http://localhost:4050/api/v1
         VITE_PORTAL_ORG_ID: "1"
+        VITE_CAPTCHA_ENABLED: ${CAPTCHA_ENABLED:-false}
+        VITE_HCAPTCHA_SITE_KEY: ${HCAPTCHA_SITE_KEY:-}
     restart: unless-stopped
     ports:
       - "5174:8080"

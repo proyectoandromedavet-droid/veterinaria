@@ -69,9 +69,18 @@
             </div>
           </div>
 
+          <HCaptchaWidget
+            v-if="captchaEnabled"
+            ref="loginCaptchaRef"
+            :site-key="captchaSiteKey"
+            @verified="loginCaptchaToken = $event"
+            @expired="loginCaptchaToken = ''"
+            @error="loginCaptchaToken = ''"
+          />
+
           <div v-if="error" class="alert alert--error">{{ error }}</div>
 
-          <button type="submit" class="btn-primary" data-testid="login-submit" :disabled="loading">
+          <button type="submit" class="btn-primary" data-testid="login-submit" :disabled="loading || captchaConfigLoading">
             <span v-if="loading" class="spinner" />
             <span v-else>{{ t('login.signIn') }}</span>
           </button>
@@ -144,10 +153,19 @@
             />
           </div>
 
+          <HCaptchaWidget
+            v-if="captchaEnabled"
+            ref="forgotCaptchaRef"
+            :site-key="captchaSiteKey"
+            @verified="forgotCaptchaToken = $event"
+            @expired="forgotCaptchaToken = ''"
+            @error="forgotCaptchaToken = ''"
+          />
+
           <div v-if="error" class="alert alert--error">{{ error }}</div>
           <div v-if="success" class="alert alert--success">{{ success }}</div>
 
-          <button type="submit" class="btn-primary" :disabled="loading">
+          <button type="submit" class="btn-primary" :disabled="loading || captchaConfigLoading">
             <span v-if="loading" class="spinner" />
             <span v-else>{{ t('login.sendLink') }}</span>
           </button>
@@ -168,8 +186,10 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import AppLogo from '../components/AppLogo.vue'
+import HCaptchaWidget from '../components/HCaptchaWidget.vue'
 import { t } from '../i18n'
 import {
+  getCaptchaConfig,
   getLoginError,
   login as loginRequest,
   loginErrorScope,
@@ -191,22 +211,72 @@ const pendingToken = ref(null)
 const year = new Date().getFullYear()
 
 const form = reactive({ email: '', password: '', code: '' })
+const captchaSiteKey = ref(import.meta.env.VITE_HCAPTCHA_SITE_KEY || '')
+const captchaEnabled = ref(Boolean(captchaSiteKey.value) && import.meta.env.VITE_CAPTCHA_ENABLED !== 'false')
+const captchaConfigLoading = ref(true)
+const loginCaptchaToken = ref('')
+const forgotCaptchaToken = ref('')
+const loginCaptchaRef = ref(null)
+const forgotCaptchaRef = ref(null)
+
+function resetLoginCaptcha() {
+  loginCaptchaToken.value = ''
+  loginCaptchaRef.value?.reset()
+}
+
+function resetForgotCaptcha() {
+  forgotCaptchaToken.value = ''
+  forgotCaptchaRef.value?.reset()
+}
+
+function isCaptchaError(error) {
+  const message = String(error?.response?.data?.error?.message || error?.message || '')
+  const code = String(error?.response?.data?.error?.code || '')
+  return code === 'VAL_001' || /captcha/i.test(message)
+}
+
+function applyCaptchaConfig(config = {}) {
+  const siteKey = String(config.siteKey || '').trim()
+  captchaEnabled.value = Boolean(config.enabled && siteKey)
+  captchaSiteKey.value = captchaEnabled.value ? siteKey : ''
+  resetLoginCaptcha()
+  resetForgotCaptcha()
+}
+
+async function loadCaptchaConfig() {
+  try {
+    const res = await getCaptchaConfig()
+    applyCaptchaConfig(res.data?.data || res.data || {})
+  } catch (err) {
+    loginErrorScope('login.captchaConfig', err)
+  } finally {
+    captchaConfigLoading.value = false
+  }
+}
 
 async function handleLogin() {
   error.value = ''
   if (!form.email || !form.password) { error.value = 'Completá el correo y la contraseña.'; return }
+  if (captchaEnabled.value && !loginCaptchaToken.value) { error.value = 'Completa el CAPTCHA.'; return }
   loading.value = true
   try {
-    const result = await loginRequest(auth, { email: form.email, password: form.password })
+    const result = await loginRequest(auth, {
+      email: form.email,
+      password: form.password,
+      captchaToken: loginCaptchaToken.value || undefined,
+    })
     if (result.requiresTwoFactor) {
+      resetLoginCaptcha()
       pendingToken.value = result.pendingToken
       step.value = 'twofa'
     } else {
       router.push('/')
     }
   } catch (e) {
+    resetLoginCaptcha()
     const msg = getLoginError(e, 'Error al iniciar sesión')
-    if (e.response?.status === 401) error.value = 'Credenciales incorrectas.'
+    if (isCaptchaError(e)) error.value = 'Completa el CAPTCHA para iniciar sesion.'
+    else if (e.response?.status === 401) error.value = 'Credenciales incorrectas.'
     else if (e.response?.status === 429) error.value = 'Demasiados intentos. Espera unos minutos.'
     else error.value = msg || 'Error al iniciar sesión'
   } finally {
@@ -230,13 +300,17 @@ async function handleTwoFa() {
 async function handleForgot() {
   error.value = ''
   success.value = ''
+  if (form.email && captchaEnabled.value && !forgotCaptchaToken.value) { error.value = 'Completa el CAPTCHA.'; return }
   if (!form.email) { error.value = 'Ingresá tu correo electrónico.'; return }
   loading.value = true
   try {
-    await requestPasswordReset(form.email)
+    await requestPasswordReset(form.email, forgotCaptchaToken.value || undefined)
+    resetForgotCaptcha()
     success.value = 'Si el correo existe, recibirás el enlace en minutos.'
   } catch (err) {
+    resetForgotCaptcha()
     loginErrorScope('login.resetRequest', err, { email: form.email })
+    if (isCaptchaError(err)) { error.value = 'Completa el CAPTCHA para recuperar la contrasena.'; return }
     error.value = getLoginError(err, 'No se pudo enviar el correo. Intentá más tarde.')
   } finally {
     loading.value = false
@@ -249,6 +323,7 @@ function handleSso(provider) {
 }
 
 onMounted(() => {
+  loadCaptchaConfig()
   if (route.query.sso_error) {
     const ssoErr = String(route.query.sso_error).replace(/[<>"'&]/g, '').slice(0, 200)
     error.value = `SSO: ${ssoErr}`

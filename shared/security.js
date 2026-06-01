@@ -30,12 +30,36 @@ function csvEnv(name, fallback = []) {
   return value.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
+function parseBooleanFlag(value) {
+  if (value === undefined || value === null || value === '') return null;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function uniqueSources(sources) {
+  return [...new Set(sources.filter(Boolean))];
+}
+
+function shouldAllowHCaptcha() {
+  const explicit = parseBooleanFlag(process.env.CAPTCHA_ENABLED);
+  return explicit === true ||
+    Boolean(process.env.HCAPTCHA_SITE_KEY || process.env.VITE_HCAPTCHA_SITE_KEY);
+}
+
 function buildCspDirectives() {
   const connectSrc = ["'self'", ...csvEnv('CSP_CONNECT_SRC')];
   const scriptSrc = ["'self'", ...csvEnv('CSP_SCRIPT_SRC')];
   const styleSrc = ["'self'", ...csvEnv('CSP_STYLE_SRC')];
   const imgSrc = ["'self'", 'data:', 'https:', ...csvEnv('CSP_IMG_SRC')];
   const fontSrc = ["'self'", 'data:', 'https:', ...csvEnv('CSP_FONT_SRC')];
+  const frameSrc = [...csvEnv('CSP_FRAME_SRC')];
+
+  if (shouldAllowHCaptcha()) {
+    const hcaptchaSources = ['https://hcaptcha.com', 'https://*.hcaptcha.com'];
+    scriptSrc.push(...hcaptchaSources);
+    styleSrc.push(...hcaptchaSources);
+    connectSrc.push(...hcaptchaSources);
+    frameSrc.push(...hcaptchaSources);
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     connectSrc.push('ws:', 'wss:', 'http://localhost:*', 'http://127.0.0.1:*');
@@ -46,13 +70,13 @@ function buildCspDirectives() {
   return {
     defaultSrc: ["'self'"],
     baseUri: ["'self'"],
-    scriptSrc,
-    styleSrc,
-    imgSrc,
-    connectSrc,
-    fontSrc,
+    scriptSrc: uniqueSources(scriptSrc),
+    styleSrc: uniqueSources(styleSrc),
+    imgSrc: uniqueSources(imgSrc),
+    connectSrc: uniqueSources(connectSrc),
+    fontSrc: uniqueSources(fontSrc),
     objectSrc: ["'none'"],
-    frameSrc: ["'none'"],
+    frameSrc: frameSrc.length ? uniqueSources(frameSrc) : ["'none'"],
     frameAncestors: ["'none'"],
     formAction: ["'self'"],
     manifestSrc: ["'self'"],

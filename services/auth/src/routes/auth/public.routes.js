@@ -9,8 +9,13 @@ const {
   validateRequest,
   strongPasswordField,
 } = require('./_common');
+const { getCaptchaPublicConfig } = require('../../../../../shared/captcha');
 
 const router = Router();
+
+router.get('/captcha/config', (_req, res) => {
+  res.json({ success: true, data: getCaptchaPublicConfig() });
+});
 
 // BUG-015: rate limit en password-reset/confirm para prevenir brute force de tokens
 const passwordResetConfirmLimiter = rateLimit({

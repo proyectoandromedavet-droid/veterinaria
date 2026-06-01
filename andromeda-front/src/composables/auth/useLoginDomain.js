@@ -5,6 +5,10 @@ export function getLoginError(error, fallback) {
   return extractErrorMessage(error, fallback, { includeRequestId: true })
 }
 
+export async function getCaptchaConfig() {
+  return authApi.captchaConfig()
+}
+
 export async function login(authStore, credentials) {
   return authStore.login(credentials)
 }
@@ -13,8 +17,8 @@ export async function verifyTwoFactor(authStore, pendingToken, code) {
   return authStore.twoFaChallenge(pendingToken, code)
 }
 
-export async function requestPasswordReset(email) {
-  return authApi.resetRequest(email)
+export async function requestPasswordReset(email, captchaToken) {
+  return authApi.resetRequest(email, captchaToken)
 }
 
 export function startSso(provider, email) {
@@ -31,6 +35,7 @@ export function loginErrorScope(scope, error, meta) {
 export default function useLoginDomain() {
   return {
     login,
+    getCaptchaConfig,
     verifyTwoFactor,
     requestPasswordReset,
     startSso,
