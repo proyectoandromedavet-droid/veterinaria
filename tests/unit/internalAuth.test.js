@@ -17,9 +17,15 @@ describe('signRequest()', () => {
     expect(sig.length).toBeGreaterThan(0);
   });
 
-  test('format: t={timestamp}.s={hex}', () => {
+  test('format: t={timestamp}.n={nonce}.s={hex}', () => {
     const sig = signRequest('POST', '/api/v1/clients', '7');
-    expect(sig).toMatch(/^t=\d+\.s=[0-9a-f]+$/);
+    expect(sig).toMatch(/^t=\d+\.n=[0-9a-f]+\.s=[0-9a-f]+$/);
+  });
+
+  test('generates unique signatures for repeated requests in the same second', () => {
+    const first = signRequest('GET', '/api/v1/auth/me', '5');
+    const second = signRequest('GET', '/api/v1/auth/me', '5');
+    expect(second).not.toBe(first);
   });
 
   test('returns empty string without secret', () => {

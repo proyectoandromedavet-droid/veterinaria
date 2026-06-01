@@ -7,7 +7,7 @@
  * message = `${method}:${path}:${timestamp}:${orgId}`
  */
 
-const { createHmac, timingSafeEqual } = require('crypto');
+const { createHmac, randomBytes, timingSafeEqual } = require('crypto');
 const { createLogger } = require('./logger');
 const { getSecret } = require('./secrets');
 let _redis = null;
@@ -43,17 +43,18 @@ function _warn() {
   }
 }
 
-function _message(method, path, timestamp, orgId) {
-  return `${method.toUpperCase()}:${path}:${timestamp}:${orgId || ''}`;
+function _message(method, path, timestamp, orgId, nonce = '') {
+  return `${method.toUpperCase()}:${path}:${timestamp}:${orgId || ''}:${nonce || ''}`;
 }
 
 function signRequest(method, path, orgId) {
   const secret = _secret();
   if (!secret) return '';
   const t = Math.floor(Date.now() / 1000).toString();
-  const msg = _message(method, path, t, orgId);
+  const n = randomBytes(16).toString('hex');
+  const msg = _message(method, path, t, orgId, n);
   const sig = createHmac('sha256', secret).update(msg).digest('hex');
-  return `t=${t}.s=${sig}`;
+  return `t=${t}.n=${n}.s=${sig}`;
 }
 
 function verifySignature(method, path, orgId, headerValue) {
@@ -68,15 +69,15 @@ function verifySignature(method, path, orgId, headerValue) {
 
   if (!headerValue) return { ok: false, reason: 'missing_header' };
 
-  const match = headerValue.match(/^t=(\d+)\.s=([0-9a-f]+)$/);
+  const match = headerValue.match(/^t=(\d+)(?:\.n=([0-9a-f]+))?\.s=([0-9a-f]+)$/);
   if (!match) return { ok: false, reason: 'malformed_header' };
 
-  const [, t, sig] = match;
+  const [, t, nonce = '', sig] = match;
   const age = Math.floor(Date.now() / 1000) - parseInt(t, 10);
   if (age > _ttl() || age < -5) return { ok: false, reason: 'expired' };
 
   const expected = createHmac('sha256', secret)
-    .update(_message(method, path, t, orgId))
+    .update(_message(method, path, t, orgId, nonce))
     .digest('hex');
 
   const a = Buffer.from(sig, 'hex');
@@ -84,7 +85,7 @@ function verifySignature(method, path, orgId, headerValue) {
   if (a.length !== b.length) return { ok: false, reason: 'invalid_signature' };
   if (!timingSafeEqual(a, b)) return { ok: false, reason: 'invalid_signature' };
 
-  return { ok: true, _nonce: `t=${t}.s=${sig}` };
+  return { ok: true, _nonce: headerValue };
 }
 
 async function requireInternalSig(req, res, next) {
