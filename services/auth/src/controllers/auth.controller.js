@@ -189,7 +189,7 @@ async function clearBruteForce(email, ip) {
   }
 }
 
-async function buildTokenPair(user, roles) {
+async function buildTokenPair(user, roles, permissions = []) {
   const jti = uuidv4();
   const payload = {
     jti,
@@ -198,6 +198,7 @@ async function buildTokenPair(user, roles) {
     orgId:    user.organization_id,
     branchId: user.branch_id,
     roles,
+    permissions,
   };
   const accessToken  = jwt.signAccess(payload);
   const refreshToken = jwt.signRefresh({ jti, userId: user.id });
@@ -250,8 +251,8 @@ async function persistSession(req, user, refreshToken, jti) {
 }
 
 async function finalizeLogin(res, req, user, roles, responseData = null) {
-  const { accessToken, refreshToken, jti } = await buildTokenPair(user, roles);
   const permissions = await getUserPermissions(roles, user.organization_id);
+  const { accessToken, refreshToken, jti } = await buildTokenPair(user, roles, permissions);
   await persistSession(req, user, refreshToken, jti);
   setSessionCookies(res, accessToken, refreshToken);
   return {
@@ -522,7 +523,9 @@ async function refresh(req, res) {
     organization_id: session.organization_id,
   };
 
-  const { accessToken, refreshToken: newRefresh, jti } = await buildTokenPair(user, roles.map(r => r.name));
+  const roleNames = roles.map(r => r.name);
+  const permissions = await getUserPermissions(roleNames, user.organization_id);
+  const { accessToken, refreshToken: newRefresh, jti } = await buildTokenPair(user, roleNames, permissions);
   const newHash = jwt.hashToken(newRefresh);
 
   // Rotate session token in DB

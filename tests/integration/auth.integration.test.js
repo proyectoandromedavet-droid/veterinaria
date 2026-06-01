@@ -142,6 +142,9 @@ describe('POST /login', () => {
       expect.stringContaining('Path=/api/v1/auth/refresh'),
     ]));
     expect(res.body.data.user.orgId).toBe(5);
+    expect(jwt.verifyAccess(res.body.data.accessToken).permissions).toEqual(
+      expect.arrayContaining(['patients:read'])
+    );
   });
 
   test('401 — wrong password', async () => {
