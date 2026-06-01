@@ -29,6 +29,7 @@ const log = createLogger('internal-auth');
 const _secret = () => getSecret('INTERNAL_SECRET', { defaultValue: '' }) || '';
 const _ttl = () => parseInt(process.env.INTERNAL_SIG_TTL_S || '30', 10);
 const HEADER = 'x-internal-sig';
+const VALIDATED_MARK = Symbol.for('andromeda.internalAuth.validated');
 
 let _warnedOnce = false;
 
@@ -95,11 +96,24 @@ async function requireInternalSig(req, res, next) {
   }
 
   const orgId = req.headers['x-org-id'] || '';
+  const headerValue = req.headers[HEADER] || '';
+  const validationPath = req.baseUrl + req.path;
+  const priorValidation = req[VALIDATED_MARK];
+  if (
+    priorValidation
+    && priorValidation.method === req.method
+    && priorValidation.path === validationPath
+    && priorValidation.orgId === orgId
+    && priorValidation.headerValue === headerValue
+  ) {
+    return next();
+  }
+
   const result = verifySignature(
     req.method,
-    req.baseUrl + req.path,
+    validationPath,
     orgId,
-    req.headers[HEADER] || ''
+    headerValue
   );
   const { ok, reason } = result;
 
@@ -145,6 +159,13 @@ async function requireInternalSig(req, res, next) {
       error: { message: 'Unauthorized', code: 'INTERNAL_AUTH_FAILED' },
     });
   }
+
+  req[VALIDATED_MARK] = {
+    method: req.method,
+    path: validationPath,
+    orgId,
+    headerValue,
+  };
 
   next();
 }

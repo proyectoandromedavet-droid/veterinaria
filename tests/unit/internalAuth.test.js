@@ -1,6 +1,6 @@
 'use strict';
 
-const { signRequest, verifySignature, HEADER } = require('../../shared/internalAuth');
+const { signRequest, verifySignature, requireInternalSig, HEADER } = require('../../shared/internalAuth');
 
 const SECRET = 'test-secret-abc123';
 
@@ -88,5 +88,32 @@ describe('verifySignature()', () => {
 
   test('HEADER export is correct', () => {
     expect(HEADER).toBe('x-internal-sig');
+  });
+});
+
+describe('requireInternalSig()', () => {
+  test('allows the same request object to pass repeated internal auth middleware', async () => {
+    const sig = signRequest('GET', '/me', '5');
+    const req = {
+      method: 'GET',
+      baseUrl: '',
+      path: '/me',
+      originalUrl: '/me',
+      headers: {
+        'x-org-id': '5',
+        [HEADER]: sig,
+      },
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+    const next = jest.fn();
+
+    await requireInternalSig(req, res, next);
+    await requireInternalSig(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(2);
+    expect(res.status).not.toHaveBeenCalled();
   });
 });
