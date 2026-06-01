@@ -57,7 +57,6 @@ router.get('/search/patients', async (req, res, next) => {
        LIMIT :limit OFFSET :offset`,
       { orgId: req.user.orgId, s: search, limit: parsedLimit, offset }
     );
-    const pii = hasPiiAccess(req);
     const safeRows = rows.map(r => ({
       ...r,
       owner_phone: pii ? r.owner_phone : maskPhone(r.owner_phone),
