@@ -170,13 +170,13 @@ export const useAuthStore = defineStore('auth', () => {
     await ensureCsrfToken().catch((error) => {
       logError('auth.refresh.csrf', error)
     })
-    await fetchMe().catch((error) => {
+    await fetchMe({ _noAutoRefresh: true }).catch((error) => {
       logError('auth.refresh.fetchMe', error)
     })
   }
 
-  async function fetchMe() {
-    const res = await authApi.me()
+  async function fetchMe(cfg = {}) {
+    const res = await authApi.me(cfg)
     const payload = res.data?.data || res.data
     user.value = normalizeUser({ ...user.value, ...payload })
   }

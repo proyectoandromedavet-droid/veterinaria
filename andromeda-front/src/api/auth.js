@@ -12,7 +12,7 @@ export const authApi = {
   },
   refresh:      ()              => http.post('/auth/refresh', {}, { timeout: AUTH_BOOTSTRAP_TIMEOUT_MS }),
   logout:       ()              => http.post('/auth/logout', {}),
-  me:           ()              => http.get('/auth/me', { timeout: AUTH_BOOTSTRAP_TIMEOUT_MS }),
+  me:           (cfg = {})      => http.get('/auth/me', { timeout: AUTH_BOOTSTRAP_TIMEOUT_MS, ...cfg }),
   changePassword: (data)        => http.post('/auth/change-password', data),
   resetRequest: (email)         => http.post('/auth/password-reset/request', { email }),
   resetConfirm: (data)          => http.post('/auth/password-reset/confirm', data),

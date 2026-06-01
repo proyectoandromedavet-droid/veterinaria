@@ -102,7 +102,7 @@ http.interceptors.response.use(
     }
     const requestUrl = String(original?.url || '').toLowerCase();
     const isAuthEndpoint = requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/login') || requestUrl.includes('/auth/2fa/challenge');
-    if (original && err.response?.status === 401 && !original._retry && !isAuthEndpoint) {
+    if (original && err.response?.status === 401 && !original._retry && !isAuthEndpoint && !original._noAutoRefresh) {
       if (refreshing) {
         return new Promise((resolve, reject) => {
           queue.push({ resolve, reject, config: original })
