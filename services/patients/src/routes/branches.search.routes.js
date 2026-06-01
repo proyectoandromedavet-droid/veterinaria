@@ -100,7 +100,6 @@ router.get('/search/clients', async (req, res, next) => {
        LIMIT :limit OFFSET :offset`,
       { orgId: req.user.orgId, s: search, limit: parsedLimit, offset }
     );
-    const pii = hasPiiAccess(req);
     const safeRows = rows.map(r => ({
       ...r,
       email: pii ? r.email : maskEmail(r.email),

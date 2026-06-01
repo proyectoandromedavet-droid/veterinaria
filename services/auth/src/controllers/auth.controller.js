@@ -577,6 +577,27 @@ async function logoutAll(req, res) {
   return R.noContent(res);
 }
 
+async function syncRecentRevocations() {
+  const rows = await db.query(
+    `SELECT jti
+     FROM sessions
+     WHERE is_revoked = TRUE
+       AND revoked_at IS NOT NULL
+       AND revoked_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+       AND jti IS NOT NULL`
+  );
+
+  if (!rows.length) return 0;
+
+  await runRedis('revocation-sync', async (redis) => {
+    for (const row of rows) {
+      await redis.setEx(`revoked:${row.jti}`, 15 * 60, '1');
+    }
+  });
+
+  return rows.length;
+}
+
 /**
  * GET /auth/me
  */
@@ -1215,6 +1236,7 @@ module.exports = {
   validateApiKey,
   setup2fa, verify2fa, disable2fa, challenge2fa,
   ssoConnect, ssoCallback,
+  syncRecentRevocations,
   // Exported for unit testing only
   _checkBruteForce: checkBruteForce,
   _recordFailedAttempt: recordFailedAttempt,
