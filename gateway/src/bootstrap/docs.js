@@ -80,6 +80,11 @@ function registerOpenApiValidation(app) {
       validateRequests: { allowUnknownQueryParameters: true },
       validateResponses: false,
       validateSecurity: false,
+      // El gateway es un proxy hacia muchos servicios; el spec no documenta cada subruta.
+      // Sin ignoreUndocumented, express-openapi-validator devuelve 404 a TODA ruta no
+      // documentada antes de llegar al proxy (rompia GDPR, waiting-room, retention, erase, etc.).
+      // La existencia de ruta la valida el servicio destino; auth/RBAC/CSRF/WAF son middleware aparte.
+      ignoreUndocumented: true,
       ignorePaths: /^\/health|^\/metrics|^\/api\/v\d+\/docs/,
     }));
     app.use((err, req, res, next) => {
