@@ -678,7 +678,14 @@ function startService(app, serviceName, port, { drainMs = 10_000, onStarted = nu
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT',  () => shutdown('SIGINT'));
   process.on('unhandledRejection', (reason) => {
-    log.error('Unhandled rejection — exiting process', { reason: String(reason?.message || reason) });
+    // Log fuerte pero NO matar el proceso: con express-async-errors los errores de ruta
+    // ya se capturan; una promesa background suelta no debe tumbar a todos los usuarios.
+    // El orquestador (Railway) reinicia ante crashes reales (uncaughtException).
+    log.error('Unhandled rejection (proceso continúa)', { reason: String(reason?.stack || reason?.message || reason) });
+  });
+  // uncaughtException sí es fatal: estado indefinido -> salir y dejar que el orquestador reinicie.
+  process.on('uncaughtException', (err) => {
+    log.error('Uncaught exception — exiting process', { error: String(err?.stack || err?.message || err) });
     process.exit(1);
   });
 
