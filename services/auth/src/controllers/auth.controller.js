@@ -389,9 +389,9 @@ async function login(req, res) {
     }
     // Historial de login
     await db.query(
-      `INSERT INTO login_history (user_id, ip_address, user_agent, success, failure_reason)
-       VALUES (:userId, :ip, :ua, FALSE, 'invalid_credentials')`,
-      { userId: user?.id || null, ip, ua }
+      `INSERT INTO login_history (user_id, email_attempted, ip_address, user_agent, success, failure_reason)
+       VALUES (:userId, :email, :ip, :ua, FALSE, 'invalid_credentials')`,
+      { userId: user?.id || null, email, ip, ua }
     );
     logAuth401(req, 'POST /auth/login', { reason: 'invalid_credentials' });
     return R.unauthorized(res, 'Invalid email or password');
@@ -405,9 +405,9 @@ async function login(req, res) {
 
   // Record successful login
   const [loginHistory] = await db.query(
-    `INSERT INTO login_history (user_id, ip_address, user_agent, success)
-     VALUES (:userId, :ip, :ua, TRUE)`,
-    { userId: user.id, ip, ua }
+    `INSERT INTO login_history (user_id, email_attempted, ip_address, user_agent, success)
+     VALUES (:userId, :email, :ip, :ua, TRUE)`,
+    { userId: user.id, email: user.email, ip, ua }
   );
 
   // Notify if this IP has not been seen in the last 30 days for this user
@@ -1296,10 +1296,10 @@ async function ssoCallback(req, res) {
 
     const [created] = await db.query(
       `INSERT INTO users
-         (branch_id, first_name, last_name, email, password_hash, is_active, created_at, updated_at)
+         (branch_id, username, first_name, last_name, email, password_hash, is_active, created_at, updated_at)
        VALUES
-         (:branchId, :firstName, :lastName, :email, :passwordHash, 1, NOW(), NOW())`,
-      { branchId, firstName, lastName, email, passwordHash: generatedPasswordHash }
+         (:branchId, :username, :firstName, :lastName, :email, :passwordHash, 1, NOW(), NOW())`,
+      { branchId, username: String(email).slice(0, 100), firstName, lastName, email, passwordHash: generatedPasswordHash }
     );
     const role = await db.queryOne(`SELECT id FROM roles WHERE name = :name`, { name: configRow.default_role });
     if (role?.id) {

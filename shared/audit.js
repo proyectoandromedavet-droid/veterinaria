@@ -95,6 +95,7 @@ function auditMiddleware(options = {}) {
         org_id:      orgId,
         branch_id:   branchId,
         action,
+        module:      autoRes,
         resource:    autoRes,
         resource_id: resourceId,
         method:      req.method,
@@ -132,11 +133,11 @@ async function writeAuditLog(entry) {
 
         const [result] = await conn.query(
           `INSERT INTO audit_logs
-             (user_id, org_id, branch_id, action, resource, resource_id,
+             (user_id, org_id, branch_id, action, module, resource, resource_id,
               method, path, status_code, ip_address, user_agent,
               request_id, request_body, duration_ms, prev_hash, entry_hash, created_at)
            VALUES
-             (:user_id, :org_id, :branch_id, :action, :resource, :resource_id,
+             (:user_id, :org_id, :branch_id, :action, :module, :resource, :resource_id,
               :method, :path, :status_code, :ip_address, :user_agent,
               :request_id, :request_body, :duration_ms, :prev_hash, :entry_hash, :created_at)`,
           { ...entry, prev_hash: prevHash, entry_hash: entryHash },

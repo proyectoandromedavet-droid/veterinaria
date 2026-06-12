@@ -209,10 +209,18 @@ async function _saveTokens (userId, tokens) {
   const encAt = tokens.access_token  ? encrypt(tokens.access_token)  : null;
   const encRt = tokens.refresh_token ? encrypt(tokens.refresh_token) : null;
 
+  // org_id es NOT NULL en google_calendar_tokens; derivarlo del usuario.
+  const orgRow = await db.queryOne(
+    `SELECT b.organization_id AS orgId
+       FROM users u JOIN branches b ON b.id = u.branch_id
+      WHERE u.id = :uid`,
+    { uid: userId }
+  );
+
   await db.query(
     `INSERT INTO google_calendar_tokens
-       (user_id, access_token, refresh_token, expires_at, scope)
-     VALUES (:uid, :at, :rt, :exp, :scope)
+       (user_id, org_id, access_token, refresh_token, expires_at, scope)
+     VALUES (:uid, :orgId, :at, :rt, :exp, :scope)
      ON DUPLICATE KEY UPDATE
        access_token  = VALUES(access_token),
        refresh_token = IF(VALUES(refresh_token) IS NOT NULL, VALUES(refresh_token), refresh_token),
@@ -220,6 +228,7 @@ async function _saveTokens (userId, tokens) {
        updated_at    = NOW()`,
     {
       uid   : userId,
+      orgId : orgRow?.orgId || null,
       at    : encAt,
       rt    : encRt,
       exp   : tokens.expires_at || tokens.expiry_date || null,

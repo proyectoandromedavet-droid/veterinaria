@@ -139,10 +139,10 @@ router.post('/users',
       const userId = await db.transaction(async (conn) => {
         const [r] = await conn.execute(
           `INSERT INTO users
-             (first_name, last_name, email, password_hash, branch_id,
+             (username, first_name, last_name, email, password_hash, branch_id,
               license_number, phone, is_active, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-          [firstName, lastName, email, tempPasswordHash, branchId,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+          [String(email).slice(0, 100), firstName, lastName, email, tempPasswordHash, branchId,
            licenseNumber || null, phone || null]
         );
         const uid = r.insertId;

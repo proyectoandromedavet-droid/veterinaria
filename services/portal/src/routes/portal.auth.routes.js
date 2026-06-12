@@ -231,9 +231,9 @@ router.post('/login',
       }
 
       db.query(
-        `INSERT INTO login_history (user_id, ip_address, user_agent, success)
-         VALUES (:id, :ip, :ua, TRUE)`,
-        { id: client.id, ip, ua }
+        `INSERT INTO login_history (user_id, email_attempted, ip_address, user_agent, success)
+         VALUES (:id, :email, :ip, :ua, TRUE)`,
+        { id: client.id, email: client.email, ip, ua }
       ).catch((err) => log.warn('login history insert failed', { err: err.message }));
 
       publishPortalEvent('portal.owner.logged_in', { clientId: client.id, email: client.email, orgId: client.organization_id || null, ip }, req, { ip });
