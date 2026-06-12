@@ -11,6 +11,7 @@ const {
   boolFromQuery,
   ensurePatientVisible,
 } = require('./patients.common');
+const { CROSS_BRANCH_ROLES } = require('../../../../shared/abac');
 
 const router = Router();
 
@@ -54,9 +55,21 @@ router.get('/', async (req, res, next) => {
     const coatJoinCol = patientCols.has('coat_color_id') ? 'p.coat_color_id' : (patientCols.has('color_id') ? 'p.color_id' : null);
     const bodyConditionCol = patientCols.has('body_condition_score') ? 'p.body_condition_score' : 'NULL';
     const ownerPhoneCol = clientCols.has('phone') ? 'cl.phone' : (clientCols.has('phone_primary') ? 'cl.phone_primary' : 'NULL');
+    // Tenant isolation: organization SIEMPRE obligatoria (AND). La sucursal es un
+    // filtro adicional solo para roles acotados a su sucursal; los roles cross-branch
+    // (superadmin, org_admin, branch_manager, billing_admin) y los usuarios sin
+    // branchId ven toda la organización. Antes se combinaba con OR, lo que hacía que
+    // un usuario de sucursal viera todos los pacientes de la organización.
+    const isCrossBranch = (req.user?.roles || []).some((r) => CROSS_BRANCH_ROLES.has(r));
     const scopeConditions = [];
-    if (clientCols.has('branch_id')) scopeConditions.push('cl.branch_id = :branchId');
     if (patientCols.has('organization_id')) scopeConditions.push('p.organization_id = :orgId');
+    if (clientCols.has('branch_id') && branchId != null && !isCrossBranch) {
+      scopeConditions.push('cl.branch_id = :branchId');
+    }
+    // Esquemas sin organization_id: degradar a aislamiento por sucursal del cliente.
+    if (!scopeConditions.length && clientCols.has('branch_id')) {
+      scopeConditions.push('cl.branch_id = :branchId');
+    }
     const ownerPrimaryCondition = ownerCols.has('active')
       ? `po.ownership_type = 'primary' AND po.active = 1`
       : `po.ownership_type = 'primary'`;
@@ -66,7 +79,7 @@ router.get('/', async (req, res, next) => {
     }
 
     const conditions = [
-      `(${scopeConditions.join(' OR ')})`,
+      ...scopeConditions,
       deletedPredicate(patientCols, 'p'),
       deletedPredicate(clientCols, 'cl'),
       deletedPredicate(ownerCols, 'po'),

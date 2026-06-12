@@ -54,6 +54,20 @@ describe('db.transaction — decorated connection', () => {
     expect(mockConn.release).toHaveBeenCalledTimes(1); // always released
   });
 
+  test('preserves the original error when rollback also fails', async () => {
+    const original = new Error('DB error');
+    mockConn.execute.mockRejectedValueOnce(original);
+    mockConn.rollback.mockRejectedValueOnce(new Error('rollback failed'));
+
+    await expect(
+      db.transaction(async (conn) => { await conn.execute('BAD SQL'); })
+    ).rejects.toBe(original);
+
+    expect(original.rollbackError).toBeInstanceOf(Error);
+    expect(original.rollbackError.message).toBe('rollback failed');
+    expect(mockConn.release).toHaveBeenCalledTimes(1);
+  });
+
   test('conn.query wraps execute and returns rows array', async () => {
     mockConn.execute.mockResolvedValueOnce([[{ name: 'Rex' }], []]);
 

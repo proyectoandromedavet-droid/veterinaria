@@ -25,7 +25,7 @@ async function callInternalService(serviceName, { method, path, body = null, hea
   // SEC: firmar automáticamente todas las solicitudes internas con HMAC para que
   // los servicios destino puedan verificar que la llamada viene de un servicio legítimo.
   const internalAuthHeader = {
-    [INTERNAL_SIG_HEADER]: signRequest(method.toUpperCase(), path, orgId || ''),
+    [INTERNAL_SIG_HEADER]: signRequest(method.toUpperCase(), path, orgId || '', headers),
   };
   const requestHeaders = {
     'Content-Type': 'application/json',
@@ -33,6 +33,10 @@ async function callInternalService(serviceName, { method, path, body = null, hea
     ...internalAuthHeader,
     ...headers,  // headers explícitos del caller tienen precedencia
   };
+
+  // Always replace any caller-provided signature with one generated for the
+  // final request context.
+  requestHeaders[INTERNAL_SIG_HEADER] = internalAuthHeader[INTERNAL_SIG_HEADER];
 
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -97,7 +101,7 @@ async function callInternalService(serviceName, { method, path, body = null, hea
 function buildSignedInternalHeaders(method, path, orgId, extraHeaders = {}) {
   return {
     ...extraHeaders,
-    [INTERNAL_SIG_HEADER]: signRequest(method, path, orgId || ''),
+    [INTERNAL_SIG_HEADER]: signRequest(method, path, orgId || '', extraHeaders),
   };
 }
 

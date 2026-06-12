@@ -4,6 +4,7 @@ const DANGEROUS_INCOMING_HEADERS = [
   'x-user-id',
   'x-user-email',
   'x-user-roles',
+  'x-user-permissions',
   'x-jti',
   'x-org-id',
   'x-tenant-id',
@@ -28,6 +29,7 @@ function normalizeOrgHint(value) {
 }
 
 function sanitizeIncomingHeaders(req, _res, next) {
+  req.clientIp = req.ip || req.socket?.remoteAddress || '';
   if (shouldPreservePublicOrgHint(req)) {
     req.publicOrgIdHint = normalizeOrgHint(req.headers['x-org-id']);
   }

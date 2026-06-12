@@ -95,7 +95,7 @@ router.get('/types', ...getAppointmentTypes);
 router.get('/:id', async (req, res, next) => {
   try {
     const appt = await db.queryOne(
-      `SELECT a.*, at2.name AS type_name,
+      `SELECT a.*, p.organization_id, at2.name AS type_name,
               p.name AS patient_name, sp.common_name AS species,
               CONCAT(u.first_name,' ',u.last_name) AS vet_name
        FROM appointments a

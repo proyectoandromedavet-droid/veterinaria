@@ -79,11 +79,15 @@ const { signRequest } = require('../../shared/internalAuth');
 const app = require('../../services/auth/src/index');
 
 function adminHeaders(path = '/admin/rbac/roles') {
-  return {
+  const identityHeaders = {
     'X-User-Id': '1',
-    'X-Org-Id': '1',
     'X-User-Roles': 'org_admin',
-    'X-Internal-Sig': signRequest('GET', path, '1'),
+  };
+
+  return {
+    ...identityHeaders,
+    'X-Org-Id': '1',
+    'X-Internal-Sig': signRequest('GET', path, '1', identityHeaders),
   };
 }
 

@@ -1,5 +1,11 @@
 'use strict';
 
+jest.mock('../../shared/redis', () => ({
+  getRedisSingleton: jest.fn().mockResolvedValue({
+    set: jest.fn().mockResolvedValue('OK'),
+  }),
+}));
+
 const { signRequest, verifySignature, requireInternalSig, HEADER } = require('../../shared/internalAuth');
 
 const SECRET = 'test-secret-abc123';
@@ -62,6 +68,24 @@ describe('verifySignature()', () => {
     const sig = signRequest('GET', '/api/v1/patients', '42');
     const result = verifySignature('GET', '/api/v1/patients', '99', sig);
     expect(result.ok).toBe(false);
+  });
+
+  test('modified identity headers => invalid_signature', () => {
+    const headers = { 'x-user-id': '7', 'x-user-roles': 'veterinarian' };
+    const sig = signRequest('GET', '/api/v1/patients', '42', headers);
+    const result = verifySignature(
+      'GET',
+      '/api/v1/patients',
+      '42',
+      sig,
+      { ...headers, 'x-user-roles': 'org_admin' }
+    );
+    expect(result).toMatchObject({ ok: false, reason: 'invalid_signature' });
+  });
+
+  test('signature without nonce is rejected', () => {
+    const result = verifySignature('GET', '/', '42', 't=123.s=abc');
+    expect(result).toMatchObject({ ok: false, reason: 'malformed_header' });
   });
 
   test('missing header => missing_header', () => {

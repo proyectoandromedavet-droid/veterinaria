@@ -12,15 +12,33 @@
 
 const { Router }  = require('express');
 const { body, param, validationResult } = require('express-validator');
-const bcrypt      = require('bcryptjs');
 const crypto      = require('crypto');
 const db          = require('../../../../shared/db');
 const R           = require('../../../../shared/response');
+const passwordHash = require('../../../../shared/passwordHash');
 const { requireInternalSig } = require('../../../../shared/internalAuth');
+const { getRedisSingleton }   = require('../../../../shared/redis');
 const { enqueueJob }         = require('../../../../shared/notificationRetry');
 const { fromHeaders }        = require('../../../../shared/requestContext');
 
 const router = Router();
+
+async function revokeUserSessions(userId) {
+  const sessions = await db.query(
+    `SELECT jti FROM sessions
+     WHERE user_id = :userId AND is_revoked = FALSE AND jti IS NOT NULL`,
+    { userId }
+  );
+  await db.callProc('sp_revoke_user_sessions', [userId]);
+  try {
+    const redis = await getRedisSingleton('auth-admin-users', 'auth-admin-users');
+    if (redis?.isReady) {
+      await Promise.all(sessions.map(({ jti }) => redis.setEx(`revoked:${jti}`, 15 * 60, '1')));
+    }
+  } catch {
+    // The periodic auth revocation sync remains the fallback if Redis is degraded.
+  }
+}
 
 function isSuperAdmin(req) {
   return Array.isArray(req.user?.roles) && req.user.roles.includes('superadmin');
@@ -116,7 +134,7 @@ router.post('/users',
 
       // Generar contraseña temporal segura (12 chars base64url)
       const tempPassword = crypto.randomBytes(9).toString('base64url');
-      const passwordHash = await bcrypt.hash(tempPassword, 12);
+      const tempPasswordHash = await passwordHash.hash(tempPassword);
 
       const userId = await db.transaction(async (conn) => {
         const [r] = await conn.execute(
@@ -124,7 +142,7 @@ router.post('/users',
              (first_name, last_name, email, password_hash, branch_id,
               license_number, phone, is_active, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-          [firstName, lastName, email, passwordHash, branchId,
+          [firstName, lastName, email, tempPasswordHash, branchId,
            licenseNumber || null, phone || null]
         );
         const uid = r.insertId;
@@ -248,7 +266,7 @@ router.patch('/users/:id/deactivate',
         `UPDATE users SET is_active = 0, deleted_at = NOW(), updated_at = NOW() WHERE id = :id`,
         { id: req.params.id }
       );
-      await db.callProc('sp_revoke_user_sessions', [req.params.id]);
+      await revokeUserSessions(req.params.id);
 
       await auditPermissionChange(req, {
         targetUserId: Number(req.params.id),
@@ -312,6 +330,7 @@ router.patch('/users/:id/role',
           { userId: targetUserId, roleId: newRole.id, assignedBy: req.user.userId || null }
         );
       });
+      await revokeUserSessions(targetUserId);
 
       await auditPermissionChange(req, {
         targetUserId,

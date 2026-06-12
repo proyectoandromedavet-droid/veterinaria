@@ -101,17 +101,23 @@ function makeProxy(target, pathRewrite = {}, name) {
           proxyReq.removeHeader(header);
         }
 
+        const identityHeaders = {};
+        const setIdentityHeader = (name, value) => {
+          proxyReq.setHeader(name, value);
+          identityHeaders[name.toLowerCase()] = String(value ?? '');
+        };
+
         if (req.user) {
-          proxyReq.setHeader('X-User-Id', req.user.userId || '');
+          setIdentityHeader('X-User-Id', req.user.userId || '');
           proxyReq.setHeader('X-Org-Id', resolveOrgContext(req));
-          proxyReq.setHeader('X-Branch-Id', req.user.branchId || '');
-          proxyReq.setHeader('X-User-Roles', (req.user.roles || []).join(','));
-          proxyReq.setHeader('X-User-Permissions', (req.user.permissions || []).join(','));
-          proxyReq.setHeader('X-User-Email', req.user.email || '');
-          proxyReq.setHeader('X-JTI', req.user.jti || '');
+          setIdentityHeader('X-Branch-Id', req.user.branchId || '');
+          setIdentityHeader('X-User-Roles', (req.user.roles || []).join(','));
+          setIdentityHeader('X-User-Permissions', (req.user.permissions || []).join(','));
+          setIdentityHeader('X-User-Email', req.user.email || '');
+          setIdentityHeader('X-JTI', req.user.jti || '');
           if (req.isApiKey) {
-            proxyReq.setHeader('X-Auth-Type', 'api_key');
-            proxyReq.setHeader('X-Api-Key-Scopes', (req.user.scopes || []).join(','));
+            setIdentityHeader('X-Auth-Type', 'api_key');
+            setIdentityHeader('X-Api-Key-Scopes', (req.user.scopes || []).join(','));
           }
         } else if (req.tenantOrgId) {
           proxyReq.setHeader('X-Org-Id', req.tenantOrgId);
@@ -125,7 +131,7 @@ function makeProxy(target, pathRewrite = {}, name) {
         proxyReq.setHeader('X-Parent-Span-Id', traceHeaders['X-Parent-Span-Id']);
         proxyReq.setHeader('X-Span-Id', traceHeaders['X-Span-Id']);
         proxyReq.setHeader('traceparent', traceHeaders.traceparent);
-        proxyReq.setHeader('X-Forwarded-For', req.ip);
+        proxyReq.setHeader('X-Forwarded-For', req.clientIp || req.ip);
         // Use req.hostname (parsed by Express from the Host header, validated) rather than
         // the raw req.headers.host which is attacker-controlled and enables Host Header Injection
         // in downstream services that trust X-Forwarded-Host.
@@ -136,7 +142,7 @@ function makeProxy(target, pathRewrite = {}, name) {
         }
 
         const sigPath = (proxyReq.path || req.path).split('?')[0];
-        const sig = signRequest(req.method, sigPath, resolveOrgContext(req));
+        const sig = signRequest(req.method, sigPath, resolveOrgContext(req), identityHeaders);
         if (sig) proxyReq.setHeader(INTERNAL_SIG_HEADER, sig);
 
         if (req.rawBody && ['POST', 'PUT', 'PATCH'].includes(req.method)) {

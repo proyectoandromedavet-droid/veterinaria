@@ -58,7 +58,7 @@ function validateImageUrl(url) {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:') {
-      throw Object.assign(new Error('Image URL must use HTTPS'), { code: 'AI_INVALID_IMAGE_URL' });
+      throw Object.assign(new Error('Image URL must use HTTPS'), { code: 'AI_INVALID_IMAGE_URL', httpStatus: 400 });
     }
     const host = parsed.hostname.toLowerCase();
     const allowed = ALLOWED_IMAGE_HOSTS.has(host)
@@ -66,12 +66,12 @@ function validateImageUrl(url) {
     if (!allowed) {
       throw Object.assign(
         new Error(`Image host '${host}' is not in the allowed list`),
-        { code: 'AI_SSRF_BLOCKED' }
+        { code: 'AI_SSRF_BLOCKED', httpStatus: 400 }
       );
     }
   } catch (err) {
     if (err.code === 'AI_INVALID_IMAGE_URL' || err.code === 'AI_SSRF_BLOCKED') throw err;
-    throw Object.assign(new Error('Invalid image URL'), { code: 'AI_INVALID_IMAGE_URL' });
+    throw Object.assign(new Error('Invalid image URL'), { code: 'AI_INVALID_IMAGE_URL', httpStatus: 400 });
   }
 }
 

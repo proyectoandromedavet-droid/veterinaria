@@ -92,6 +92,15 @@ function clearSessionCookies(res) {
   res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh', httpOnly: true, sameSite, secure });
 }
 
+async function revokeAccessJtis(jtis, context) {
+  const uniqueJtis = [...new Set((jtis || []).filter(Boolean))];
+  await Promise.all(uniqueJtis.map((jti) =>
+    runRedis(`${context}.revoke-jti`, (redis) =>
+      redis.setEx(`revoked:${jti}`, 15 * 60, '1')
+    )
+  ));
+}
+
 function getSafeSsoRedirect(value, frontendUrl) {
   const fallback = `${frontendUrl.replace(/\/$/, '')}/login?sso=success`;
   if (!value) return fallback;
@@ -354,13 +363,22 @@ async function login(req, res) {
     console.error('[auth][sp_login_attempt] failed (skipping):', spErr.message);
   }
 
-  const user = await db.queryOne(
+  let user = await db.queryOne(
     `SELECT u.*, b.organization_id
      FROM users u
      JOIN branches b ON u.branch_id = b.id
      WHERE u.email = :email AND u.is_active = TRUE`,
     { email }
   );
+  if (!user && req.rawEmail && req.rawEmail !== email) {
+    user = await db.queryOne(
+      `SELECT u.*, b.organization_id
+       FROM users u
+       JOIN branches b ON u.branch_id = b.id
+       WHERE LOWER(u.email) = :email AND u.is_active = TRUE`,
+      { email: req.rawEmail }
+    );
+  }
 
   if (!user || !(await passwordHash.verify(password, user.password_hash))) {
     // Redis: backoff exponencial por IP+email y por cuenta
@@ -386,7 +404,7 @@ async function login(req, res) {
   await db.callProc('sp_clear_failed_logins', [user.id]).catch(() => {});
 
   // Record successful login
-  await db.query(
+  const [loginHistory] = await db.query(
     `INSERT INTO login_history (user_id, ip_address, user_agent, success)
      VALUES (:userId, :ip, :ua, TRUE)`,
     { userId: user.id, ip, ua }
@@ -397,9 +415,9 @@ async function login(req, res) {
     `SELECT 1 FROM login_history
      WHERE user_id = :userId AND ip_address = :ip AND success = TRUE
        AND created_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
-       AND id != LAST_INSERT_ID()
+       AND (:loginHistoryId IS NULL OR id != :loginHistoryId)
      LIMIT 1`,
-    { userId: user.id, ip }
+    { userId: user.id, ip, loginHistoryId: loginHistory?.insertId || null }
   );
   if (!seenBefore) {
     enqueueJob({
@@ -520,11 +538,6 @@ async function refresh(req, res) {
     return R.unauthorized(res, 'Refresh session not found');
   }
 
-  // Revoke old access JTI
-  await runRedis('refresh.revoke-old-jti', (redis) =>
-    redis.setEx(`revoked:${session.jti}`, 15 * 60, '1')
-  );
-
   const roles = await db.query(
     `SELECT r.name FROM roles r
      JOIN user_roles ur ON ur.role_id = r.id
@@ -544,13 +557,36 @@ async function refresh(req, res) {
   const { accessToken, refreshToken: newRefresh, jti } = await buildTokenPair(user, roleNames, permissions);
   const newHash = jwt.hashToken(newRefresh);
 
-  // Rotate session token in DB
-  await db.query(
-    `UPDATE sessions
-     SET session_token = :newHash, jti = :jti, last_activity_at = NOW()
-     WHERE id = :id`,
-    { newHash, jti, id: session.id }
-  );
+  // Lock and compare the old hash before rotating. A concurrent request that
+  // already rotated this row will no longer match and cannot mint a second pair.
+  const rotation = await db.transaction(async (conn) => {
+    const locked = await conn.queryOne(
+      `SELECT id, jti
+       FROM sessions
+       WHERE id = :id
+         AND session_token = :oldHash
+         AND is_revoked = FALSE
+         AND expires_at > NOW()
+       FOR UPDATE`,
+      { id: session.id, oldHash: tokenHash }
+    );
+    if (!locked) return null;
+
+    await conn.query(
+      `UPDATE sessions
+       SET session_token = :newHash, jti = :jti, last_activity_at = NOW()
+       WHERE id = :id AND session_token = :oldHash`,
+      { newHash, jti, id: session.id, oldHash: tokenHash }
+    );
+    return { oldJti: locked.jti };
+  });
+
+  if (!rotation) {
+    clearSessionCookies(res);
+    return R.unauthorized(res, 'Refresh token already rotated');
+  }
+
+  await revokeAccessJtis([rotation.oldJti], 'refresh');
 
   // Mark old hash as "used" — 10 min window accounts for clock skew + network latency
   await runRedis('refresh.mark-used', (redis) =>
@@ -593,7 +629,13 @@ async function logout(req, res) {
  * POST /auth/logout-all  — revoke all sessions
  */
 async function logoutAll(req, res) {
+  const sessions = await db.query(
+    `SELECT jti FROM sessions
+     WHERE user_id = :userId AND is_revoked = FALSE AND jti IS NOT NULL`,
+    { userId: req.user.userId }
+  );
   await db.callProc('sp_revoke_user_sessions', [req.user.userId]);
+  await revokeAccessJtis(sessions.map((session) => session.jti), 'logout-all');
   clearSessionCookies(res);
   return R.noContent(res);
 }
@@ -654,10 +696,16 @@ async function me(req, res) {
  */
 async function requestPasswordReset(req, res) {
   const { email } = req.body;
-  const user = await db.queryOne(
+  let user = await db.queryOne(
     `SELECT id FROM users WHERE email = :email AND is_active = TRUE`,
     { email }
   );
+  if (!user && req.rawEmail && req.rawEmail !== email) {
+    user = await db.queryOne(
+      `SELECT id FROM users WHERE LOWER(email) = :email AND is_active = TRUE`,
+      { email: req.rawEmail }
+    );
+  }
 
   // Always return 200 to avoid email enumeration
   if (!user) return R.ok(res, { message: 'If that email exists, a reset link was sent.' });
@@ -728,14 +776,20 @@ async function confirmPasswordReset(req, res, next) {
       });
     }
 
-    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const newPasswordHash = await passwordHash.hash(newPassword);
 
-    await db.transaction(async (conn) => {
+    const revokedJtis = await db.transaction(async (conn) => {
+      const sessions = await conn.query(
+        `SELECT jti FROM sessions
+         WHERE user_id = ? AND is_revoked = FALSE
+         FOR UPDATE`,
+        [record.user_id]
+      );
       await conn.execute(
         `UPDATE users SET password_hash = ?, failed_login_attempts = 0,
                           locked_until = NULL, updated_at = NOW()
          WHERE id = ?`,
-        [passwordHash, record.user_id]
+        [newPasswordHash, record.user_id]
       );
       await conn.execute(
         `UPDATE password_reset_tokens SET used_at = NOW() WHERE token_hash = ?`,
@@ -747,8 +801,11 @@ async function confirmPasswordReset(req, res, next) {
          WHERE user_id = ? AND is_revoked = FALSE`,
         [record.user_id]
       );
+      return sessions.map((session) => session.jti);
     });
 
+    await revokeAccessJtis(revokedJtis, 'password-reset');
+    clearSessionCookies(res);
     return R.ok(res, { message: 'Password updated successfully. Please log in again.' });
   } catch (err) {
     return next(err);
@@ -788,13 +845,29 @@ async function changePassword(req, res) {
     return R.badRequest(res, 'La nueva contraseña no puede ser igual a la actual');
   }
 
-  const hash = await bcrypt.hash(newPassword, 12);
-  await db.query(
-    `UPDATE users SET password_hash = :hash, updated_at = NOW() WHERE id = :id`,
-    { hash, id: req.user.userId }
-  );
+  const hash = await passwordHash.hash(newPassword);
+  const revokedJtis = await db.transaction(async (conn) => {
+    const sessions = await conn.query(
+      `SELECT jti FROM sessions
+       WHERE user_id = :id AND is_revoked = FALSE
+       FOR UPDATE`,
+      { id: req.user.userId }
+    );
+    await conn.query(
+      `UPDATE users SET password_hash = :hash, updated_at = NOW() WHERE id = :id`,
+      { hash, id: req.user.userId }
+    );
+    await conn.query(
+      `UPDATE sessions SET is_revoked = TRUE, revoked_at = NOW()
+       WHERE user_id = :id AND is_revoked = FALSE`,
+      { id: req.user.userId }
+    );
+    return sessions.map((session) => session.jti);
+  });
 
-  return R.ok(res, { message: 'Password changed successfully' });
+  await revokeAccessJtis(revokedJtis, 'change-password');
+  clearSessionCookies(res);
+  return R.ok(res, { message: 'Password changed successfully. Please log in again.' });
 }
 
 /**
@@ -1217,7 +1290,7 @@ async function ssoCallback(req, res) {
     }
     if (!branchId) return res.redirect(`${frontendUrl}/login?sso_error=branch_missing`);
 
-    const passwordHash = await bcrypt.hash(crypto.randomUUID(), 12);
+    const generatedPasswordHash = await passwordHash.hash(crypto.randomUUID());
     const firstName = claims.given_name || claims.name?.split(' ')[0] || 'SSO';
     const lastName = claims.family_name || claims.name?.split(' ').slice(1).join(' ') || provider.toUpperCase();
 
@@ -1226,7 +1299,7 @@ async function ssoCallback(req, res) {
          (branch_id, first_name, last_name, email, password_hash, is_active, created_at, updated_at)
        VALUES
          (:branchId, :firstName, :lastName, :email, :passwordHash, 1, NOW(), NOW())`,
-      { branchId, firstName, lastName, email, passwordHash }
+      { branchId, firstName, lastName, email, passwordHash: generatedPasswordHash }
     );
     const role = await db.queryOne(`SELECT id FROM roles WHERE name = :name`, { name: configRow.default_role });
     if (role?.id) {

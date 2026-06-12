@@ -264,7 +264,7 @@ function requireSameOrg(req, res, next) {
   const user = req.user;
   if (!user) return R.error(res, 401, 'Unauthorized', null, 'AUTH_001');
   const access = checkRowTenantAccess(req.resource, req, { orgField: 'organization_id', allowSuperadmin: true });
-  if (!access.ok && access.reason === 'org_mismatch') {
+  if (!access.ok) {
     return R.error(res, 403, 'Cross-organization access denied', null, 'RBAC_005');
   }
   next();

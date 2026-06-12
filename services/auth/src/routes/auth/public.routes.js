@@ -13,6 +13,13 @@ const { getCaptchaPublicConfig } = require('../../../../../shared/captcha');
 
 const router = Router();
 
+function preserveRawEmail(req, _res, next) {
+  req.rawEmail = typeof req.body?.email === 'string'
+    ? req.body.email.trim().toLowerCase()
+    : null;
+  next();
+}
+
 router.get('/captcha/config', (_req, res) => {
   res.json({ success: true, data: getCaptchaPublicConfig() });
 });
@@ -28,6 +35,7 @@ const passwordResetConfirmLimiter = rateLimit({
 
 router.post('/login',
   captchaMiddleware,
+  preserveRawEmail,
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
   validateRequest,
@@ -55,6 +63,7 @@ router.get('/sso/:provider/callback', ctrl.ssoCallback);
 
 router.post('/password-reset/request',
   captchaMiddleware,
+  preserveRawEmail,
   body('email').isEmail().normalizeEmail(),
   validateRequest,
   ctrl.requestPasswordReset

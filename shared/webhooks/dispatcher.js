@@ -14,6 +14,8 @@ const { URL } = require('url');
 const db     = require('../db');
 const { sign, HEADER } = require('./signature');
 const { webhookDeliveries } = require('../metrics');
+const dns = require('dns').promises;
+const { isPrivateIp } = require('../ssrf');
 
 // SSRF protection: block requests to private/loopback/link-local addresses
 const BLOCKED_HOSTS = /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|::1|0\.0\.0\.0|169\.254\.\d+\.\d+|fd[0-9a-f]{2}:.*)$/i;
@@ -152,9 +154,28 @@ async function deliver(row) {
   let responseBody   = null;
   let errorMessage   = null;
 
-  // SSRF guard — reject internal/private addresses before making the request
-  if (!isSafeWebhookUrl(url)) {
-    errorMessage = `SSRF blocked: delivery to '${url}' is not allowed`;
+  // SSRF guard — reject internal/private addresses before making the request.
+  // 1) chequeo sincrónico del hostname literal; 2) resolución DNS para frenar
+  // DNS-rebinding (un dominio público que resuelve a una IP interna).
+  // Solo bloquea ante una resolución CONFIRMADA a IP privada; un fallo de DNS NO
+  // bloquea (axios fallará y el backoff reintentará), para no romper entregas ante
+  // DNS transitorio o entornos sin resolución.
+  let ssrfBlocked = !isSafeWebhookUrl(url);
+  if (!ssrfBlocked) {
+    try {
+      const host = new URL(url).hostname;
+      const isLiteralIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':');
+      if (!isLiteralIp) {
+        const addresses = await dns.lookup(host, { all: true });
+        if (addresses.some(({ address }) => isPrivateIp(address))) {
+          ssrfBlocked = true;
+          errorMessage = 'SSRF blocked: el dominio resuelve a una dirección privada';
+        }
+      }
+    } catch { /* DNS error → no bloquear; axios manejará el fallo y el backoff reintentará */ }
+  }
+  if (ssrfBlocked) {
+    if (!errorMessage) errorMessage = `SSRF blocked: delivery to '${url}' is not allowed`;
     await db.query(
       `UPDATE webhook_deliveries
           SET status = 'failed', attempt_count = :attempt, last_attempt_at = NOW(),

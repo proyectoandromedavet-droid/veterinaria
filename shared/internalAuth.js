@@ -3,8 +3,8 @@
 /**
  * Internal service-to-service authentication.
  *
- * Header: X-Internal-Sig: t={timestamp}.s={hmac}
- * message = `${method}:${path}:${timestamp}:${orgId}`
+ * Header: X-Internal-Sig: t={timestamp}.n={nonce}.s={hmac}
+ * The signature binds routing, tenant and propagated user identity.
  */
 
 const { createHmac, randomBytes, timingSafeEqual } = require('crypto');
@@ -30,6 +30,16 @@ const _secret = () => getSecret('INTERNAL_SECRET', { defaultValue: '' }) || '';
 const _ttl = () => parseInt(process.env.INTERNAL_SIG_TTL_S || '30', 10);
 const HEADER = 'x-internal-sig';
 const VALIDATED_MARK = Symbol.for('andromeda.internalAuth.validated');
+const SIGNED_IDENTITY_HEADERS = [
+  'x-user-id',
+  'x-user-email',
+  'x-user-roles',
+  'x-user-permissions',
+  'x-branch-id',
+  'x-jti',
+  'x-auth-type',
+  'x-api-key-scopes',
+];
 
 let _warnedOnce = false;
 
@@ -44,21 +54,31 @@ function _warn() {
   }
 }
 
-function _message(method, path, timestamp, orgId, nonce = '') {
-  return `${method.toUpperCase()}:${path}:${timestamp}:${orgId || ''}:${nonce || ''}`;
+function _identityContext(headers = {}) {
+  const normalized = {};
+  for (const [key, value] of Object.entries(headers || {})) {
+    normalized[String(key).toLowerCase()] = Array.isArray(value) ? value.join(',') : String(value ?? '');
+  }
+  return SIGNED_IDENTITY_HEADERS
+    .map((header) => `${header}=${normalized[header] || ''}`)
+    .join('&');
 }
 
-function signRequest(method, path, orgId) {
+function _message(method, path, timestamp, orgId, nonce, identityHeaders = {}) {
+  return `${method.toUpperCase()}:${path}:${timestamp}:${orgId || ''}:${nonce}:${_identityContext(identityHeaders)}`;
+}
+
+function signRequest(method, path, orgId, identityHeaders = {}) {
   const secret = _secret();
   if (!secret) return '';
   const t = Math.floor(Date.now() / 1000).toString();
   const n = randomBytes(16).toString('hex');
-  const msg = _message(method, path, t, orgId, n);
+  const msg = _message(method, path, t, orgId, n, identityHeaders);
   const sig = createHmac('sha256', secret).update(msg).digest('hex');
   return `t=${t}.n=${n}.s=${sig}`;
 }
 
-function verifySignature(method, path, orgId, headerValue) {
+function verifySignature(method, path, orgId, headerValue, identityHeaders = {}) {
   const secret = _secret();
   if (!secret) {
     const mode = getInternalAuthMode();
@@ -70,15 +90,15 @@ function verifySignature(method, path, orgId, headerValue) {
 
   if (!headerValue) return { ok: false, reason: 'missing_header' };
 
-  const match = headerValue.match(/^t=(\d+)(?:\.n=([0-9a-f]+))?\.s=([0-9a-f]+)$/);
+  const match = headerValue.match(/^t=(\d+)\.n=([0-9a-f]+)\.s=([0-9a-f]+)$/);
   if (!match) return { ok: false, reason: 'malformed_header' };
 
-  const [, t, nonce = '', sig] = match;
+  const [, t, nonce, sig] = match;
   const age = Math.floor(Date.now() / 1000) - parseInt(t, 10);
   if (age > _ttl() || age < -5) return { ok: false, reason: 'expired' };
 
   const expected = createHmac('sha256', secret)
-    .update(_message(method, path, t, orgId, nonce))
+    .update(_message(method, path, t, orgId, nonce, identityHeaders))
     .digest('hex');
 
   const a = Buffer.from(sig, 'hex');
@@ -98,6 +118,7 @@ async function requireInternalSig(req, res, next) {
   const orgId = req.headers['x-org-id'] || '';
   const headerValue = req.headers[HEADER] || '';
   const validationPath = req.baseUrl + req.path;
+  const identityContext = _identityContext(req.headers);
   const priorValidation = req[VALIDATED_MARK];
   if (
     priorValidation
@@ -105,6 +126,7 @@ async function requireInternalSig(req, res, next) {
     && priorValidation.path === validationPath
     && priorValidation.orgId === orgId
     && priorValidation.headerValue === headerValue
+    && priorValidation.identityContext === identityContext
   ) {
     return next();
   }
@@ -113,7 +135,8 @@ async function requireInternalSig(req, res, next) {
     req.method,
     validationPath,
     orgId,
-    headerValue
+    headerValue,
+    req.headers
   );
   const { ok, reason } = result;
 
@@ -165,6 +188,7 @@ async function requireInternalSig(req, res, next) {
     path: validationPath,
     orgId,
     headerValue,
+    identityContext,
   };
 
   next();
@@ -176,4 +200,5 @@ module.exports = {
   requireInternalSig,
   HEADER,
   getInternalAuthMode,
+  SIGNED_IDENTITY_HEADERS,
 };

@@ -71,7 +71,12 @@ function requireBranchScope(branchField = 'branch_id') {
     const userBranchId     = req.user?.branchId;
 
     // Si el recurso no tiene branch_id, no se puede aplicar scope → pass-through
-    if (resourceBranchId == null) return next();
+    if (resourceBranchId == null) {
+      return res.status(403).json({
+        success: false,
+        error: { message: 'Resource branch scope is missing', code: 'RBAC_004' },
+      });
+    }
 
     // Sin branch en el token, no se puede validar → denegar por seguridad
     if (userBranchId == null) {
@@ -116,7 +121,12 @@ function requireOwnerScope(
     const resourceOwner = req.resource?.[ownerField];
     const userId        = req.user?.userId;
 
-    if (resourceOwner == null) return next();
+    if (resourceOwner == null || userId == null) {
+      return res.status(403).json({
+        success: false,
+        error: { message: 'Resource owner scope is missing', code: 'RBAC_003' },
+      });
+    }
 
     if (String(resourceOwner) !== String(userId)) {
       return res.status(403).json({
@@ -159,7 +169,15 @@ function requireAttributeMatch(rules) {
         const resourceVal = req.resource?.[rule.resourceField];
         const userVal     = req.user?.[rule.userField];
 
-        if (resourceVal == null || userVal == null) continue;
+        if (resourceVal == null || userVal == null) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              message: `Access denied: ${rule.resourceField} scope missing`,
+              code: 'RBAC_003',
+            },
+          });
+        }
 
         if (String(resourceVal) !== String(userVal)) {
           return res.status(403).json({

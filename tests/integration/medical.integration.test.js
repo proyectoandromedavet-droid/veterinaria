@@ -41,14 +41,17 @@ beforeEach(() => {
   jest.clearAllMocks();
   db.query.mockReset();
   db.queryOne.mockReset();
+  db.transaction.mockImplementation(async (callback) => callback({
+    query: db.query,
+    queryOne: db.queryOne,
+  }));
 });
 
 describe('medical service', () => {
   test('POST /medical-records creates walk-in appointment and record with base schema columns only', async () => {
     db.queryOne
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ patient_id: 77 });
+      .mockResolvedValueOnce({ id: 1, branch_id: 5 })
+      .mockResolvedValueOnce({ id: 77 });
 
     const executed = [];
     db.query.mockImplementation((sql) => {
@@ -81,9 +84,18 @@ describe('medical service', () => {
     expect(executed.some(sql => sql.includes('visit_date'))).toBe(false);
     expect(executed.find(sql => sql.includes('INSERT INTO appointments'))).toContain('scheduled_date');
     expect(executed.find(sql => sql.includes('INSERT INTO medical_records'))).toContain('chief_complaint');
+    const patientLookup = db.queryOne.mock.calls.find(([sql]) => sql.includes('FROM patients WHERE'));
+    expect(patientLookup[0]).not.toContain('branch_id');
   });
 
   test('POST /medical-records/:id/sign updates medical record directly without SP', async () => {
+    db.queryOne.mockResolvedValueOnce({
+      id: 321,
+      status: 'open',
+      signed_at: null,
+      organization_id: 10,
+      branch_id: 5,
+    });
     const executed = [];
     db.query.mockImplementation((sql) => {
       executed.push(sql);
@@ -116,5 +128,51 @@ describe('medical service', () => {
 
     expect(res.status).toBe(400);
     expect(db.query).not.toHaveBeenCalled();
+  });
+
+  test('POST /appointments rejects patient or vet outside the organization', async () => {
+    db.queryOne.mockResolvedValueOnce(null);
+
+    const res = await request(app)
+      .post('/appointments')
+      .set(AUTH)
+      .send({
+        patientId: 77,
+        vetId: 99,
+        scheduledDate: '2026-07-01T12:00:00.000Z',
+      });
+
+    expect(res.status).toBe(404);
+    expect(db.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO appointments'), expect.anything());
+  });
+
+  test('POST /appointments rejects overlapping appointments', async () => {
+    db.queryOne
+      .mockResolvedValueOnce({ patient_id: 77, patient_org_id: 10, vet_id: 99, vet_branch_id: 5 })
+      .mockResolvedValueOnce({ id: 123 });
+
+    const res = await request(app)
+      .post('/appointments')
+      .set(AUTH)
+      .send({
+        patientId: 77,
+        vetId: 99,
+        scheduledDate: '2026-07-01T12:00:00.000Z',
+      });
+
+    expect(res.status).toBe(409);
+    expect(db.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO appointments'), expect.anything());
+  });
+
+  test('POST /appointments/:id/triage rejects an appointment outside the tenant', async () => {
+    db.queryOne.mockResolvedValueOnce(null);
+
+    const res = await request(app)
+      .post('/appointments/999/triage')
+      .set(AUTH)
+      .send({ priority: 'urgent', chiefComplaint: 'Dificultad respiratoria' });
+
+    expect(res.status).toBe(404);
+    expect(db.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO emergency_triage'), expect.anything());
   });
 });

@@ -82,6 +82,11 @@ afterEach(() => {
   redisClient._reset();
   jest.clearAllMocks();
   db.callProc.mockResolvedValue([[]]);
+  db.transaction.mockImplementation(async (callback) => callback({
+    query: db.query,
+    queryOne: db.queryOne,
+    execute: db.query,
+  }));
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -106,6 +111,19 @@ function makeUserRow(overrides = {}) {
     last_name:       'Pro',
     two_factor_enabled: false,
     ...overrides,
+  };
+}
+
+function signedIdentityHeaders(method, path) {
+  const identityHeaders = {
+    'X-User-Id': '1',
+    'X-Branch-Id': '10',
+    'X-User-Roles': 'org_admin',
+  };
+  return {
+    ...identityHeaders,
+    'X-Org-Id': '5',
+    'X-Internal-Sig': signRequest(method, path, '5', identityHeaders),
   };
 }
 
@@ -156,6 +174,30 @@ describe('POST /login', () => {
     expect(res.status).toBe(401);
   });
 
+  test('200 - login falls back to the original lowercase email for legacy users', async () => {
+    const legacyEmail = 'first.last+legacy@gmail.com';
+    const legacyUser = makeUserRow({
+      email: legacyEmail,
+      password_hash: await makePasswordHash(PASSWORD),
+    });
+    db.callProc
+      .mockResolvedValueOnce(makeProcResult(false))
+      .mockResolvedValueOnce([[]]);
+    db.queryOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(legacyUser)
+      .mockResolvedValueOnce(null);
+    db.query
+      .mockResolvedValueOnce([{ name: 'veterinarian' }])
+      .mockResolvedValueOnce([{ insertId: 2 }])
+      .mockResolvedValueOnce([{ insertId: 1 }]);
+
+    const res = await request(app).post('/login').send({ email: legacyEmail, password: PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.user.email).toBe(legacyEmail);
+  });
+
   test('429 — account locked by SP', async () => {
     db.callProc.mockResolvedValueOnce(makeProcResult(true));
 
@@ -202,7 +244,9 @@ describe('POST /refresh', () => {
       email: 'vet@clinic.com', branch_id: 10, organization_id: 5,
     };
 
-    db.queryOne.mockResolvedValueOnce(session);               // session lookup
+    db.queryOne
+      .mockResolvedValueOnce(session)                         // session lookup
+      .mockResolvedValueOnce({ id: 10, jti: 'test-jti' });    // locked session
     db.query
       .mockResolvedValueOnce([{ name: 'veterinarian' }])      // roles
       .mockResolvedValueOnce([{ affectedRows: 1 }]);          // UPDATE session
@@ -231,7 +275,9 @@ describe('POST /refresh', () => {
     redisClient.setEx.mockRejectedValueOnce(new Error('Redis down'));
     redisClient.setEx.mockRejectedValueOnce(new Error('Redis down'));
 
-    db.queryOne.mockResolvedValueOnce(session);
+    db.queryOne
+      .mockResolvedValueOnce(session)
+      .mockResolvedValueOnce({ id: 10, jti: 'test-jti' });
     db.query
       .mockResolvedValueOnce([{ name: 'veterinarian' }])
       .mockResolvedValueOnce([{ affectedRows: 1 }]);
@@ -437,11 +483,7 @@ describe('Protected auth routes', () => {
 
     const res = await request(app)
       .get('/api-keys')
-      .set('X-User-Id', '1')
-      .set('X-Org-Id', '5')
-      .set('X-Branch-Id', '10')
-      .set('X-User-Roles', 'org_admin')
-      .set('X-Internal-Sig', signRequest('GET', '/api-keys', '5'));
+      .set(signedIdentityHeaders('GET', '/api-keys'));
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -453,11 +495,7 @@ describe('Protected auth routes', () => {
 
     const res = await request(app)
       .post('/api-keys')
-      .set('X-User-Id', '1')
-      .set('X-Org-Id', '5')
-      .set('X-Branch-Id', '10')
-      .set('X-User-Roles', 'org_admin')
-      .set('X-Internal-Sig', signRequest('POST', '/api-keys', '5'))
+      .set(signedIdentityHeaders('POST', '/api-keys'))
       .send({ name: 'Automation key' });
 
     expect(res.status).toBe(201);
@@ -477,11 +515,7 @@ describe('Protected auth routes', () => {
 
     const res = await request(app)
       .get('/admin/rbac/security-alerts')
-      .set('X-User-Id', '1')
-      .set('X-Org-Id', '5')
-      .set('X-Branch-Id', '10')
-      .set('X-User-Roles', 'org_admin')
-      .set('X-Internal-Sig', signRequest('GET', '/admin/rbac/security-alerts', '5'));
+      .set(signedIdentityHeaders('GET', '/admin/rbac/security-alerts'));
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);

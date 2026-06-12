@@ -116,11 +116,11 @@ async function validateMagicBytes(filePath, declaredMime) {
   if (!valid) {
     // Eliminar archivo malicioso inmediatamente
     await fs.promises.unlink(filePath).catch(() => {});
-    throw new AppError(
-      'El contenido del archivo no coincide con el tipo declarado',
-      400,
-      'UPLOAD_MAGIC_MISMATCH'
-    );
+    throw new AppError({
+      message: 'El contenido del archivo no coincide con el tipo declarado',
+      code: 'UPLOAD_MAGIC_MISMATCH',
+      http: 400,
+    });
   }
 }
 
@@ -160,21 +160,21 @@ function createStorage(category = 'misc') {
 function fileFilter(_req, file, cb) {
   // Verificar MIME type
   if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-    return cb(new AppError(
-      `Tipo de archivo no permitido: ${file.mimetype}`,
-      400,
-      'UPLOAD_TYPE_BLOCKED'
-    ), false);
+    return cb(new AppError({
+      message: `Tipo de archivo no permitido: ${file.mimetype}`,
+      code: 'UPLOAD_TYPE_BLOCKED',
+      http: 400,
+    }), false);
   }
 
   // Verificar extensión del nombre original
   const ext = path.extname(file.originalname).toLowerCase();
   if (BLOCKED_EXTENSIONS.has(ext)) {
-    return cb(new AppError(
-      `Extensión de archivo bloqueada: ${ext}`,
-      400,
-      'UPLOAD_EXT_BLOCKED'
-    ), false);
+    return cb(new AppError({
+      message: `Extensión de archivo bloqueada: ${ext}`,
+      code: 'UPLOAD_EXT_BLOCKED',
+      http: 400,
+    }), false);
   }
 
   cb(null, true);

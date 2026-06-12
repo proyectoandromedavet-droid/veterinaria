@@ -68,12 +68,12 @@ function tooManyHandler(message) {
 
 /** Usuario autenticado → por userId; anónimo → por IP */
 function userOrIpKey(req) {
-  return req.user?.userId ? `user:${req.user.userId}` : `ip:${req.ip}`;
+  return req.user?.userId ? `user:${req.user.userId}` : `ip:${req.clientIp || req.ip}`;
 }
 
 /** Por tenant (org_id); si no hay usuario → por IP */
 function tenantOrIpKey(req) {
-  return req.user?.orgId ? `org:${req.user.orgId}` : `ip:${req.ip}`;
+  return req.user?.orgId ? `org:${req.user.orgId}` : `ip:${req.clientIp || req.ip}`;
 }
 
 // ── Builder factories ─────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ async function buildAuthLimiter() {
     standardHeaders:        true,
     legacyHeaders:          false,
     store,
-    keyGenerator:           (req) => `ip:${req.ip}`,
+    keyGenerator:           (req) => `ip:${req.clientIp || req.ip}`,
     skipSuccessfulRequests: false,
     handler:                tooManyHandler('Too many authentication attempts. Try again later.'),
   });
@@ -113,7 +113,7 @@ async function buildPasswordResetLimiter() {
     standardHeaders: true,
     legacyHeaders:   false,
     store,
-    keyGenerator:    (req) => `ip:${req.ip}`,
+    keyGenerator:    (req) => `ip:${req.clientIp || req.ip}`,
     handler:         tooManyHandler('Too many password reset attempts. Try again in 15 minutes.'),
   });
 }
@@ -126,7 +126,7 @@ async function buildTwoFaLimiter() {
     standardHeaders: true,
     legacyHeaders:   false,
     store,
-    keyGenerator:    (req) => `2fa:${req.ip}`,
+    keyGenerator:    (req) => `2fa:${req.clientIp || req.ip}`,
     handler:         tooManyHandler('Too many 2FA attempts. Account locked for 15 minutes.'),
   });
 }
@@ -230,7 +230,7 @@ async function buildAuthBackoffLimiter() {
   return async function authBackoffMiddleware(req, res, next) {
     if (!redis?.isReady) return next(); // fail-open if Redis unavailable
 
-    const ip         = req.ip || 'unknown';
+    const ip         = req.clientIp || req.ip || 'unknown';
     const countKey   = `rl:auth:attempts:${ip}`;
     const lockoutKey = `rl:auth:lockout:${ip}`;
 

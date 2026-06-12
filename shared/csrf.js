@@ -44,7 +44,7 @@ if (process.env.CSRF_SECRET) {
 const COOKIE_NAME = process.env.CSRF_COOKIE_NAME || '_csrf';
 const TTL_SEC     = parseInt(process.env.CSRF_TTL_SEC || '3600');
 const EXCLUDE_PATHS = new Set(
-  (process.env.CSRF_EXCLUDE_PATHS || '/health,/metrics,/api/v1/auth/login,/api/v1/auth/refresh,/api/v1/auth/password-reset/request,/api/v1/auth/password-reset/confirm,/api/v1/payments/mp/webhook,/api/v1/payments/stripe/webhook')
+  (process.env.CSRF_EXCLUDE_PATHS || '/health,/metrics,/api/v1/auth/login,/api/v1/auth/refresh,/api/v1/auth/password-reset/request,/api/v1/auth/password-reset/confirm,/api/v1/auth/2fa/challenge,/api/v2/auth/2fa/challenge,/api/v1/payments/mp/webhook,/api/v1/payments/stripe/webhook')
     .split(',').map(p => p.trim()).filter(Boolean)
 );
 

@@ -53,7 +53,14 @@ async function recordDeviceFingerprint(sessionId, rawFingerprint) {
 /**
  * Middleware que verifica que el fingerprint del request coincide con el de la sesión.
  * Usa req.user.jti si existe; como fallback acepta X-Session-Id.
- * No bloquea — solo loguea el evento de seguridad y continúa.
+ *
+ * Por defecto BLOQUEA (401) ante cambio de dispositivo en producción
+ * (ver BLOCK_ON_CHANGE). Setear DEVICE_FINGERPRINT_BLOCK=false para modo observación
+ * (solo loguea el evento de seguridad y continúa).
+ *
+ * Limitación conocida: si el cliente no envía el header X-Device-Fingerprint el chequeo
+ * se omite (fail-open) para no romper clientes legítimos que aún no lo implementan.
+ * Es una capa de defensa en profundidad, no un control de autenticación primario.
  */
 async function checkDeviceFingerprint(req, _res, next) {
   if (!ENABLED()) return next();

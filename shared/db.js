@@ -243,7 +243,15 @@ async function transaction(fn) {
     await conn.commit();
     return result;
   } catch (err) {
-    await conn.rollback();
+    try {
+      await conn.rollback();
+    } catch (rollbackErr) {
+      getLogger().error('Transaction rollback failed', {
+        error: rollbackErr.message,
+        originalError: err.message,
+      });
+      err.rollbackError = rollbackErr;
+    }
     throw err;
   } finally {
     conn.release();

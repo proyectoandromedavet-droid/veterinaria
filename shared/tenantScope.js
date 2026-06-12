@@ -51,6 +51,7 @@ function checkRowTenantAccess(row, req, {
   orgField = 'organization_id',
   branchField = 'branch_id',
   allowSuperadmin = true,
+  requireOrg = true,
   requireBranch = false,
 } = {}) {
   if (!row) return { ok: false, reason: 'resource_missing' };
@@ -60,12 +61,22 @@ function checkRowTenantAccess(row, req, {
   const rowOrgId = row?.[orgField] ?? row?.orgId ?? null;
   const rowBranchId = row?.[branchField] ?? row?.branchId ?? null;
 
+  if (requireOrg && (orgId === null || orgId === undefined)) {
+    return { ok: false, reason: 'missing_org_scope' };
+  }
+  if (requireOrg && (rowOrgId === null || rowOrgId === undefined)) {
+    return { ok: false, reason: 'missing_resource_org_scope' };
+  }
   if (rowOrgId !== null && rowOrgId !== undefined && orgId !== null && orgId !== undefined) {
     if (String(rowOrgId) !== String(orgId)) return { ok: false, reason: 'org_mismatch' };
   }
 
   if (requireBranch && (branchId === null || branchId === undefined)) {
     return { ok: false, reason: 'missing_branch_scope' };
+  }
+
+  if (requireBranch && (rowBranchId === null || rowBranchId === undefined)) {
+    return { ok: false, reason: 'missing_resource_branch_scope' };
   }
 
   if (requireBranch && rowBranchId !== null && rowBranchId !== undefined) {
@@ -78,9 +89,9 @@ function checkRowTenantAccess(row, req, {
 function enforceRowTenantAccess(row, req, res, options = {}) {
   const result = checkRowTenantAccess(row, req, options);
   if (result.ok) return true;
-  const code = result.reason === 'branch_mismatch' ? 'TENANT_004'
-    : result.reason === 'missing_branch_scope' ? 'TENANT_002'
-      : 'TENANT_003';
+  const code = result.reason === 'resource_missing' ? 'RESOURCE_NOT_FOUND'
+    : result.reason.includes('branch') ? 'BRANCH_SCOPE_MISMATCH'
+      : 'TENANT_SCOPE_MISMATCH';
   R.error(res, 403, 'Cross-tenant access denied', { reason: result.reason }, code);
   return false;
 }

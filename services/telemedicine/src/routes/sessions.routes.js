@@ -448,6 +448,19 @@ router.post('/:id/room/token', async (req, res, next) => {
 
     const { identity, role = 'guest' } = req.body;
     if (!identity) return R.badRequest(res, 'identity requerido (email o userId)');
+    if (!['guest', 'host'].includes(role)) return R.badRequest(res, 'role inválido');
+
+    const allowedIdentities = new Set(
+      [req.user.userId, req.user.email].filter(Boolean).map((value) => String(value))
+    );
+    if (!allowedIdentities.has(String(identity))) {
+      return R.forbidden(res, 'Solo puede emitir un token para su propia identidad');
+    }
+
+    const hostRoles = new Set(['superadmin', 'org_admin', 'veterinarian', 'tele_vet', 'vet']);
+    if (role === 'host' && !(req.user.roles || []).some((userRole) => hostRoles.has(userRole))) {
+      return R.forbidden(res, 'No tiene permisos para emitir un token de anfitrión');
+    }
 
     const result = await webrtc.generateToken({
       roomName: room.room_name,

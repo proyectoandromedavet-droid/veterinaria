@@ -33,6 +33,7 @@ const AUTH_PUBLIC_PATHS = [
   '/logout',
   '/password-reset/request',
   '/password-reset/confirm',
+  '/2fa/challenge',
   '/.well-known/jwks.json',
   /^\/sso\/[^/]+\/connect$/,
   /^\/sso\/[^/]+\/callback$/,

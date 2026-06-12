@@ -127,7 +127,7 @@ router.post('/',
       }
 
       if (!appointmentId) {
-        const canAutoCreateAppt = req.user.roles?.includes('vet');
+        const canAutoCreateAppt = req.user.roles?.some((role) => ['vet', 'veterinarian', 'tele_vet'].includes(role));
         if (!canAutoCreateAppt) {
           return R.badRequest(res, 'Se requiere appointmentId para usuarios sin rol de veterinario');
         }
@@ -135,14 +135,22 @@ router.post('/',
         const vetId = req.body.vetId || req.user.userId;
 
         let branchId = req.user.branchId || null;
-        if (!branchId && req.user.userId) {
-          const u = await db.queryOne('SELECT branch_id FROM users WHERE id = :uid', { uid: req.user.userId });
-          branchId = u?.branch_id || null;
-        }
+        const vet = await db.queryOne(
+          `SELECT u.id, u.branch_id
+           FROM users u
+           JOIN branches b ON b.id = u.branch_id
+           WHERE u.id = :vetId
+             AND u.is_active = TRUE
+             AND b.organization_id = :orgId
+             AND (:branchId IS NULL OR u.branch_id = :branchId)`,
+          { vetId, orgId: req.user.orgId, branchId }
+        );
+        if (!vet) return R.notFound(res, 'Veterinario no encontrado');
+        branchId = branchId || vet.branch_id;
+
         const patient = await db.queryOne(
-          `SELECT id FROM patients WHERE id = :pid AND organization_id = :orgId
-             AND (:branchId IS NULL OR branch_id = :branchId)`,
-          { pid: patientId, orgId: req.user.orgId, branchId }
+          `SELECT id FROM patients WHERE id = :pid AND organization_id = :orgId`,
+          { pid: patientId, orgId: req.user.orgId }
         );
         if (!patient) return R.notFound(res, 'Paciente no encontrado');
 

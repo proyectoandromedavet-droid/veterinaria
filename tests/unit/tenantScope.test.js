@@ -37,4 +37,22 @@ describe('tenantScope helpers', () => {
     );
     expect(result).toEqual({ ok: false, reason: 'branch_mismatch' });
   });
+
+  test('denies a row without organization scope', () => {
+    const result = checkRowTenantAccess(
+      { branch_id: 3 },
+      { user: { orgId: 1, branchId: 3, roles: [] } },
+      { requireBranch: true }
+    );
+    expect(result).toEqual({ ok: false, reason: 'missing_resource_org_scope' });
+  });
+
+  test('denies a row without branch scope when branch is required', () => {
+    const result = checkRowTenantAccess(
+      { organization_id: 1 },
+      { user: { orgId: 1, branchId: 3, roles: [] } },
+      { requireBranch: true }
+    );
+    expect(result).toEqual({ ok: false, reason: 'missing_resource_branch_scope' });
+  });
 });

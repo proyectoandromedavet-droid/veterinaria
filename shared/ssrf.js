@@ -94,23 +94,23 @@ function isPrivateIp(ip) {
  */
 function validateUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') {
-    throw new AppError('URL inválida', 400, 'SSRF_INVALID_URL');
+    throw new AppError({ message: 'URL inválida', code: 'SSRF_INVALID_URL', http: 400 });
   }
 
   let parsed;
   try {
     parsed = new URL(rawUrl);
   } catch {
-    throw new AppError('URL malformada', 400, 'SSRF_INVALID_URL');
+    throw new AppError({ message: 'URL malformada', code: 'SSRF_INVALID_URL', http: 400 });
   }
 
   // Protocolo permitido
   if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
-    throw new AppError(
-      `Protocolo no permitido: ${parsed.protocol}`,
-      400,
-      'SSRF_PROTOCOL_BLOCKED'
-    );
+    throw new AppError({
+      message: `Protocolo no permitido: ${parsed.protocol}`,
+      code: 'SSRF_PROTOCOL_BLOCKED',
+      http: 400,
+    });
   }
 
   const hostname = parsed.hostname.toLowerCase();
@@ -130,27 +130,27 @@ function validateUrl(rawUrl) {
     };
     const dotted = decimalToIp(hostname);
     if (!dotted || isPrivateIpv4(dotted)) {
-      throw new AppError('Acceso a dirección IP privada o de loopback no permitido', 400, 'SSRF_PRIVATE_IP');
+      throw new AppError({ message: 'Acceso a dirección IP privada o de loopback no permitido', code: 'SSRF_PRIVATE_IP', http: 400 });
     }
   }
 
   // Rechazar si el hostname es directamente una IP privada
   if (isPrivateIp(hostname)) {
-    throw new AppError(
-      'Acceso a dirección IP privada o de loopback no permitido',
-      400,
-      'SSRF_PRIVATE_IP'
-    );
+    throw new AppError({
+      message: 'Acceso a dirección IP privada o de loopback no permitido',
+      code: 'SSRF_PRIVATE_IP',
+      http: 400,
+    });
   }
 
   // Rechazar dominios que resuelven localmente (detección básica)
   const localDomains = ['localhost', 'local', 'internal', 'intranet', 'corp', 'lan'];
   if (localDomains.some(d => hostname === d || hostname.endsWith(`.${d}`))) {
-    throw new AppError(
-      'Acceso a dominio interno no permitido',
-      400,
-      'SSRF_INTERNAL_DOMAIN'
-    );
+    throw new AppError({
+      message: 'Acceso a dominio interno no permitido',
+      code: 'SSRF_INTERNAL_DOMAIN',
+      http: 400,
+    });
   }
 }
 
@@ -177,21 +177,21 @@ async function validateUrlAsync(rawUrl) {
     const addresses = await dns.lookup(hostname, { all: true });
     for (const { address } of addresses) {
       if (isPrivateIp(address)) {
-        throw new AppError(
-          `El dominio resuelve a una dirección privada (${address})`,
-          400,
-          'SSRF_DNS_REBINDING'
-        );
+        throw new AppError({
+          message: `El dominio resuelve a una dirección privada (${address})`,
+          code: 'SSRF_DNS_REBINDING',
+          http: 400,
+        });
       }
     }
   } catch (err) {
     if (err.code === 'SSRF_DNS_REBINDING') throw err;
     // DNS lookup failure → bloquear por precaución
-    throw new AppError(
-      'No se pudo resolver el dominio',
-      400,
-      'SSRF_DNS_FAILURE'
-    );
+    throw new AppError({
+      message: 'No se pudo resolver el dominio',
+      code: 'SSRF_DNS_FAILURE',
+      http: 400,
+    });
   }
 }
 

@@ -143,7 +143,11 @@ function validatePassword(password, ctx = {}) {
 function enforcePassword(password, ctx = {}) {
   const result = validatePassword(password, ctx);
   if (!result.valid) {
-    throw new AppError(result.errors[0], 400, 'PASSWORD_POLICY_VIOLATION', { errors: result.errors });
+    throw new AppError(
+      { message: result.errors[0], code: 'PASSWORD_POLICY_VIOLATION', http: 400 },
+      null,
+      { errors: result.errors }
+    );
   }
 }
 

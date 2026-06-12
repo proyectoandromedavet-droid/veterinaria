@@ -59,6 +59,15 @@ function _loadKeys () {
     return;
   }
 
+  // En producción, una clave efímera invalidaría todas las firmas tras un reinicio
+  // y entre instancias (sin no-repudio real). Abortar explícitamente como en jwt.js.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'SIGNING_PRIVATE_KEY o SIGNING_KEY_FILE deben estar configurados en producción. ' +
+      'Una clave efímera rompe la verificación de firmas (recetas, consentimientos, AFIP).'
+    );
+  }
+
   // Fallback: generar par efímero en memoria (solo para dev/test)
   const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
     modulusLength   : 2048,
