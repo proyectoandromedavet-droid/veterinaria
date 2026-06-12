@@ -124,6 +124,15 @@ function buildNotificationInsert(cols, payload) {
   mapField('relatedEntityType', FIELD_CANDIDATES.relatedEntityType, payload.relatedEntityType);
   mapField('relatedEntityId', FIELD_CANDIDATES.relatedEntityId, payload.relatedEntityId);
 
+  // channel es NOT NULL en notification_logs (canal de entrega). El "type" de la
+  // notificación no tiene columna propia en este schema; las notificaciones internas
+  // usan el canal in-app por defecto. Sin esto el INSERT viola NOT NULL.
+  if (cols.has('channel')) {
+    columns.push('channel');
+    values.push(':channel');
+    params.channel = payload.channel || 'in_app';
+  }
+
   const readFlagColumn = firstExisting(cols, FIELD_CANDIDATES.readFlag);
   if (readFlagColumn) {
     columns.push(readFlagColumn);
