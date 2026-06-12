@@ -27,6 +27,7 @@ router.post('/:id/gdpr/consents',
       const { consentType, granted, source, version } = req.body;
       const result = await gdpr.recordConsent({
         clientId: req.params.id,
+        orgId: req.user.orgId,
         consentType,
         granted: granted === true || granted === 'true',
         source: source || 'staff',
@@ -36,9 +37,10 @@ router.post('/:id/gdpr/consents',
       });
 
       await db.query(
-        `INSERT INTO gdpr_audit_trail (client_id, user_id, action, performed_by, ip_address, details)
-         VALUES (:cid, NULL, :action, :uid, :ip, :det)`,
+        `INSERT INTO gdpr_audit_trail (org_id, client_id, action, performed_by, ip_address, detail_json)
+         VALUES (:orgId, :cid, :action, :uid, :ip, :det)`,
         {
+          orgId: req.user.orgId,
           cid: req.params.id,
           action: `consent.${granted ? 'granted' : 'withdrawn'}.${consentType}`,
           uid: req.user.userId,
@@ -69,9 +71,9 @@ router.get('/:id/gdpr/export', async (req, res, next) => {
   try {
     const data = await gdpr.exportPersonalData(req.params.id, req.user.orgId);
     await db.query(
-      `INSERT INTO gdpr_audit_trail (client_id, user_id, action, performed_by, ip_address)
-       VALUES (:cid, NULL, 'access.export', :uid, :ip)`,
-      { cid: req.params.id, uid: req.user.userId, ip: req.ip }
+      `INSERT INTO gdpr_audit_trail (org_id, client_id, action, performed_by, ip_address)
+       VALUES (:orgId, :cid, 'access.export', :uid, :ip)`,
+      { orgId: req.user.orgId, cid: req.params.id, uid: req.user.userId, ip: req.ip }
     ).catch((auditError) => logClientsError('GET /clients/:id/gdpr/export audit', auditError, { clientId: req.params.id, orgId: req.user?.orgId }));
 
     const format = req.query.format || 'json';
@@ -94,9 +96,10 @@ router.post('/:id/gdpr/requests',
     try {
       const result = await gdpr.createDataRequest({
         clientId: req.params.id,
+        orgId: req.user.orgId,
+        branchId: req.user.branchId,
         requestType: req.body.requestType,
         notes: req.body.notes,
-        handledBy: req.user.userId,
       });
       return R.created(res, result);
     } catch (e) {
@@ -119,7 +122,7 @@ router.get('/gdpr/requests', async (req, res, next) => {
               CONCAT(u.first_name,' ',u.last_name) AS handled_by_name
        FROM gdpr_data_requests gdr
        JOIN clients c ON gdr.client_id = c.id
-       LEFT JOIN users u ON gdr.handled_by = u.id
+       LEFT JOIN users u ON gdr.completed_by = u.id
        WHERE ${conds.join(' AND ')}
        ORDER BY gdr.due_date ASC, gdr.created_at DESC
        LIMIT :limit OFFSET :offset`,

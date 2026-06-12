@@ -34,19 +34,23 @@ async function recordConsent (opts) {
 
   const [r] = await db.query(
     `INSERT INTO gdpr_consents
-       (client_id, org_id, consent_type, granted, ip_address, user_agent)
-     VALUES (:cid, :orgId, :type, :granted, :ip, :ua)
+       (client_id, org_id, consent_type, granted, granted_at, withdrawn_at, ip_address, user_agent)
+     VALUES (:cid, :orgId, :type, :granted, :grantedAt, :withdrawnAt, :ip, :ua)
      ON DUPLICATE KEY UPDATE
-       granted    = VALUES(granted),
-       ip_address = VALUES(ip_address),
-       updated_at = NOW()`,
+       granted      = VALUES(granted),
+       granted_at   = VALUES(granted_at),
+       withdrawn_at = VALUES(withdrawn_at),
+       ip_address   = VALUES(ip_address),
+       updated_at   = NOW()`,
     {
-      cid    : clientId,
-      orgId  : orgId || null,
-      type   : consentType,
-      granted: granted ? 1 : 0,
-      ip     : ip       || null,
-      ua     : userAgent || null,
+      cid        : clientId,
+      orgId      : orgId || null,
+      type       : consentType,
+      granted    : granted ? 1 : 0,
+      grantedAt  : granted ? new Date() : null,
+      withdrawnAt: granted ? null : new Date(),
+      ip         : ip       || null,
+      ua         : userAgent || null,
     }
   );
   return { id: r.insertId };
@@ -86,21 +90,24 @@ async function withdrawAllConsents (clientId, source = 'portal') {
  * @returns {Promise<{ requestId, dueDate }>}
  */
 async function createDataRequest (opts) {
-  const { clientId, requestType, notes, handledBy } = opts;
+  const { clientId, orgId, branchId, requestType, notes } = opts;
 
   // Por ley: plazo máximo 30 días
   const dueDate = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
 
+  // org_id y branch_id son NOT NULL en gdpr_data_requests. completed_by se setea
+  // recién al completar la solicitud (updateDataRequest), no al crearla.
   const [r] = await db.query(
     `INSERT INTO gdpr_data_requests
-       (client_id, request_type, status, notes, completed_by, due_date)
-     VALUES (:cid, :type, 'pending', :notes, :uid, :due)`,
+       (client_id, org_id, branch_id, request_type, status, notes, due_date)
+     VALUES (:cid, :orgId, :branchId, :type, 'pending', :notes, :due)`,
     {
-      cid  : clientId,
-      type : requestType,
-      notes: notes || null,
-      uid  : handledBy || null,
-      due  : dueDate,
+      cid     : clientId,
+      orgId   : orgId || null,
+      branchId: branchId || null,
+      type    : requestType,
+      notes   : notes || null,
+      due     : dueDate,
     }
   );
   return { requestId: r.insertId, dueDate };
@@ -324,11 +331,12 @@ async function anonymizeClient (clientId, orgId, requestedBy) {
       { cid: clientId }
     );
 
-    // Registrar en audit trail
+    // Registrar en audit trail (org_id es NOT NULL)
     await conn.query(
-      `INSERT INTO gdpr_audit_trail (client_id, action, performed_by, detail_json)
-       VALUES (:cid, 'erasure.completed', :uid, :detail_json)`,
+      `INSERT INTO gdpr_audit_trail (org_id, client_id, action, performed_by, detail_json)
+       VALUES (:orgId, :cid, 'erasure.completed', :uid, :detail_json)`,
       {
+        orgId      : orgId,
         cid        : clientId,
         uid        : requestedBy,
         detail_json: JSON.stringify({ anonPrefix, timestamp: new Date().toISOString() }),
@@ -346,17 +354,21 @@ async function anonymizeClient (clientId, orgId, requestedBy) {
  */
 async function reportBreach (opts) {
   const {
-    orgId, severity, affectedRecords,
+    orgId, title, severity, affectedRecords,
     description, discoveredBy, responseNotes,
   } = opts;
 
+  // title es NOT NULL en data_breaches; derivar de la descripción si no se pasa.
+  const breachTitle = title || (description ? String(description).slice(0, 200) : 'Brecha de seguridad');
+
   const [r] = await db.query(
     `INSERT INTO data_breaches
-       (org_id, severity, affected_records, description,
+       (org_id, title, severity, affected_records, description,
         created_by, response_notes, status, detected_at)
-     VALUES (:org, :sev, :count, :desc, :by, :notes, 'detected', NOW())`,
+     VALUES (:org, :title, :sev, :count, :desc, :by, :notes, 'detected', NOW())`,
     {
       org  : orgId,
+      title: breachTitle,
       sev  : severity,
       count: affectedRecords || 0,
       desc : description,
