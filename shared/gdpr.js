@@ -376,7 +376,9 @@ async function reportBreach (opts) {
       notes: responseNotes || null,
     }
   );
-  return { breachId: r.insertId };
+  // GDPR Art. 33 / Ley 25.326: plazo de 72 hs para notificar a la autoridad.
+  const notifyDeadline = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  return { breachId: r.insertId, notifyDeadline };
 }
 
 // ─── Políticas de retención ───────────────────────────────────────────────────
