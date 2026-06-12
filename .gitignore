@@ -40,3 +40,11 @@ coverage/
 
 # Docker volumes (if accidentally created locally)
 docker/volumes/
+
+# Artefactos locales de análisis / dumps (no versionar)
+schema_dump.json
+*schema_dump.json
+file_list.json
+sql_validation_report.txt
+analyze_sql.js
+PENDIENTES.txt
