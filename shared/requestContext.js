@@ -2,9 +2,12 @@
 
 // BUG-16: allowlist de roles válidos para prevenir inyección de roles arbitrarios
 const KNOWN_ROLES = new Set([
-  'superadmin', 'org_admin', 'branch_manager', 'vet', 'receptionist',
-  'assistant', 'pharmacist', 'groomer', 'accountant', 'lab_tech',
-  'radiologist', 'pathologist', 'surgeon', 'anesthesiologist',
+  'superadmin', 'org_admin', 'branch_manager', 'veterinarian', 'vet_technician',
+  'receptionist', 'groomer', 'grooming_manager', 'tele_vet', 'pharmacist',
+  'accountant', 'lab_technician', 'imaging_tech', 'surgeon', 'read_only',
+  'api_user',
+  // Legacy role names retained for existing tenants.
+  'vet', 'assistant', 'lab_tech', 'radiologist', 'pathologist', 'anesthesiologist',
 ]);
 
 function splitCsvHeader(value) {
@@ -21,6 +24,7 @@ function getRequestContext(headers = {}) {
     branchId: headers['x-branch-id'] || null,
     // BUG-16: filtrar roles no reconocidos para prevenir privilege escalation por header injection
     roles: splitCsvHeader(headers['x-user-roles']).filter((r) => KNOWN_ROLES.has(r)),
+    permissions: splitCsvHeader(headers['x-user-permissions']),
     email: headers['x-user-email'] || null,
     jti: headers['x-jti'] || null,
     authType: headers['x-auth-type'] || null,

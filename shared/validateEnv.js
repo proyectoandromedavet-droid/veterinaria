@@ -1,5 +1,7 @@
 'use strict';
 
+const { getSecret } = require('./secrets');
+
 const CRITICAL_VARS = [
   'INTERNAL_SECRET',
   'CSRF_SECRET',
@@ -22,7 +24,7 @@ function validateCriticalEnv(log) {
 
   // 1. Detect placeholder values
   const placeholders = CRITICAL_VARS.filter((name) => {
-    const val = process.env[name];
+    const val = getSecret(name, { defaultValue: '' });
     return val && (val === 'CHANGE_ME' || val.startsWith('CHANGE_ME_'));
   });
 
@@ -39,14 +41,14 @@ function validateCriticalEnv(log) {
   // 2. In production, also check that required vars are not empty/absent
   if (process.env.NODE_ENV === 'production') {
     const missing = REQUIRED_IN_PROD.filter((name) => {
-      const val = process.env[name];
+      const val = getSecret(name, { defaultValue: '' });
       return !val || val.trim() === '';
     });
 
     // JWT: require at least one of JWT_KEYRING_JSON or JWT_PRIVATE_KEY
     const hasJwtKey = Boolean(
-      (process.env.JWT_KEYRING_JSON || '').trim() ||
-      (process.env.JWT_PRIVATE_KEY  || '').trim()
+      getSecret('JWT_KEYRING_JSON', { defaultValue: '' }).trim() ||
+      getSecret('JWT_PRIVATE_KEY', { defaultValue: '', trim: false }).trim()
     );
     if (!hasJwtKey) missing.push('JWT_KEYRING_JSON or JWT_PRIVATE_KEY');
 

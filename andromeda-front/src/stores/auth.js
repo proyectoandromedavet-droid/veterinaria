@@ -117,7 +117,9 @@ export const useAuthStore = defineStore('auth', () => {
           return
         }
         const hadSession = localStorage.getItem('vet_session') === '1'
-        if (!accessToken.value && hadSession) {
+        const isSsoCallback = typeof window !== 'undefined'
+          && new URLSearchParams(window.location.search).get('sso') === 'success'
+        if (!accessToken.value && (hadSession || isSsoCallback)) {
           try {
             await refresh()
           } catch (error) {
@@ -157,6 +159,10 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await authApi.twoFaChallenge({ pendingToken, code })
     const payload = res.data?.data || res.data
     setTokens(payload.accessToken)
+    localStorage.setItem('vet_session', '1')
+    await ensureCsrfToken().catch((error) => {
+      logError('auth.twoFa.csrf', error)
+    })
     await fetchMe().catch((error) => {
       logError('auth.twoFa.fetchMe', error)
     })
@@ -166,6 +172,7 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await authApi.refresh()
     const payload = res.data?.data || res.data
     setTokens(payload.accessToken)
+    localStorage.setItem('vet_session', '1')
     clearCsrfToken()
     await ensureCsrfToken().catch((error) => {
       logError('auth.refresh.csrf', error)
@@ -193,6 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
+    clearSession()
     try {
       await authApi.logout()
     } catch (error) {
@@ -200,7 +208,6 @@ export const useAuthStore = defineStore('auth', () => {
         logError('auth.logout', error)
       }
     }
-    clearSession()
   }
 
   function getUserFacingError(error, fallback) {

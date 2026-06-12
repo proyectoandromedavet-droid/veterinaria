@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { requirePerm } = require('../../../../shared/serviceBase');
 const {
   R,
   db,
@@ -27,7 +28,7 @@ const PUSH_WINDOW_MS = parseInt(process.env.PUSH_RATE_WINDOW_MS || '60000');
 async function checkPushRateLimit(orgId) {
   // getRedis() devuelve { pub, sub } — usar pub para operaciones de escritura
   const redis = await getRedis().catch(() => null);
-  if (!redis?.pub?.isReady) return; // si Redis no está disponible, dejar pasar (modo degradado)
+  if (!redis?.pub?.isReady || typeof redis.pub.incr !== 'function') return; // modo degradado
 
   const key = `ratelimit:push:${orgId}`;
   const count = await redis.pub.incr(key);
@@ -120,7 +121,7 @@ router.patch('/read-all', async (req, res, next) => {
   }
 });
 
-router.post('/push', async (req, res, next) => {
+router.post('/push', requirePerm('notifications:send'), async (req, res, next) => {
   try {
     const orgId = req.user?.orgId;
     if (!orgId) return R.forbidden(res, 'Organization context required');
@@ -148,6 +149,17 @@ router.post('/push', async (req, res, next) => {
     } = req.body;
     const schema = await getNotificationSchema();
     const cols = schema.notification_logs || new Set();
+
+    if (branchId) {
+      if (req.user.branchId && String(branchId) !== String(req.user.branchId)) {
+        return R.forbidden(res, 'Sucursal fuera del alcance del usuario', 'PUSH_CROSS_BRANCH');
+      }
+      const branchOwned = await db.queryOne(
+        `SELECT id FROM branches WHERE id = :branchId AND organization_id = :orgId`,
+        { branchId, orgId }
+      );
+      if (!branchOwned) return R.forbidden(res, 'Sucursal fuera de la organización', 'PUSH_CROSS_ORG');
+    }
 
     if (targetUserIds?.length) {
       // Cap: máximo 500 destinatarios por llamada
@@ -218,7 +230,7 @@ router.post('/push', async (req, res, next) => {
   }
 });
 
-router.get('/retries', async (req, res, next) => {
+router.get('/retries', requirePerm('notifications:send'), async (req, res, next) => {
   try {
     const orgId = req.user?.orgId;
     if (!orgId) return R.forbidden(res, 'Organization context required');

@@ -85,8 +85,24 @@ function setSessionCookies(res, accessToken, refreshToken) {
 }
 
 function clearSessionCookies(res) {
-  res.clearCookie('accessToken', { path: '/' });
-  res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
+  const configuredSameSite = String(process.env.AUTH_COOKIE_SAME_SITE || 'none').toLowerCase();
+  const sameSite = ['lax', 'strict', 'none'].includes(configuredSameSite) ? configuredSameSite : 'none';
+  const secure = process.env.AUTH_COOKIE_SECURE === 'true' || sameSite === 'none';
+  res.clearCookie('accessToken', { path: '/', httpOnly: true, sameSite, secure });
+  res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh', httpOnly: true, sameSite, secure });
+}
+
+function getSafeSsoRedirect(value, frontendUrl) {
+  const fallback = `${frontendUrl.replace(/\/$/, '')}/login?sso=success`;
+  if (!value) return fallback;
+
+  try {
+    const frontendOrigin = new URL(frontendUrl).origin;
+    const resolved = new URL(String(value), frontendOrigin);
+    return resolved.origin === frontendOrigin ? resolved.toString() : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 /**
@@ -405,7 +421,7 @@ async function login(req, res) {
   // ── 2FA gate — if enabled, issue a short-lived pending token ─────────────
   if (user.two_factor_enabled) {
     const pendingJti = uuidv4();
-    const pendingToken = jwt.signAccess({ scope: '2fa_pending', userId: user.id, jti: pendingJti });
+    const pendingToken = jwt.signPending({ userId: user.id, jti: pendingJti });
     return R.ok(res, { requiresTwoFactor: true, pendingToken });
   }
 
@@ -926,6 +942,8 @@ async function validateApiKey(req, res) {
      JOIN users u ON ak.user_id = u.id
      JOIN branches b ON u.branch_id = b.id
      WHERE ak.key_hash = :hash
+       AND u.is_active = TRUE
+       AND u.deleted_at IS NULL
        AND ${activePredicate}
        ${deletedPredicate}
        AND (ak.expires_at IS NULL OR ak.expires_at > NOW())`,
@@ -1066,7 +1084,7 @@ async function challenge2fa(req, res) {
   // Verify the short-lived pending token signed after password success
   let pending;
   try {
-    pending = jwt.verifyAccess(pendingToken);
+    pending = jwt.verifyPending(pendingToken);
   } catch (err) {
     log.warn('2FA pending token verification failed', { error: err.message });
     logAuth401(req, 'POST /auth/2fa/challenge', { reason: 'invalid_or_expired_pending_token' });
@@ -1124,6 +1142,7 @@ async function ssoConnect(req, res) {
   };
   const authFlow = await oidc.buildAuthorizationUrl(provider, config);
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const redirectTo = getSafeSsoRedirect(req.query.redirectTo, frontendUrl);
 
   await runRedis('sso.connect.store-state', (redis) =>
     redis.setEx(`sso:state:${authFlow.state}`, 600, JSON.stringify({
@@ -1131,7 +1150,7 @@ async function ssoConnect(req, res) {
       nonce: authFlow.nonce,
       verifier: authFlow.verifier,
       orgId: configRow.organization_id,
-      redirectTo: req.query.redirectTo || `${frontendUrl}/login?sso=success`,
+      redirectTo,
     }))
   );
 
@@ -1164,10 +1183,12 @@ async function ssoCallback(req, res) {
     scopes: JSON.parse(configRow.scopes || '["openid","email","profile"]'),
   };
   const tokenResponse = await oidc.exchangeCode(provider, config, code, stateData.verifier);
-  const claims = oidc.decodeJwtWithoutVerify(tokenResponse.id_token);
-
-  if (claims.nonce !== stateData.nonce) {
-    return res.redirect(`${frontendUrl}/login?sso_error=invalid_nonce`);
+  let claims;
+  try {
+    claims = await oidc.verifyIdToken(provider, config, tokenResponse.id_token, { nonce: stateData.nonce });
+  } catch (verifyError) {
+    log.warn('SSO ID token verification failed', { provider, error: verifyError.message });
+    return res.redirect(`${frontendUrl}/login?sso_error=invalid_id_token`);
   }
 
   const email = String(claims.email || '').toLowerCase();

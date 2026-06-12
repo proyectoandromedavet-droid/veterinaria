@@ -13,6 +13,7 @@ const DANGEROUS_BROWSER_HEADERS = [
   'x-user-id',
   'x-user-email',
   'x-user-roles',
+  'x-user-permissions',
   'x-jti',
   'x-org-id',
   'x-tenant-id',
@@ -105,6 +106,7 @@ function makeProxy(target, pathRewrite = {}, name) {
           proxyReq.setHeader('X-Org-Id', resolveOrgContext(req));
           proxyReq.setHeader('X-Branch-Id', req.user.branchId || '');
           proxyReq.setHeader('X-User-Roles', (req.user.roles || []).join(','));
+          proxyReq.setHeader('X-User-Permissions', (req.user.permissions || []).join(','));
           proxyReq.setHeader('X-User-Email', req.user.email || '');
           proxyReq.setHeader('X-JTI', req.user.jti || '');
           if (req.isApiKey) {

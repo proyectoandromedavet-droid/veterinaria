@@ -80,6 +80,21 @@ router.post('/',
       const subtotal = r2(items.reduce((s, i) => s + r2(Number(i.quantity) * Number(i.unitCost)), 0));
 
       const { insertId, poNumber } = await db.transaction(async (conn) => {
+        for (const itemId of new Set(items.map(item => Number(item.itemId)))) {
+          const itemOwner = await conn.queryOne(
+            `SELECT ist.item_id
+             FROM inventory_stock ist
+             JOIN inventory_items ii ON ii.id = ist.item_id AND ${notDeleted('ii')}
+             WHERE ist.item_id = :itemId AND ist.branch_id = :branchId`,
+            { itemId, branchId: req.user.branchId }
+          );
+          if (!itemOwner) {
+            const err = new Error('Item de inventario no encontrado en esta sucursal');
+            err.http = 404;
+            throw err;
+          }
+        }
+
         const [{ count }] = await conn.query(
           `SELECT COUNT(*)+1 AS count FROM purchase_orders WHERE branch_id=:bid FOR UPDATE`,
           { bid: req.user.branchId }
@@ -161,13 +176,31 @@ router.post('/:id/receive',
 
         for (const item of items) {
           const poi = await conn.queryOne(
-            `SELECT * FROM purchase_order_items WHERE id=:id AND purchase_order_id=:poid`,
+            `SELECT * FROM purchase_order_items
+             WHERE id=:id AND purchase_order_id=:poid AND deleted_at IS NULL
+             FOR UPDATE`,
             { id: item.poItemId, poid: po.id }
           );
-          if (!poi) continue;
+          if (!poi) {
+            const err = new Error('Item de orden de compra no encontrado');
+            err.http = 404;
+            throw err;
+          }
 
           const qtyReceiving = Math.min(item.quantityReceived, poi.quantity_ordered - poi.quantity_received);
           if (qtyReceiving <= 0) continue;
+
+          const stock = await conn.queryOne(
+            `SELECT item_id FROM inventory_stock
+             WHERE item_id = :itemId AND branch_id = :branchId
+             FOR UPDATE`,
+            { itemId: poi.item_id, branchId: req.user.branchId }
+          );
+          if (!stock) {
+            const err = new Error('Item de inventario no encontrado en esta sucursal');
+            err.http = 409;
+            throw err;
+          }
 
           await conn.execute(
             `UPDATE purchase_order_items SET quantity_received = quantity_received + ?, lot_number=COALESCE(?,lot_number), expiry_date=COALESCE(?,expiry_date) WHERE id=?`,
@@ -190,10 +223,22 @@ router.post('/:id/receive',
              VALUES (?,?,'purchase',?,?,?,?,?)`,
             [poi.item_id, req.user.branchId, qtyReceiving, poi.unit_cost, po.po_number, batchResult.insertId, req.user.userId]
           );
+
+          await conn.execute(
+            `UPDATE stock_alerts sa
+             JOIN inventory_stock ist ON ist.item_id = sa.item_id AND ist.branch_id = sa.branch_id
+             SET sa.resolved=1, sa.resolved_at=NOW()
+             WHERE sa.branch_id=? AND sa.item_id=? AND sa.resolved=0
+               AND sa.alert_type IN ('low_stock','out_of_stock')
+               AND sa.deleted_at IS NULL
+               AND ist.quantity_available > ist.reorder_point`,
+            [req.user.branchId, poi.item_id]
+          );
         }
 
         const [pending] = await conn.execute(
-          `SELECT COUNT(*) AS c FROM purchase_order_items WHERE purchase_order_id=? AND quantity_received < quantity_ordered`,
+          `SELECT COUNT(*) AS c FROM purchase_order_items
+           WHERE purchase_order_id=? AND quantity_received < quantity_ordered AND deleted_at IS NULL`,
           [po.id]
         );
         const newStatus = pending[0].c > 0 ? 'partial' : 'received';
@@ -202,13 +247,6 @@ router.post('/:id/receive',
           [newStatus, po.id]
         );
 
-        await conn.execute(
-          `UPDATE stock_alerts sa
-           JOIN purchase_order_items poi ON poi.purchase_order_id=? AND sa.item_id=poi.item_id
-           SET sa.resolved=1, sa.resolved_at=NOW()
-           WHERE sa.branch_id=? AND sa.resolved=0 AND sa.alert_type IN ('low_stock','out_of_stock')`,
-          [po.id, req.user.branchId]
-        );
       });
 
       return R.ok(res, { message: 'Mercadería recibida correctamente' });

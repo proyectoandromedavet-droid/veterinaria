@@ -867,9 +867,9 @@ function formatLatency(ms) {
   return `${ms} ms`
 }
 
-function handleLogout() {
-  auth.logout()
-  router.push('/login')
+async function handleLogout() {
+  await auth.logout()
+  await router.replace('/login')
 }
 
 async function loadLogs() {

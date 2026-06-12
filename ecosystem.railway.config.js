@@ -11,7 +11,8 @@ function svc(name, script, port) {
     exec_mode: 'fork',
     watch: false,
     autorestart: true,
-    max_restarts: 10,
+    max_restarts: 1000,
+    min_uptime: '30s',
     restart_delay: 2000,
     env: {
       NODE_ENV: 'production',
@@ -34,7 +35,8 @@ module.exports = {
       exec_mode: 'fork',
       watch: false,
       autorestart: true,
-      max_restarts: 10,
+      max_restarts: 1000,
+      min_uptime: '30s',
       restart_delay: 2000,
       env: {
         NODE_ENV: 'production',

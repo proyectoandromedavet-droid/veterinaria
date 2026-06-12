@@ -38,6 +38,7 @@ router.get('/', async (req, res, next) => {
 });
 
 const OUTGOING_MOVEMENT_TYPES = new Set(['sale', 'expired', 'loss', 'transfer']);
+const INCOMING_MOVEMENT_TYPES = new Set(['purchase', 'adjustment']);
 
 router.post('/movements',
   body('itemId').isInt(),
@@ -47,34 +48,28 @@ router.post('/movements',
   async (req, res, next) => {
     try {
       const { itemId, movementType, quantity, unitCost, reference, notes } = req.body;
+      const movementQuantity = Number(quantity);
 
       // BUG-30: envolver en transacción con FOR UPDATE para evitar race condition y
       // actualizar inventory_stock correctamente en salidas
       const movementId = await db.transaction(async (conn) => {
         // BUG-FIX: verificar que el item pertenece a la branch del usuario (IDOR cross-branch)
-        const itemOwner = await conn.queryOne(
-          `SELECT ist.item_id FROM inventory_stock ist
+        const stock = await conn.queryOne(
+          `SELECT ist.item_id, ist.quantity_available FROM inventory_stock ist
            WHERE ist.item_id = :iid AND ist.branch_id = :bid
-           LIMIT 1`,
+           FOR UPDATE`,
           { iid: itemId, bid: req.user.branchId }
         );
-        if (!itemOwner) {
+        if (!stock) {
           const err = new Error('Item de inventario no encontrado en esta sucursal');
           err.http = 404;
           throw err;
         }
 
-        if (OUTGOING_MOVEMENT_TYPES.has(movementType)) {
-          const stock = await conn.queryOne(
-            `SELECT quantity_available FROM inventory_stock
-             WHERE item_id = :iid AND branch_id = :bid FOR UPDATE`,
-            { iid: itemId, bid: req.user.branchId }
-          );
-          if (!stock || stock.quantity_available < quantity) {
-            const err = new Error('Insufficient stock for this movement');
-            err.http = 400;
-            throw err;
-          }
+        if (OUTGOING_MOVEMENT_TYPES.has(movementType) && Number(stock.quantity_available) < movementQuantity) {
+          const err = new Error('Insufficient stock for this movement');
+          err.http = 400;
+          throw err;
         }
 
         const [r] = await conn.query(
@@ -83,7 +78,7 @@ router.post('/movements',
            VALUES (:item, :bid, :type, :qty, :cost, :ref, :notes, :uid)`,
           {
             item: itemId, bid: req.user.branchId, type: movementType,
-            qty: quantity, cost: unitCost ?? null, ref: reference || null,
+            qty: movementQuantity, cost: unitCost ?? null, ref: reference || null,
             notes: notes || null, uid: req.user.userId,
           }
         );
@@ -93,13 +88,13 @@ router.post('/movements',
           await conn.query(
             `UPDATE inventory_stock SET quantity_available = GREATEST(0, quantity_available - :qty)
              WHERE item_id = :iid AND branch_id = :bid`,
-            { qty: quantity, iid: itemId, bid: req.user.branchId }
+            { qty: movementQuantity, iid: itemId, bid: req.user.branchId }
           );
-        } else if (movementType === 'purchase') {
+        } else if (INCOMING_MOVEMENT_TYPES.has(movementType)) {
           await conn.query(
             `UPDATE inventory_stock SET quantity_available = quantity_available + :qty
              WHERE item_id = :iid AND branch_id = :bid`,
-            { qty: quantity, iid: itemId, bid: req.user.branchId }
+            { qty: movementQuantity, iid: itemId, bid: req.user.branchId }
           );
         }
 
@@ -121,17 +116,20 @@ router.post('/items',
   async (req, res, next) => {
     try {
       const { name, sku, itemType, description, unitCost, salePrice, minimumStock, reorderPoint, supplierId, requiresPrescription } = req.body;
-      const [r] = await db.query(
-        `INSERT INTO inventory_items (name, sku, item_type, description, unit_cost, sale_price, minimum_stock, requires_prescription, supplier_id, is_active)
-         VALUES (:name, :sku, :type, :desc, :cost, :price, :minStock, :rx, :sup, 1)`,
-        { name, sku: sku||null, type: itemType, desc: description||null, cost: unitCost||0, price: salePrice, minStock: minimumStock||0, rx: requiresPrescription?1:0, sup: supplierId||null }
-      );
-      await db.query(
-        `INSERT INTO inventory_stock (item_id, branch_id, quantity_available, minimum_stock, reorder_point)
-         VALUES (:iid, :bid, 0, :min, :reorder)`,
-        { iid: r.insertId, bid: req.user.branchId, min: minimumStock||0, reorder: reorderPoint||0 }
-      );
-      return R.created(res, { id: r.insertId });
+      const itemId = await db.transaction(async (conn) => {
+        const [r] = await conn.query(
+          `INSERT INTO inventory_items (name, sku, item_type, description, unit_cost, sale_price, minimum_stock, requires_prescription, supplier_id, is_active)
+           VALUES (:name, :sku, :type, :desc, :cost, :price, :minStock, :rx, :sup, 1)`,
+          { name, sku: sku||null, type: itemType, desc: description||null, cost: unitCost||0, price: salePrice, minStock: minimumStock||0, rx: requiresPrescription?1:0, sup: supplierId||null }
+        );
+        await conn.query(
+          `INSERT INTO inventory_stock (item_id, branch_id, quantity_available, minimum_stock, reorder_point)
+           VALUES (:iid, :bid, 0, :min, :reorder)`,
+          { iid: r.insertId, bid: req.user.branchId, min: minimumStock||0, reorder: reorderPoint||0 }
+        );
+        return r.insertId;
+      });
+      return R.created(res, { id: itemId });
     } catch (e) {
       logBillingError('POST /inventory/items', e, { branchId: req.user?.branchId, body: req.body });
       next(e);
@@ -149,7 +147,7 @@ router.put('/items/:id',
       // inventory_items no tiene branch_id propio; la relación es a través de inventory_stock
       const stockOwner = await db.queryOne(
         `SELECT ist.item_id FROM inventory_stock ist
-         WHERE ist.item_id = :id AND ist.branch_id = :bid AND ${notDeleted('ist')}
+         WHERE ist.item_id = :id AND ist.branch_id = :bid
          LIMIT 1`,
         { id: req.params.id, bid: req.user.branchId }
       );
@@ -219,33 +217,40 @@ router.post('/batches',
   async (req, res, next) => {
     try {
       const { itemId, lotNumber, expiryDate, manufactureDate, quantityReceived, unitCost, supplierId, notes } = req.body;
-      // BUG-FIX: verificar que el item pertenece a la branch del usuario antes de crear el lote (IDOR cross-branch)
-      const itemOwner = await db.queryOne(
-        `SELECT ist.item_id FROM inventory_stock ist
-         WHERE ist.item_id = :iid AND ist.branch_id = :bid
-         LIMIT 1`,
-        { iid: itemId, bid: req.user.branchId }
-      );
-      if (!itemOwner) return R.notFound(res, 'Item de inventario no encontrado en esta sucursal');
+      const batchId = await db.transaction(async (conn) => {
+        // BUG-FIX: verificar que el item pertenece a la branch del usuario antes de crear el lote (IDOR cross-branch)
+        const itemOwner = await conn.queryOne(
+          `SELECT ist.item_id FROM inventory_stock ist
+           WHERE ist.item_id = :iid AND ist.branch_id = :bid
+           FOR UPDATE`,
+          { iid: itemId, bid: req.user.branchId }
+        );
+        if (!itemOwner) {
+          const err = new Error('Item de inventario no encontrado en esta sucursal');
+          err.http = 404;
+          throw err;
+        }
 
-      const [r] = await db.query(
-        `INSERT INTO inventory_batches
-           (item_id, branch_id, supplier_id, lot_number, manufacture_date, expiry_date,
-            quantity_received, quantity_available, unit_cost, notes, created_by)
-         VALUES (:iid, :bid, :sup, :lot, :mfg, :exp, :qty, :qty, :cost, :notes, :uid)` ,
-        { iid: itemId, bid: req.user.branchId, sup: supplierId||null, lot: lotNumber, mfg: manufactureDate||null, exp: expiryDate||null, qty: quantityReceived, cost: unitCost ?? null, notes: notes||null, uid: req.user.userId }
-      );
-      await db.query(
-        `UPDATE inventory_stock SET quantity_available = quantity_available + :qty
-         WHERE item_id = :iid AND branch_id = :bid`,
-        { qty: quantityReceived, iid: itemId, bid: req.user.branchId }
-      );
-      await db.query(
-        `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, unit_cost, reference, batch_id, created_by)
-         VALUES (:iid, :bid, 'purchase', :qty, :cost, :lot, :batchId, :uid)`,
-        { iid: itemId, bid: req.user.branchId, qty: quantityReceived, cost: unitCost ?? null, lot: lotNumber, batchId: r.insertId, uid: req.user.userId }
-      );
-      return R.created(res, { id: r.insertId });
+        const [r] = await conn.query(
+          `INSERT INTO inventory_batches
+             (item_id, branch_id, supplier_id, lot_number, manufacture_date, expiry_date,
+              quantity_received, quantity_available, unit_cost, notes, created_by)
+           VALUES (:iid, :bid, :sup, :lot, :mfg, :exp, :qty, :qty, :cost, :notes, :uid)` ,
+          { iid: itemId, bid: req.user.branchId, sup: supplierId||null, lot: lotNumber, mfg: manufactureDate||null, exp: expiryDate||null, qty: quantityReceived, cost: unitCost ?? null, notes: notes||null, uid: req.user.userId }
+        );
+        await conn.query(
+          `UPDATE inventory_stock SET quantity_available = quantity_available + :qty
+           WHERE item_id = :iid AND branch_id = :bid`,
+          { qty: quantityReceived, iid: itemId, bid: req.user.branchId }
+        );
+        await conn.query(
+          `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, unit_cost, reference, batch_id, created_by)
+           VALUES (:iid, :bid, 'purchase', :qty, :cost, :lot, :batchId, :uid)`,
+          { iid: itemId, bid: req.user.branchId, qty: quantityReceived, cost: unitCost ?? null, lot: lotNumber, batchId: r.insertId, uid: req.user.userId }
+        );
+        return r.insertId;
+      });
+      return R.created(res, { id: batchId });
     } catch (e) {
       logBillingError('POST /inventory/batches', e, { branchId: req.user?.branchId, body: req.body });
       next(e);
@@ -327,7 +332,8 @@ async function checkAndGenerateAlerts(branchId) {
     generated++;
   }
   const expiring = await db.query(
-    `SELECT ib.id, ib.item_id, ib.expiry_date, ib.quantity_available, ii.name
+    `SELECT ib.id, ib.item_id, ib.expiry_date, ib.quantity_available, ii.name,
+            CASE WHEN ib.expiry_date < NOW() THEN 'expired' ELSE 'expiring_soon' END AS alert_type
      FROM inventory_batches ib
      JOIN inventory_items ii ON ib.item_id = ii.id
      WHERE ib.branch_id = :bid
@@ -335,17 +341,27 @@ async function checkAndGenerateAlerts(branchId) {
        AND ${notDeleted('ib')}
        AND ${notDeleted('ii')}
        AND ib.expiry_date IS NOT NULL
-       AND ib.expiry_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 DAY)
+       AND ib.expiry_date <= DATE_ADD(NOW(), INTERVAL 30 DAY)
        AND NOT EXISTS (
          SELECT 1 FROM stock_alerts sa
          WHERE sa.item_id = ib.item_id AND sa.branch_id = :bid
-           AND sa.alert_type = 'expiring_soon' AND sa.expiry_date = ib.expiry_date AND sa.resolved = 0
+           AND sa.alert_type = CASE WHEN ib.expiry_date < NOW() THEN 'expired' ELSE 'expiring_soon' END
+           AND sa.expiry_date = ib.expiry_date AND sa.resolved = 0
            AND ${notDeleted('sa')}
        )`,
     { bid: branchId }
   );
   for (const batch of expiring) {
-    const type = new Date(batch.expiry_date) < new Date() ? 'expired' : 'expiring_soon';
+    const type = batch.alert_type;
+    if (type === 'expired') {
+      await db.query(
+        `UPDATE stock_alerts
+         SET resolved = 1, resolved_at = NOW()
+         WHERE branch_id = :bid AND item_id = :iid AND alert_type = 'expiring_soon'
+           AND expiry_date = :exp AND resolved = 0 AND ${notDeleted('stock_alerts')}`,
+        { bid: branchId, iid: batch.item_id, exp: batch.expiry_date }
+      );
+    }
     await db.query(
       `INSERT INTO stock_alerts (branch_id, item_id, alert_type, current_stock, expiry_date)
        VALUES (:bid, :iid, :type, :stock, :exp)`,

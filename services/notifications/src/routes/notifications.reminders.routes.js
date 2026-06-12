@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { requirePerm } = require('../../../../shared/serviceBase');
 const {
   R,
   db,
@@ -11,7 +12,7 @@ const {
 
 const router = express.Router();
 
-router.post('/generate', async (req, res, next) => {
+router.post('/generate', requirePerm('notifications:send'), async (req, res, next) => {
   try {
     if (!req.user.branchId) return R.badRequest(res, 'Branch context required');
 

@@ -14,6 +14,7 @@ const { body, validationResult } = require('express-validator');
 const db     = require('../../../../shared/db');
 const logger = require('../../../../shared/logger');
 const R = require('../../../../shared/response');
+const { writeAuditLog } = require('../../../../shared/audit');
 const { requireInternalSig } = require('../../../../shared/internalAuth');   // BUG-003
 const { fromHeaders } = require('../../../../shared/requestContext');         // BUG-003
 
@@ -58,8 +59,9 @@ async function getTableColumns(tableName) {
   return new Set(rows.map((row) => row.COLUMN_NAME));
 }
 
-function deletedSet(columns) {
-  return columns.has('deleted_at') ? ', deleted_at = NOW()' : '';
+function deletedSet(columns, alias = '') {
+  const prefix = alias ? `${alias}.` : '';
+  return columns.has('deleted_at') ? `, ${prefix}deleted_at = NOW()` : '';
 }
 
 function activePredicate(columns, alias = '') {
@@ -250,10 +252,10 @@ router.post('/enforce', async (req, res, next) => {
                  u.email = CONCAT('staff-', u.id, '@redacted.local'),
                  ${cols.has('phone') ? 'u.phone = NULL,' : ''}
                  u.updated_at = NOW()
-                 ${deletedSet(cols)}
+                 ${deletedSet(cols, 'u')}
              WHERE b.organization_id = :orgId
                AND u.updated_at < :cutoff
-               AND ${activePredicate(cols)}
+               AND ${activePredicate(cols, 'u')}
              LIMIT 200`,
             { orgId, cutoff },
           );
@@ -265,10 +267,10 @@ router.post('/enforce', async (req, res, next) => {
              JOIN branches b ON b.id = i.branch_id
              SET ${cols.has('status') ? "i.status = 'archived'," : ''}
                  i.updated_at = NOW()
-                 ${deletedSet(cols)}
+                  ${deletedSet(cols, 'i')}
              WHERE b.organization_id = :orgId
                AND i.updated_at < :cutoff
-               AND ${activePredicate(cols)}
+               AND ${activePredicate(cols, 'i')}
              LIMIT 500`,
             { orgId, cutoff },
           );
@@ -286,19 +288,27 @@ router.post('/enforce', async (req, res, next) => {
     // Registrar auditoría del actor que ejecutó el enforcement manual
     const totalAffected = results.reduce((sum, r) => sum + (r.affected || 0), 0);
     try {
-      await db.query(
-        `INSERT INTO audit_logs (org_id, action, resource, resource_id, user_id, metadata, created_at)
-         VALUES (:orgId, 'manual_enforce', 'data_governance', NULL, :userId, :meta, NOW())`,
-        {
-          orgId,
-          userId: req.user.userId || null,
-          meta: JSON.stringify({
-            data_type: data_type || 'all',
-            affected:  totalAffected,
-            results:   results.map(r => ({ data_type: r.data_type, affected: r.affected || 0 })),
-          }),
-        },
-      );
+      await writeAuditLog({
+        user_id: req.user.userId || null,
+        org_id: orgId,
+        branch_id: req.user.branchId || null,
+        action: 'UPDATE',
+        resource: 'data_governance',
+        resource_id: null,
+        method: req.method,
+        path: req.originalUrl,
+        status_code: 200,
+        ip_address: req.ip || null,
+        user_agent: req.headers['user-agent'] || null,
+        request_id: req.requestId || null,
+        request_body: JSON.stringify({
+          data_type: data_type || 'all',
+          affected: totalAffected,
+          results: results.map(r => ({ data_type: r.data_type, affected: r.affected || 0 })),
+        }),
+        duration_ms: null,
+        created_at: new Date(),
+      });
     } catch (auditErr) {
       logger.warn('[data-governance] Failed to write enforcement audit trail', { err: auditErr.message });
     }

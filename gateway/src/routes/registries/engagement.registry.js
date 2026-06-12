@@ -15,8 +15,13 @@ function registerEngagementRoutes(app, registerVersioned) {
   registerVersioned(app, 'use', 'notifications/fcm/broadcast', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
   registerVersioned(app, 'use', 'notifications/fcm', authMiddleware, tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
   registerVersioned(app, 'use', 'notifications/messages/send', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
+  registerVersioned(app, 'use', 'notifications/messages/template', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
   registerVersioned(app, 'use', 'notifications/messages/bulk-reminders', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
   registerVersioned(app, 'use', 'notifications/messages/reminder', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
+  registerVersioned(app, 'use', 'notifications/messages', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
+  registerVersioned(app, 'use', 'notifications/push', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
+  registerVersioned(app, 'use', 'notifications/retries', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
+  registerVersioned(app, 'use', 'notifications/reminders/generate', authMiddleware, requireGatewayPerm('notifications:send'), tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
   registerVersioned(app, 'use', 'notifications', authMiddleware, tenantMismatchGuard, tenantLimiter, makeServiceProxy('notifications'));
   registerVersioned(app, 'use', 'documents', authMiddleware, tenantMismatchGuard, tenantLimiter, makeServiceProxy('documents'));
 }

@@ -44,10 +44,29 @@ router.post('/transfers/patients',
   body('patientId').isInt(),
   body('toBranchId').isInt(),
   body('transferType').isIn(['visit', 'ownership']),
+  body('clientId').optional().isInt({ min: 1 }),
+  body('clientId').if(body('transferType').equals('ownership')).isInt({ min: 1 }),
   validate,
   async (req, res, next) => {
     try {
       const { patientId, toBranchId, clientId, reason, transferType } = req.body;
+
+      if (clientId != null) {
+        const destinationOwner = await db.queryOne(
+          `SELECT c.id
+           FROM clients c
+           JOIN branches b ON b.id = c.branch_id
+           WHERE c.id = :clientId
+             AND c.branch_id = :toBranchId
+             AND b.organization_id = :orgId
+             AND c.is_active = TRUE
+             AND c.deleted_at IS NULL`,
+          { clientId, toBranchId, orgId: req.user.orgId }
+        );
+        if (!destinationOwner) {
+          return R.badRequest(res, 'El nuevo propietario no pertenece a la sucursal destino');
+        }
+      }
 
       const result = await mb.transferPatient({
         patientId,
@@ -74,7 +93,7 @@ router.post('/transfers/patients',
 
       return R.created(res, result);
     } catch (e) {
-      if (['SAME_BRANCH', 'PATIENT_NOT_FOUND', 'CROSS_ORG_DENIED', 'BRANCH_NOT_FOUND'].includes(e.code)) {
+      if (['SAME_BRANCH', 'PATIENT_NOT_FOUND', 'CLIENT_NOT_FOUND', 'CROSS_ORG_DENIED', 'BRANCH_NOT_FOUND'].includes(e.code)) {
         return R.badRequest(res, e.message);
       }
       logBranchesError('POST /branches/transfers/patients', e, { orgId: req.user?.orgId, branchId: req.user?.branchId, body: req.body });
@@ -151,6 +170,7 @@ router.post('/transfers/stock',
   body('itemId').isInt(),
   body('toBranchId').isInt(),
   body('quantity').isFloat({ min: 0.001 }),
+  body('batchId').optional().isInt({ min: 1 }),
   validate,
   async (req, res, next) => {
     try {
@@ -176,7 +196,7 @@ router.post('/transfers/stock',
 
       return R.created(res, result);
     } catch (e) {
-      if (['SAME_BRANCH', 'ITEM_NOT_FOUND', 'INSUFFICIENT_STOCK', 'CROSS_ORG_DENIED'].includes(e.code)) {
+      if (['SAME_BRANCH', 'ITEM_NOT_FOUND', 'INSUFFICIENT_STOCK', 'INVALID_QUANTITY', 'CROSS_ORG_DENIED', 'BRANCH_NOT_FOUND'].includes(e.code)) {
         return R.badRequest(res, e.message);
       }
       logBranchesError('POST /branches/transfers/stock', e, { orgId: req.user?.orgId, branchId: req.user?.branchId, body: req.body });

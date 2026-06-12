@@ -1,9 +1,14 @@
 'use strict';
 
 const { Router } = require('express');
+const { requirePerm } = require('../../../../shared/serviceBase');
 const { db, R, body, validate, logGroomingError } = require('../grooming.common');
 
 const router = Router();
+
+function httpError(status, message) {
+  return Object.assign(new Error(message), { http: status });
+}
 
 router.get('/', async (req, res, next) => {
   try {
@@ -85,6 +90,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 router.post('/',
+  requirePerm('grooming:create'),
   body('patientId').isInt(),
   body('clientId').isInt(),
   body('groomerId').isInt(),
@@ -99,6 +105,52 @@ router.post('/',
       let totalEstimate = 0;
 
       await db.transaction(async (conn) => {
+        const scopedEntities = await conn.queryOne(
+          `SELECT p.id
+           FROM patients p
+           JOIN patient_owners po
+             ON po.patient_id = p.id
+            AND po.client_id = :cid
+            AND po.deleted_at IS NULL
+           JOIN clients c
+             ON c.id = po.client_id
+            AND c.branch_id = :bid
+            AND c.deleted_at IS NULL
+           JOIN groomers g
+             ON g.id = :gid
+            AND g.branch_id = :bid
+            AND g.is_active = TRUE
+           WHERE p.id = :pid
+             AND p.organization_id = :orgId
+             AND p.deleted_at IS NULL`,
+          {
+            pid: patientId,
+            cid: clientId,
+            gid: groomerId,
+            bid: req.user.branchId,
+            orgId: req.user.orgId,
+          }
+        );
+        if (!scopedEntities) {
+          throw httpError(403, 'Paciente, cliente o groomer no pertenecen a la sucursal');
+        }
+
+        const validatedServices = [];
+        for (const svc of services) {
+          const serviceType = await conn.queryOne(
+            `SELECT id, base_price_medium
+             FROM grooming_service_types
+             WHERE id = :id AND is_active = TRUE`,
+            { id: svc.serviceTypeId }
+          );
+          if (!serviceType) {
+            throw httpError(400, 'Uno o más servicios de grooming no existen o están inactivos');
+          }
+          const price = svc.priceCharged ?? serviceType.base_price_medium ?? 0;
+          totalEstimate += parseFloat(price);
+          validatedServices.push({ ...svc, price });
+        }
+
         // FIX 1a — lock de concurrencia: conflicto por groomer
         const groomerConflict = await conn.queryOne(
           `SELECT id FROM grooming_appointments
@@ -111,21 +163,22 @@ router.post('/',
           { gid: groomerId, bid: req.user.branchId, sched: scheduledAt, dur: estimatedDurationMinutes || 60 }
         );
         if (groomerConflict) {
-          return R.conflict(res, 'El groomer ya tiene un turno en ese horario');
+          throw httpError(409, 'El groomer ya tiene un turno en ese horario');
         }
 
         // FIX 1b — lock de concurrencia: conflicto por paciente
         const patientConflict = await conn.queryOne(
           `SELECT id FROM grooming_appointments
            WHERE patient_id = :pid
+             AND branch_id = :bid
              AND status NOT IN ('cancelled', 'no_show')
              AND scheduled_at < DATE_ADD(:sched, INTERVAL :dur MINUTE)
              AND DATE_ADD(scheduled_at, INTERVAL COALESCE(estimated_duration_minutes, 60) MINUTE) > :sched
            LIMIT 1 FOR UPDATE`,
-          { pid: patientId, sched: scheduledAt, dur: estimatedDurationMinutes || 60 }
+          { pid: patientId, bid: req.user.branchId, sched: scheduledAt, dur: estimatedDurationMinutes || 60 }
         );
         if (patientConflict) {
-          return R.conflict(res, 'El paciente ya tiene un turno en ese horario');
+          throw httpError(409, 'El paciente ya tiene un turno en ese horario');
         }
 
         const [r] = await conn.query(
@@ -142,34 +195,32 @@ router.post('/',
         );
         apptId = r.insertId;
 
-        for (const svc of services) {
-          const serviceType = await conn.queryOne(`SELECT * FROM grooming_service_types WHERE id = :id`, { id: svc.serviceTypeId });
-          const price = svc.priceCharged ?? serviceType?.base_price_medium ?? 0;
-          totalEstimate += parseFloat(price);
-          await conn.query(`INSERT INTO grooming_appointment_services (grooming_appointment_id, service_type_id, price_charged, notes) VALUES (?,?,?,?)`, [apptId, svc.serviceTypeId, price, svc.notes || null]);
+        for (const svc of validatedServices) {
+          await conn.query(`INSERT INTO grooming_appointment_services (grooming_appointment_id, service_type_id, price_charged, notes) VALUES (?,?,?,?)`, [apptId, svc.serviceTypeId, svc.price, svc.notes || null]);
         }
         await conn.query(`UPDATE grooming_appointments SET estimated_price = ? WHERE id = ?`, [totalEstimate, apptId]);
       });
 
-      if (res.headersSent) return;
       return R.created(res, { id: apptId, estimatedPrice: totalEstimate });
     } catch (e) { logGroomingError('POST /grooming/appointments', e, { branchId: req.user?.branchId }); next(e); }
   }
 );
 
-router.patch('/:id/status', body('status').isIn(['scheduled', 'confirmed', 'in_progress', 'ready', 'completed', 'cancelled', 'no_show']), validate, async (req, res, next) => {
+router.patch('/:id/status', requirePerm('grooming:update'), body('status').isIn(['scheduled', 'confirmed', 'in_progress', 'ready', 'completed', 'cancelled', 'no_show']), validate, async (req, res, next) => {
   try {
     await db.query(`UPDATE grooming_appointments SET status=:status, updated_at=NOW() WHERE id=:id AND branch_id=:bid`, { status: req.body.status, id: req.params.id, bid: req.user.branchId });
     return R.noContent(res);
   } catch (e) { next(e); }
 });
 
-router.post('/:id/record', body('servicesPerformed').isArray({ min: 1 }), validate, async (req, res, next) => {
+router.post('/:id/record', requirePerm('grooming:update'), body('servicesPerformed').isArray({ min: 1 }), validate, async (req, res, next) => {
   try {
     // FIX 2 — permiso granular para registrar resultado de grooming
-    if (!req.user.permissions?.includes('grooming:update') && !req.user.permissions?.includes('*')) {
-      return R.forbidden(res, 'Permiso insuficiente para registrar resultado de grooming');
-    }
+    const appointment = await db.queryOne(
+      `SELECT id FROM grooming_appointments WHERE id = :id AND branch_id = :bid`,
+      { id: req.params.id, bid: req.user.branchId }
+    );
+    if (!appointment) return R.notFound(res, 'Turno de grooming no encontrado');
     const { servicesPerformed, productsUsed, beforePhotoUrl, afterPhotoUrl, behaviorObservations, coatCondition, skinCondition, vetReferralRequired, vetReferralReason, finalPrice, groomingNotes } = req.body;
     const [r] = await db.query(
       `INSERT INTO grooming_records
@@ -185,18 +236,25 @@ router.post('/:id/record', body('servicesPerformed').isArray({ min: 1 }), valida
       }
     );
     if (finalPrice) {
-      await db.query(`UPDATE grooming_appointments SET final_price=:price, status='completed', updated_at=NOW() WHERE id=:id`, { price: finalPrice, id: req.params.id });
+      await db.query(
+        `UPDATE grooming_appointments
+         SET final_price=:price, status='completed', updated_at=NOW()
+         WHERE id=:id AND branch_id=:bid`,
+        { price: finalPrice, id: req.params.id, bid: req.user.branchId }
+      );
     }
     return R.created(res, { id: r.insertId });
   } catch (e) { next(e); }
 });
 
-router.post('/:id/rating', body('overallScore').isInt({ min: 1, max: 5 }), validate, async (req, res, next) => {
+router.post('/:id/rating', requirePerm('grooming:update'), body('overallScore').isInt({ min: 1, max: 5 }), validate, async (req, res, next) => {
   try {
     // FIX 2 — permiso granular para registrar rating de grooming
-    if (!req.user.permissions?.includes('grooming:update') && !req.user.permissions?.includes('*')) {
-      return R.forbidden(res, 'Permiso insuficiente para registrar rating de grooming');
-    }
+    const appointment = await db.queryOne(
+      `SELECT id FROM grooming_appointments WHERE id = :id AND branch_id = :bid`,
+      { id: req.params.id, bid: req.user.branchId }
+    );
+    if (!appointment) return R.notFound(res, 'Turno de grooming no encontrado');
     const { overallScore, qualityScore, timelinessScore, grooomerFriendlinessScore, comment, recommendGroomer } = req.body;
     await db.query(
       `INSERT INTO grooming_ratings

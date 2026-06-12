@@ -162,6 +162,13 @@ function _initKeys() {
 
 const ACCESS_EXP  = process.env.JWT_ACCESS_EXPIRES  || '15m';
 const REFRESH_EXP = process.env.JWT_REFRESH_EXPIRES || '7d';
+const PENDING_EXP = process.env.JWT_2FA_PENDING_EXPIRES || '5m';
+
+const TOKEN_TYPES = Object.freeze({
+  ACCESS: 'access',
+  REFRESH: 'refresh',
+  TWO_FACTOR_PENDING: '2fa_pending',
+});
 
 // ─── Operaciones de token ─────────────────────────────────────────────────────
 
@@ -170,24 +177,38 @@ const REFRESH_EXP = process.env.JWT_REFRESH_EXPIRES || '7d';
  * Agrega jti (JWT ID) si el payload no trae uno.
  * @param {object} payload  { userId, orgId, branchId, roles, email, tokenVersion? }
  */
-function signAccess(payload) {
+function _signTyped(payload, tokenType, expiresIn) {
   _initKeys();
   return jwt.sign(
-    { ...payload, jti: payload.jti || crypto.randomBytes(16).toString('hex') },
+    {
+      ...payload,
+      tokenType,
+      jti: payload.jti || crypto.randomBytes(16).toString('hex'),
+    },
     _privateKey,
-    { expiresIn: ACCESS_EXP, algorithm: 'RS256', keyid: _keyId }
+    { expiresIn, algorithm: 'RS256', keyid: _keyId }
   );
+}
+
+function signAccess(payload) {
+  return _signTyped(payload, TOKEN_TYPES.ACCESS, ACCESS_EXP);
 }
 
 /**
  * Firma un refresh token (RS256).
  */
 function signRefresh(payload) {
-  _initKeys();
-  return jwt.sign(
-    { ...payload, jti: payload.jti || crypto.randomBytes(16).toString('hex') },
-    _privateKey,
-    { expiresIn: REFRESH_EXP, algorithm: 'RS256', keyid: _keyId }
+  return _signTyped(payload, TOKEN_TYPES.REFRESH, REFRESH_EXP);
+}
+
+/**
+ * Firma un token pendiente de completar el segundo factor.
+ */
+function signPending(payload) {
+  return _signTyped(
+    { ...payload, scope: TOKEN_TYPES.TWO_FACTOR_PENDING },
+    TOKEN_TYPES.TWO_FACTOR_PENDING,
+    PENDING_EXP
   );
 }
 
@@ -239,8 +260,16 @@ function _verifyWithKeyring(token) {
   throw lastError;
 }
 
+function _verifyTyped(token, expectedType) {
+  const decoded = _verifyWithKeyring(token);
+  if (decoded.tokenType !== expectedType) {
+    throw new jwt.JsonWebTokenError(`Invalid token type: expected ${expectedType}`);
+  }
+  return decoded;
+}
+
 function verifyAccess(token) {
-  return _verifyWithKeyring(token);
+  return _verifyTyped(token, TOKEN_TYPES.ACCESS);
 }
 
 /**
@@ -248,7 +277,14 @@ function verifyAccess(token) {
  * Durante rotación, intenta la clave actual y luego la anterior.
  */
 function verifyRefresh(token) {
-  return _verifyWithKeyring(token);
+  return _verifyTyped(token, TOKEN_TYPES.REFRESH);
+}
+
+/**
+ * Verifica un token pendiente de completar 2FA.
+ */
+function verifyPending(token) {
+  return _verifyTyped(token, TOKEN_TYPES.TWO_FACTOR_PENDING);
 }
 
 /**
@@ -307,10 +343,13 @@ function getJwksSet() {
 }
 
 module.exports = {
+  TOKEN_TYPES,
   signAccess,
   signRefresh,
+  signPending,
   verifyAccess,
   verifyRefresh,
+  verifyPending,
   generateOpaqueToken,
   hashToken,
   getPublicKey,

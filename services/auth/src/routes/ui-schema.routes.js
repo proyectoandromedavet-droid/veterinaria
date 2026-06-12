@@ -22,7 +22,7 @@ const log = createLogger('auth-ui-schema');
  * evitar que el endpoint sea accesible sin autenticación interna y para que
  * req.user sea poblado por el middleware en lugar de leer headers directamente.
  */
-router.get('/me/ui-schema',
+router.get('/ui-schema',
   requireInternalSig,
   fromHeaders,
   requireOrgContext,

@@ -1,5 +1,5 @@
 <template>
-  <div class="app-layout">
+  <div v-if="auth.isAuthenticated" class="app-layout">
     <aside class="sidebar" :class="{ 'sidebar--open': sidebarOpen }">
       <div class="sidebar__header">
         <AppLogo size="sm" />
@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import AppLogo from '../components/AppLogo.vue'
@@ -199,10 +199,19 @@ const PAGE_TITLES = {
 
 const currentTitle = computed(() => PAGE_TITLES[route.name] || 'Sistema Andromeda')
 
-function handleLogout() {
-  auth.logout()
-  router.push('/login')
+async function handleLogout() {
+  await auth.logout()
+  await router.replace('/login')
 }
+
+watch(
+  () => auth.isAuthenticated,
+  (isAuthenticated) => {
+    if (!isAuthenticated && route.path !== '/login') {
+      router.replace('/login')
+    }
+  }
+)
 </script>
 
 <style scoped>

@@ -27,10 +27,10 @@ const app = buildApp('notifications', (app, requirePerm) => {
   app.use('/notifications', coreRoutes);
   app.use('/notifications/reminders', remindersRoutes);
   app.use('/notifications/messages/send', requirePerm('notifications:send'), messageSendRoutes);
-  app.use('/notifications/messages/template', messageTemplateRoutes);
+  app.use('/notifications/messages/template', requirePerm('notifications:send'), messageTemplateRoutes);
   app.use('/notifications/messages/reminder', requirePerm('notifications:send'), messageReminderRoutes);
   app.use('/notifications/messages/bulk-reminders', requirePerm('notifications:send'), messageBulkRoutes);
-  app.use('/notifications/messages', messageHistoryRoutes);
+  app.use('/notifications/messages', requirePerm('notifications:send'), messageHistoryRoutes);
   app.use('/notifications/fcm', fcmRoutes);
 }, {
   specPath: path.join(__dirname, 'openapi.yaml'),

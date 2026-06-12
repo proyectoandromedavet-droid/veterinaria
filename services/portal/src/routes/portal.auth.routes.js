@@ -303,7 +303,7 @@ router.post('/forgot-password',
              used_at=NULL`,
           { clientId: client.id, orgId: client.organization_id || orgId || null, hash }
         );
-        sendPasswordReset({ to: email, token, expiresInMinutes: 60 }).catch((err) => log.warn('password reset email failed', { err: err.message }));
+        sendPasswordReset({ to: email, token, expiresInMinutes: 60, portal: true }).catch((err) => log.warn('password reset email failed', { err: err.message }));
       }
 
       return R.ok(res, { message: 'Si ese email existe, recibira un enlace de recuperacion.' });

@@ -16,6 +16,18 @@ const {
 
 const router = Router();
 
+async function requireScopedSession(req, res) {
+  const session = await db.queryOne(
+    `SELECT id, status
+     FROM tele_sessions
+     WHERE id = :id AND branch_id = :bid`,
+    { id: req.params.id, bid: req.user.branchId }
+  );
+  if (session) return session;
+  R.notFound(res, 'Sesión no encontrada');
+  return null;
+}
+
 // B-7: rate limit específico para creación de sesiones de telemedicina
 const createSessionLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -140,6 +152,31 @@ router.post('/',
         platformId, durationMinutes = 30, chiefComplaint, notes,
       } = req.body;
 
+      const ownership = await Promise.all([
+        db.queryOne(
+          `SELECT p.id
+           FROM patients p
+           JOIN patient_owners po
+             ON po.patient_id = p.id
+            AND po.client_id = :cid
+            AND po.deleted_at IS NULL
+           JOIN clients c ON c.id = po.client_id
+           WHERE p.id = :pid
+             AND p.organization_id = :orgId
+             AND p.deleted_at IS NULL
+             AND c.branch_id = :bid
+             AND c.deleted_at IS NULL`,
+          { pid: patientId, cid: clientId, orgId: req.user.orgId, bid: req.user.branchId }
+        ),
+        db.queryOne(
+          `SELECT id FROM users WHERE id = :vid AND branch_id = :bid AND is_active = TRUE`,
+          { vid: vetId, bid: req.user.branchId }
+        ),
+      ]);
+      if (ownership.some((row) => !row)) {
+        return R.forbidden(res, 'Paciente, cliente o veterinario no pertenecen a la sucursal');
+      }
+
       const sessionCode = `TELE-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
       const [r] = await db.query(
@@ -186,6 +223,8 @@ router.post('/:id/pre-anamnesis',
   validateRequest,
   async (req, res, next) => {
     try {
+      if (!await requireScopedSession(req, res)) return;
+
       const {
         currentSymptoms, symptomsDuration, symptomsOnset,
         currentMedications, recentChanges, ownerConcerns,
@@ -215,6 +254,8 @@ router.post('/:id/pre-anamnesis',
 
 router.post('/:id/messages', body('messageText').optional(), async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const { messageText, senderType = 'vet', attachmentUrl, attachmentType } = req.body;
     if (!messageText && !attachmentUrl) return R.badRequest(res, 'message or attachment required');
 
@@ -244,8 +285,10 @@ router.post('/:id/prescription',
   validateRequest,
   async (req, res, next) => {
     try {
+      if (!await requireScopedSession(req, res)) return;
+
       const userRoles = req.user.roles || [];
-      if (!userRoles.includes('vet') && !userRoles.includes('admin') && !userRoles.includes('superadmin')) {
+      if (!['veterinarian', 'tele_vet', 'vet', 'superadmin'].some((role) => userRoles.includes(role))) {
         return R.forbidden(res, 'Solo veterinarios pueden emitir prescripciones');
       }
       const { prescriptionId, validityDays = 30 } = req.body;
@@ -373,6 +416,8 @@ router.post('/:id/room', async (req, res, next) => {
 
 router.get('/:id/room', async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const room = await db.queryOne(
       `SELECT wr.*, COUNT(wp.id) AS participant_count
        FROM webrtc_rooms wr
@@ -428,6 +473,8 @@ router.post('/:id/room/token', async (req, res, next) => {
 
 router.delete('/:id/room', async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const room = await db.queryOne(
       `SELECT * FROM webrtc_rooms WHERE session_id = :sid`,
       { sid: req.params.id }
@@ -451,6 +498,8 @@ router.delete('/:id/room', async (req, res, next) => {
 
 router.post('/:id/room/recording/start', async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const room = await db.queryOne(
       `SELECT * FROM webrtc_rooms WHERE session_id=:sid AND status='active'`,
       { sid: req.params.id }
@@ -470,6 +519,8 @@ router.post('/:id/room/recording/start', async (req, res, next) => {
 
 router.post('/:id/room/recording/stop', async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const rec = await db.queryOne(
       `SELECT wr.room_name, wrec.*
        FROM webrtc_recordings wrec
@@ -493,6 +544,8 @@ router.post('/:id/room/recording/stop', async (req, res, next) => {
 
 router.get('/:id/recordings', async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const rows = await db.query(
       `SELECT wrec.*, wr.room_name
        FROM webrtc_recordings wrec
@@ -507,6 +560,8 @@ router.get('/:id/recordings', async (req, res, next) => {
 
 router.get('/:id/waiting-room', async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const room = await db.queryOne(
       `SELECT id FROM webrtc_rooms WHERE session_id=:sid AND status IN ('created','active')`,
       { sid: req.params.id }
@@ -526,6 +581,8 @@ router.post('/:id/waiting-room/join',
   validateRequest,
   async (req, res, next) => {
     try {
+      if (!await requireScopedSession(req, res)) return;
+
       const room = await db.queryOne(
         `SELECT id FROM webrtc_rooms WHERE session_id=:sid AND status IN ('created','active')`,
         { sid: req.params.id }
@@ -546,26 +603,40 @@ router.post('/:id/waiting-room/join',
 
 router.post('/:id/waiting-room/:wId/admit', async (req, res, next) => {
   try {
-    await db.query(
-      `UPDATE webrtc_waiting_room SET status='admitted', decided_at=NOW(), decided_by=:uid WHERE id=:id`,
-      { id: req.params.wId, uid: req.user.userId }
+    if (!await requireScopedSession(req, res)) return;
+
+    const [result] = await db.query(
+      `UPDATE webrtc_waiting_room ww
+       JOIN webrtc_rooms wr ON wr.id = ww.room_id
+       SET ww.status='admitted', ww.acted_at=NOW(), ww.decided_by=:uid
+       WHERE ww.id=:wid AND wr.session_id=:sid`,
+      { wid: req.params.wId, sid: req.params.id, uid: req.user.userId }
     );
+    if (!result.affectedRows) return R.notFound(res, 'Participante en espera no encontrado');
     return R.noContent(res);
   } catch (e) { next(e); }
 });
 
 router.post('/:id/waiting-room/:wId/reject', async (req, res, next) => {
   try {
-    await db.query(
-      `UPDATE webrtc_waiting_room SET status='rejected', decided_at=NOW(), decided_by=:uid WHERE id=:id`,
-      { id: req.params.wId, uid: req.user.userId }
+    if (!await requireScopedSession(req, res)) return;
+
+    const [result] = await db.query(
+      `UPDATE webrtc_waiting_room ww
+       JOIN webrtc_rooms wr ON wr.id = ww.room_id
+       SET ww.status='rejected', ww.acted_at=NOW(), ww.decided_by=:uid
+       WHERE ww.id=:wid AND wr.session_id=:sid`,
+      { wid: req.params.wId, sid: req.params.id, uid: req.user.userId }
     );
+    if (!result.affectedRows) return R.notFound(res, 'Participante en espera no encontrado');
     return R.noContent(res);
   } catch (e) { next(e); }
 });
 
 router.get('/:id/room/participants', async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const room = await db.queryOne(
       `SELECT id FROM webrtc_rooms WHERE session_id=:sid ORDER BY created_at DESC LIMIT 1`,
       { sid: req.params.id }
@@ -582,6 +653,8 @@ router.get('/:id/room/participants', async (req, res, next) => {
 
 router.post('/:id/room/participants/:identity/leave', async (req, res, next) => {
   try {
+    if (!await requireScopedSession(req, res)) return;
+
     const room = await db.queryOne(
       `SELECT id FROM webrtc_rooms WHERE session_id=:sid ORDER BY created_at DESC LIMIT 1`,
       { sid: req.params.id }

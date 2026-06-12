@@ -1,8 +1,12 @@
 'use strict';
 
-const { listKnownServiceTargets, resolveRuntimeServiceTarget } = require('../../../shared/serviceTargets');
-const { validateUrl } = require('../../../shared/ssrf');
+const { SERVICE_FALLBACKS, resolveRuntimeServiceTarget } = require('../../../shared/serviceTargets');
 const { logger } = require('../middleware/logger');
+
+const INTERNAL_HEALTH_TIMEOUT_MS = Math.max(
+  500,
+  parseInt(process.env.INTERNAL_HEALTH_TIMEOUT_MS || '3000', 10),
+);
 
 async function getRedisHealth() {
   const checks = {};
@@ -21,6 +25,41 @@ async function getRedisHealth() {
   }
 
   return { checks, latency };
+}
+
+async function getInternalServicesHealth(pathname = '/health/ready') {
+  const results = {};
+
+  await Promise.all(Object.keys(SERVICE_FALLBACKS).map(async (name) => {
+    const startedAt = Date.now();
+    let target = SERVICE_FALLBACKS[name];
+
+    try {
+      target = await resolveRuntimeServiceTarget(name) || target;
+      const response = await fetch(`${target}${pathname}`, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(INTERNAL_HEALTH_TIMEOUT_MS),
+      });
+      const body = await response.json().catch(() => ({}));
+      results[name] = {
+        ready: response.ok,
+        status: body.status || response.status,
+        latency: Date.now() - startedAt,
+      };
+    } catch (error) {
+      results[name] = {
+        ready: false,
+        status: 'unreachable',
+        latency: Date.now() - startedAt,
+        error: error?.message,
+      };
+    }
+  }));
+
+  return {
+    ready: Object.values(results).every((result) => result.ready),
+    results,
+  };
 }
 
 function registerHealthRoutes(app, version) {
@@ -48,7 +87,8 @@ function registerHealthRoutes(app, version) {
 
   app.get('/health/ready', async (_req, res) => {
     const { checks, latency } = await getRedisHealth();
-    const ready = checks.redis === 'ok';
+    const services = await getInternalServicesHealth();
+    const ready = checks.redis === 'ok' && services.ready;
 
     res.status(ready ? 200 : 503).json({
       status: ready ? 'ready' : 'not_ready',
@@ -57,58 +97,19 @@ function registerHealthRoutes(app, version) {
       ts: new Date().toISOString(),
       checks,
       latency,
+      services: services.results,
     });
   });
 
   app.get('/health/deep', async (_req, res) => {
-    const TIMEOUT_MS = 3000;
-    const results = {};
-    let allOk = true;
-    const services = await listKnownServiceTargets();
+    const services = await getInternalServicesHealth('/health');
 
-    await Promise.all(
-      services.map(async ({ name, url: fallbackUrl, source }) => {
-        const t0 = Date.now();
-        try {
-          const baseUrl = await resolveRuntimeServiceTarget(name) || fallbackUrl;
-          // SSRF guard: reject non-HTTP/HTTPS or private/loopback targets
-          try { validateUrl(`${baseUrl}/health`); } catch (ssrfErr) {
-            results[name] = { status: 'blocked', latency: 0, source, target: baseUrl, error: ssrfErr.message };
-            allOk = false;
-            return;
-          }
-          const ctrl = new AbortController();
-          const tid = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-          const resp = await fetch(`${baseUrl}/health`, { signal: ctrl.signal });
-          clearTimeout(tid);
-          const body = await resp.json().catch(() => ({}));
-          results[name] = {
-            status: resp.ok ? (body.status || 'ok') : 'error',
-            latency: Date.now() - t0,
-            source,
-            target: baseUrl,
-            checks: body.checks || undefined,
-          };
-          if (!resp.ok) allOk = false;
-        } catch (error) {
-          results[name] = {
-            status: 'unreachable',
-            latency: Date.now() - t0,
-            source,
-            target: fallbackUrl,
-            error: error.message,
-          };
-          allOk = false;
-        }
-      })
-    );
-
-    res.status(allOk ? 200 : 207).json({
-      status: allOk ? 'ok' : 'degraded',
+    res.status(services.ready ? 200 : 207).json({
+      status: services.ready ? 'ok' : 'degraded',
       service: 'gateway',
       version,
       ts: new Date().toISOString(),
-      services: results,
+      services: services.results,
     });
   });
 }

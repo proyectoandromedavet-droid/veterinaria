@@ -74,49 +74,69 @@ async function getOrgBranches (orgId) {
 async function transferPatient (opts) {
   const { patientId, fromBranchId, toBranchId, clientId, requestedByUserId, reason, transferOwnership = false } = opts;
 
-  await assertSameOrg(fromBranchId, toBranchId);
-
   if (fromBranchId === toBranchId) {
     throw Object.assign(new Error('Origen y destino son la misma sucursal'), { code: 'SAME_BRANCH' });
   }
+  await assertSameOrg(fromBranchId, toBranchId);
 
-  // Verificar que el paciente existe en la sucursal origen
-  const patient = await db.queryOne(
-    `SELECT p.id, p.name
-     FROM patients p
-     JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
-     JOIN clients cl ON po.client_id = cl.id AND cl.branch_id = :bid
-     WHERE p.id = :pid`,
-    { pid: patientId, bid: fromBranchId }
-  );
-  if (!patient) throw Object.assign(new Error('Paciente no encontrado en sucursal origen'), { code: 'PATIENT_NOT_FOUND' });
-
-  // Registrar transferencia
-  const [r] = await db.query(
-    `INSERT INTO patient_transfers
-       (patient_id, from_branch_id, to_branch_id, client_id,
-        requested_by, reason, status)
-     VALUES (:pid, :from, :to, :cid, :uid, :reason, 'completed')`,
-    {
-      pid    : patientId,
-      from   : fromBranchId,
-      to     : toBranchId,
-      cid    : clientId,
-      uid    : requestedByUserId,
-      reason : reason || null,
-    }
-  );
-
-  if (transferOwnership) {
-    // Cambiar el cliente primario del paciente al nuevo cliente (en destino)
-    await db.query(
-      `UPDATE patient_owners SET client_id = :cid, updated_at = NOW()
-       WHERE patient_id = :pid AND ownership_type = 'primary'`,
-      { cid: clientId, pid: patientId }
+  const transferId = await db.transaction(async (conn) => {
+    const patient = await conn.queryOne(
+      `SELECT p.id, p.name
+       FROM patients p
+       JOIN patient_owners po ON po.patient_id = p.id AND po.ownership_type = 'primary'
+       JOIN clients cl ON po.client_id = cl.id AND cl.branch_id = :bid
+       WHERE p.id = :pid
+       FOR UPDATE`,
+      { pid: patientId, bid: fromBranchId }
     );
-  }
+    if (!patient) throw Object.assign(new Error('Paciente no encontrado en sucursal origen'), { code: 'PATIENT_NOT_FOUND' });
 
-  return { transferId: r.insertId };
+    if (transferOwnership) {
+      const destinationClient = await conn.queryOne(
+        `SELECT c.id
+         FROM clients c
+         JOIN branches b ON b.id = c.branch_id
+         JOIN branches source ON source.id = :fromBranchId
+         WHERE c.id = :clientId
+           AND c.branch_id = :toBranchId
+           AND b.organization_id = source.organization_id
+           AND c.is_active = TRUE
+           AND c.deleted_at IS NULL`,
+        { clientId, toBranchId, fromBranchId }
+      );
+      if (!destinationClient) {
+        throw Object.assign(new Error('Cliente destino invalido'), { code: 'CLIENT_NOT_FOUND' });
+      }
+    }
+
+    const [result] = await conn.query(
+      `INSERT INTO patient_transfers
+         (patient_id, from_branch_id, to_branch_id, client_id,
+          requested_by, transfer_type, reason, status)
+       VALUES (:pid, :from, :to, :cid, :uid, :transferType, :reason, 'completed')`,
+      {
+        pid: patientId,
+        from: fromBranchId,
+        to: toBranchId,
+        cid: clientId,
+        uid: requestedByUserId,
+        transferType: transferOwnership ? 'ownership' : 'visit',
+        reason: reason || null,
+      }
+    );
+
+    if (transferOwnership) {
+      await conn.query(
+        `UPDATE patient_owners SET client_id = :cid, updated_at = NOW()
+         WHERE patient_id = :pid AND ownership_type = 'primary'`,
+        { cid: clientId, pid: patientId }
+      );
+    }
+
+    return result.insertId;
+  });
+
+  return { transferId };
 }
 
 // ─── Transferencia de stock ───────────────────────────────────────────────────
@@ -130,47 +150,143 @@ async function transferPatient (opts) {
  */
 async function transferStock (opts) {
   const { itemId, fromBranchId, toBranchId, quantity, requestedByUserId, reason, batchId } = opts;
+  const transferQuantity = Number(quantity);
 
-  await assertSameOrg(fromBranchId, toBranchId);
   if (fromBranchId === toBranchId) throw Object.assign(new Error('Misma sucursal'), { code: 'SAME_BRANCH' });
+  await assertSameOrg(fromBranchId, toBranchId);
+  if (!Number.isFinite(transferQuantity) || transferQuantity <= 0) {
+    throw Object.assign(new Error('Cantidad de transferencia invalida'), { code: 'INVALID_QUANTITY' });
+  }
 
   let transferId;
   await db.transaction(async (conn) => {
-    // Lock the source item to prevent concurrent double-spend
-    const [stockRows] = await conn.query(
-      `SELECT stock_quantity FROM inventory_items WHERE id = ? AND branch_id = ? FOR UPDATE`,
-      [itemId, fromBranchId]
+    const stock = await conn.queryOne(
+      `SELECT quantity_available, minimum_stock, reorder_point, maximum_stock
+       FROM inventory_stock
+       WHERE item_id = :itemId AND branch_id = :branchId
+       FOR UPDATE`,
+      { itemId, branchId: fromBranchId }
     );
-    const stock = stockRows?.[0];
     if (!stock) throw Object.assign(new Error('Ítem no encontrado en sucursal origen'), { code: 'ITEM_NOT_FOUND' });
-    if (stock.stock_quantity < quantity) {
+    if (Number(stock.quantity_available) < transferQuantity) {
       throw Object.assign(
-        new Error(`Stock insuficiente: disponible ${stock.stock_quantity}, solicitado ${quantity}`),
+        new Error(`Stock insuficiente: disponible ${stock.quantity_available}, solicitado ${transferQuantity}`),
         { code: 'INSUFFICIENT_STOCK' }
       );
+    }
+
+    let batch = null;
+    if (batchId) {
+      batch = await conn.queryOne(
+        `SELECT id, supplier_id, lot_number, manufacture_date, expiry_date,
+                quantity_available, unit_cost, notes
+         FROM inventory_batches
+         WHERE id = :batchId AND item_id = :itemId AND branch_id = :branchId
+           AND deleted_at IS NULL
+         FOR UPDATE`,
+        { batchId, itemId, branchId: fromBranchId }
+      );
+      if (!batch) throw Object.assign(new Error('Lote no encontrado en sucursal origen'), { code: 'ITEM_NOT_FOUND' });
+      if (Number(batch.quantity_available) < transferQuantity) {
+        throw Object.assign(
+          new Error(`Stock insuficiente en lote: disponible ${batch.quantity_available}, solicitado ${transferQuantity}`),
+          { code: 'INSUFFICIENT_STOCK' }
+        );
+      }
     }
 
     const [r] = await conn.query(
       `INSERT INTO stock_transfers
          (item_id, from_branch_id, to_branch_id, quantity, batch_id, requested_by, reason, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')`,
-      [itemId, fromBranchId, toBranchId, quantity, batchId || null, requestedByUserId, reason || null]
+       VALUES (:itemId, :fromBranchId, :toBranchId, :quantity, :batchId, :requestedBy, :reason, 'completed')`,
+      {
+        itemId,
+        fromBranchId,
+        toBranchId,
+        quantity: transferQuantity,
+        batchId: batchId || null,
+        requestedBy: requestedByUserId,
+        reason: reason || null,
+      }
     );
     transferId = r.insertId;
 
     await conn.query(
-      `UPDATE inventory_items SET stock_quantity = stock_quantity - ?, updated_at = NOW()
-       WHERE id = ? AND branch_id = ?`,
-      [quantity, itemId, fromBranchId]
+      `UPDATE inventory_stock
+       SET quantity_available = quantity_available - :quantity, updated_at = NOW()
+       WHERE item_id = :itemId AND branch_id = :branchId`,
+      { quantity: transferQuantity, itemId, branchId: fromBranchId }
     );
 
     await conn.query(
-      `INSERT INTO inventory_items (branch_id, name, item_type, unit_cost, sale_price, sku, stock_quantity)
-       SELECT ?, name, item_type, unit_cost, sale_price, CONCAT(sku, '-TRF', ?), ?
-       FROM inventory_items WHERE id = ?
-       ON DUPLICATE KEY UPDATE stock_quantity = stock_quantity + ?`,
-      [toBranchId, transferId, quantity, itemId, quantity]
+      `INSERT INTO inventory_stock
+         (item_id, branch_id, quantity_available, minimum_stock, reorder_point, maximum_stock)
+       VALUES (:itemId, :branchId, :quantity, :minimumStock, :reorderPoint, :maximumStock)
+       ON DUPLICATE KEY UPDATE
+         quantity_available = inventory_stock.quantity_available + VALUES(quantity_available),
+         updated_at = NOW()`,
+      {
+        itemId,
+        branchId: toBranchId,
+        quantity: transferQuantity,
+        minimumStock: stock.minimum_stock ?? 0,
+        reorderPoint: stock.reorder_point ?? 0,
+        maximumStock: stock.maximum_stock ?? null,
+      }
     );
+
+    if (batch) {
+      await conn.query(
+        `UPDATE inventory_batches
+         SET quantity_available = quantity_available - :quantity
+         WHERE id = :batchId`,
+        { quantity: transferQuantity, batchId }
+      );
+      const destinationBatch = await conn.queryOne(
+        `SELECT id FROM inventory_batches
+         WHERE item_id = :itemId AND branch_id = :branchId AND lot_number = :lotNumber
+           AND expiry_date <=> :expiryDate AND supplier_id <=> :supplierId
+           AND deleted_at IS NULL
+         LIMIT 1 FOR UPDATE`,
+        {
+          itemId,
+          branchId: toBranchId,
+          lotNumber: batch.lot_number,
+          expiryDate: batch.expiry_date,
+          supplierId: batch.supplier_id,
+        }
+      );
+      if (destinationBatch) {
+        await conn.query(
+          `UPDATE inventory_batches
+           SET quantity_received = quantity_received + :quantity,
+               quantity_available = quantity_available + :quantity
+           WHERE id = :batchId`,
+          { quantity: transferQuantity, batchId: destinationBatch.id }
+        );
+      } else {
+        await conn.query(
+          `INSERT INTO inventory_batches
+             (item_id, branch_id, supplier_id, lot_number, manufacture_date, expiry_date,
+              quantity_received, quantity_available, unit_cost, notes, created_by)
+           VALUES
+             (:itemId, :branchId, :supplierId, :lotNumber, :manufactureDate, :expiryDate,
+              :quantity, :quantity, :unitCost, :notes, :createdBy)`,
+          {
+            itemId,
+            branchId: toBranchId,
+            supplierId: batch.supplier_id,
+            lotNumber: batch.lot_number,
+            manufactureDate: batch.manufacture_date,
+            expiryDate: batch.expiry_date,
+            quantity: transferQuantity,
+            unitCost: batch.unit_cost,
+            notes: batch.notes,
+            createdBy: requestedByUserId,
+          }
+        );
+      }
+    }
   });
 
   return { transferId };

@@ -51,7 +51,7 @@ const corsOptions = {
     return callback(new Error(`CORS: origin '${origin}' not allowed`));
   },
   methods:            ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders:     ['Content-Type', 'Authorization', 'X-API-Key', 'X-Org-Id', 'X-Branch-Id', 'X-Request-Id', 'X-CSRF-Token'],
+  allowedHeaders:     ['Content-Type', 'Authorization', 'X-API-Key', 'X-Request-Id', 'X-CSRF-Token'],
   exposedHeaders:     ['X-Total-Count', 'X-Page', 'X-Limit', 'X-Request-Id'],
   credentials:        true,
   maxAge:             86400,   // preflight cache 24h

@@ -21,10 +21,14 @@ export async function requestPasswordReset(email, captchaToken) {
   return authApi.resetRequest(email, captchaToken)
 }
 
+export async function confirmPasswordReset(token, newPassword) {
+  return authApi.resetConfirm({ token, newPassword })
+}
+
 export function startSso(provider, email) {
   authApi.ssoRedirect(provider, {
     email: email || '',
-    redirectTo: `${window.location.origin}/`,
+    redirectTo: `${window.location.origin}/login?sso=success`,
   })
 }
 
@@ -38,6 +42,7 @@ export default function useLoginDomain() {
     getCaptchaConfig,
     verifyTwoFactor,
     requestPasswordReset,
+    confirmPasswordReset,
     startSso,
     getLoginError,
     loginErrorScope,

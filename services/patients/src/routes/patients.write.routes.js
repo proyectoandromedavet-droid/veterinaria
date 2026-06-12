@@ -162,8 +162,11 @@ router.put('/:id',
 
       const schema = await getPatientSchema();
       const patientCols = schema.patients || new Set();
+      const clientCols = schema.clients || new Set();
+      const ownerCols = schema.patient_owners || new Set();
       const rawMap = {
         name: ['name'],
+        speciesId: ['species_id'],
         breedId: ['breed_id'],
         coatColorId: ['coat_color_id', 'color_id'],
         sex: ['sex', 'gender'],
@@ -184,9 +187,13 @@ router.put('/:id',
       };
 
       const sets = [];
-      const params = { id: req.params.id };
+      const params = {
+        id: req.params.id,
+        orgId: req.user.orgId,
+        branchId: req.user.branchId,
+      };
       for (const [key, value] of Object.entries(req.body)) {
-        const targets = rawMap[key] || (patientCols.has(key) ? [key] : []);
+        const targets = rawMap[key] || [];
         for (const column of targets) {
           if (!patientCols.has(column)) continue;
           const paramKey = `${column}_${sets.length}`;
@@ -198,8 +205,30 @@ router.put('/:id',
       }
       if (!sets.length) return R.badRequest(res, 'No valid fields');
 
+      const scopes = [];
+      if (patientCols.has('organization_id')) scopes.push('p.organization_id = :orgId');
+      if (clientCols.has('branch_id')) {
+        scopes.push(
+          `EXISTS (
+             SELECT 1
+             FROM patient_owners po
+             JOIN clients cl ON cl.id = po.client_id
+             WHERE po.patient_id = p.id
+               ${ownerCols.has('deleted_at') ? 'AND po.deleted_at IS NULL' : ''}
+               ${clientCols.has('deleted_at') ? 'AND cl.deleted_at IS NULL' : ''}
+               ${ownerCols.has('active') ? 'AND po.active = 1' : ''}
+               AND cl.branch_id = :branchId
+           )`
+        );
+      }
+      if (!scopes.length) throw new Error('Patients update schema unsupported');
+
       await db.query(
-        `UPDATE patients SET ${sets.join(', ')}, updated_at = NOW() WHERE id = :id`,
+        `UPDATE patients p
+         SET ${sets.join(', ')}, updated_at = NOW()
+         WHERE p.id = :id
+           ${patientCols.has('deleted_at') ? 'AND p.deleted_at IS NULL' : ''}
+           AND (${scopes.join(' OR ')})`,
         params
       );
       return R.noContent(res);

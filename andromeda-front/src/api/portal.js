@@ -51,6 +51,23 @@ function clearStoredSession() {
 
 let currentSession = readStoredSession()
 let refreshingPromise = null
+const sessionListeners = new Set()
+
+function notifySessionChanged() {
+  const snapshot = { ...currentSession }
+  sessionListeners.forEach((listener) => {
+    try {
+      listener(snapshot)
+    } catch (error) {
+      logError('portal.sessionListener', error)
+    }
+  })
+}
+
+function subscribeSession(listener) {
+  sessionListeners.add(listener)
+  return () => sessionListeners.delete(listener)
+}
 
 function getSession() {
   if (!currentSession.accessToken && !currentSession.refreshToken) {
@@ -66,12 +83,14 @@ function setSession(session) {
     owner: session?.owner || null,
   }
   writeStoredSession(currentSession)
-  return getSession()
+  notifySessionChanged()
+  return { ...currentSession }
 }
 
 function clearSession() {
   currentSession = { accessToken: null, refreshToken: null, owner: null }
   clearStoredSession()
+  notifySessionChanged()
 }
 
 function unwrap(response) {
@@ -167,6 +186,7 @@ export const portalApi = {
   login: (data) => portalHttp.post('/portal/auth/login', data).then(unwrap),
   register: (data) => portalHttp.post('/portal/auth/register', data).then(unwrap),
   forgotPassword: (data) => portalHttp.post('/portal/auth/forgot-password', data).then(unwrap),
+  confirmPasswordReset: (data) => portalHttp.post('/portal/auth/password-reset/confirm', data).then(unwrap),
   me: () => portalHttp.get('/portal/me').then(unwrap),
   updateMe: (data) => portalHttp.put('/portal/me', data).then(unwrap),
   changePassword: (data) => portalHttp.put('/portal/me/password', data).then(unwrap),
@@ -201,6 +221,7 @@ export const portalApi = {
   getSession,
   setSession,
   clearSession,
+  subscribeSession,
   hasSession: () => Boolean(getSession().accessToken),
   unwrap,
 }

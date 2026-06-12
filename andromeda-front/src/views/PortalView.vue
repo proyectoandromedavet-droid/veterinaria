@@ -525,7 +525,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { portalApi } from '../api/portal'
 import {
   authTabs,
@@ -561,6 +561,9 @@ const notice = ref('')
 const errorMessage = ref('')
 
 const session = ref(portalApi.getSession())
+const unsubscribePortalSession = portalApi.subscribeSession((nextSession) => {
+  session.value = nextSession
+})
 const owner = ref(session.value.owner || null)
 const profile = ref(null)
 
@@ -619,7 +622,7 @@ const fcmForm = reactive({
   deviceName: '',
 })
 
-const isAuthenticated = computed(() => portalApi.hasSession())
+const isAuthenticated = computed(() => Boolean(session.value.accessToken))
 const ownerLabel = computed(() => ownerLabelFrom(profile.value, owner.value, session.value.owner))
 const sessionSummary = computed(() => sessionSummaryFrom(profile.value, owner.value, session.value.owner))
 const profileSummary = computed(() => profileSummaryFrom(profile.value))
@@ -967,6 +970,8 @@ onMounted(async () => {
     await loadDashboard()
   }
 })
+
+onBeforeUnmount(unsubscribePortalSession)
 </script>
 
 <style scoped>

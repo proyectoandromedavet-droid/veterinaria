@@ -92,8 +92,8 @@ function baseHtml(content, title = 'VetManager Pro') {
 }
 
 // ── Password reset ────────────────────────────────────────────────────────────
-async function sendPasswordReset({ to, token, expiresInMinutes = 60 }) {
-  const link = `${APP_URL}/reset-password?token=${token}`;
+async function sendPasswordReset({ to, token, expiresInMinutes = 60, portal = false }) {
+  const link = `${APP_URL}/reset-password?token=${encodeURIComponent(token)}${portal ? '&portal=1' : ''}`;
   const html = baseHtml(`
     <p>Hemos recibido una solicitud para restablecer la contraseña de su cuenta.</p>
     <p>Haga clic en el siguiente botón para continuar:</p>

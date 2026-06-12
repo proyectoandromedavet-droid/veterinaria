@@ -71,7 +71,7 @@ router.delete('/:id', async (req, res, next) => {
     );
     if (activePOs?.cnt > 0) return R.conflict(res, 'El proveedor tiene órdenes de compra activas');
 
-    const result = await db.query(
+    const [result] = await db.query(
       `UPDATE suppliers SET is_active=0, deleted_at=NOW(), updated_at=NOW()
        WHERE id=:id AND org_id=:oid AND ${notDeleted('suppliers')}`,
       { id: req.params.id, oid: req.user.orgId }

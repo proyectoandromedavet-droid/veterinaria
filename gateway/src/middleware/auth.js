@@ -43,6 +43,11 @@ async function authenticate(req, res, next) {
     return R.unauthorized(res, msg, err.name === 'TokenExpiredError' ? 'AUTH_003' : 'AUTH_002');
   }
 
+  // Defense in depth: pending 2FA and refresh tokens must never reach protected routes.
+  if (decoded.tokenType !== 'access' || decoded.scope === '2fa_pending') {
+    return R.unauthorized(res, 'Invalid token', 'AUTH_002');
+  }
+
   if (!decoded.jti) return R.unauthorized(res, 'Token missing identifier', 'AUTH_005');
 
   if (decoded.jti) {
@@ -140,6 +145,7 @@ async function optionalAuth(req, res, next) {
   if (!token) return next();
   try {
     const decoded = verifyAccess(token);
+    if (decoded.tokenType !== 'access' || decoded.scope === '2fa_pending') return next();
     if (decoded.jti) {
       try {
         const redis = await getRedis();
