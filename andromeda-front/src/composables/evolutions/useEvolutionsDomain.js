@@ -233,7 +233,8 @@ export function buildMedicalRecordPayload(form) {
   if (form.visitDate) payload.visitDate = form.visitDate
   if (form.notes) payload.notes = form.notes
   if (form.weightKg) payload.weightKg = parseFloat(form.weightKg)
-  if (form.temperatureCelsius) payload.temperatureCelsius = parseFloat(form.temperatureCelsius)
+  // El backend (POST /medical-records) espera 'temperatureC', no 'temperatureCelsius'
+  if (form.temperatureCelsius) payload.temperatureC = parseFloat(form.temperatureCelsius)
   if (form.bodyConditionScore) payload.bodyConditionScore = parseFloat(form.bodyConditionScore)
   return payload
 }

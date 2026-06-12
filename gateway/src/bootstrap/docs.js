@@ -73,7 +73,11 @@ function registerOpenApiValidation(app) {
     const { middleware: openApiValidator } = require('express-openapi-validator');
     app.use(openApiValidator({
       apiSpec: openApiPath,
-      validateRequests: true,
+      // El frontend envía filtros (search, from, to, …) que el backend maneja de forma
+      // flexible y que no siempre están declarados en el spec. Sin allowUnknownQueryParameters
+      // el validador del gateway rechaza esas requests con 400 (p. ej. /medical-records?search=).
+      // Coincide con la configuración de los validadores por servicio (serviceBase).
+      validateRequests: { allowUnknownQueryParameters: true },
       validateResponses: false,
       validateSecurity: false,
       ignorePaths: /^\/health|^\/metrics|^\/api\/v\d+\/docs/,
