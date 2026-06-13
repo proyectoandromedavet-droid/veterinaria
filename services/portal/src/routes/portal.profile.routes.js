@@ -4,7 +4,6 @@ const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const { db, R, portalAuth, validate, vBody, PASSWORD_POLICY, log } = require('../portal.common');
 const pwHash = require('../../../../shared/passwordHash');
-const { decrypt } = require('../../../../shared/encryption');
 
 const router = Router();
 
@@ -26,7 +25,6 @@ router.get('/', portalAuth, async (req, res, next) => {
       { id: req.owner.clientId }
     );
     if (!client) return R.notFound(res, 'Cuenta no encontrada');
-    if (client.document_number) client.document_number = decrypt(client.document_number);
     return R.ok(res, client);
   } catch (e) { next(e); }
 });

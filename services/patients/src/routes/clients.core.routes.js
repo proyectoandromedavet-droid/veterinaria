@@ -1,7 +1,6 @@
 'use strict';
 
 const { Router } = require('express');
-const { encrypt, decrypt } = require('../../../../shared/encryption');
 const {
   body,
   db,
@@ -34,8 +33,7 @@ router.get('/', async (req, res, next) => {
     let where = `WHERE c.branch_id = :branchId AND ${activeExpr} = TRUE AND ${clientDeleted}`;
     const params = { branchId, limit: parsedLimit, offset };
     if (search) {
-      // document_number está cifrado en reposo: no se puede buscar por LIKE parcial.
-      where += ` AND (c.first_name LIKE :s OR c.last_name LIKE :s OR c.email LIKE :s OR c.phone LIKE :s)`;
+      where += ` AND (c.first_name LIKE :s OR c.last_name LIKE :s OR c.email LIKE :s OR c.phone LIKE :s OR c.document_number LIKE :s)`;
       params.s = `%${search}%`;
     }
 
@@ -65,12 +63,9 @@ router.get('/', async (req, res, next) => {
     ]);
 
     // OT-098: mask PII for callers without 'clients:pii' permission
-    // document_number cifrado en reposo: descifrar siempre (valores viejos en texto plano
-    // se devuelven tal cual por compatibilidad), luego enmascarar si no hay acceso PII.
     const pii = hasPiiAccess(req);
-    for (const row of rows) {
-      if (row.document_number) row.document_number = decrypt(row.document_number);
-      if (!pii) {
+    if (!pii) {
+      for (const row of rows) {
         row.email           = maskEmail(row.email);
         row.phone           = maskPhone(row.phone);
         row.document_number = row.document_number ? '****' : null;
@@ -111,8 +106,6 @@ router.get('/:id', async (req, res, next) => {
     );
     if (!client) return R.notFound(res, 'Client not found');
 
-    // document_number cifrado en reposo: descifrar siempre, luego enmascarar si corresponde.
-    if (client.document_number) client.document_number = decrypt(client.document_number);
     // OT-098: mask PII fields unless caller has 'clients:pii' permission
     if (!hasPiiAccess(req)) {
       client.email           = maskEmail(client.email);
@@ -197,7 +190,7 @@ router.post('/',
         email: email || null,
         phone,
         docType: documentType || 'dni',
-        docNum: documentNumber ? encrypt(documentNumber) : null,
+        docNum: documentNumber || null,
         addr: address || null,
         city: city || null,
         stateId: stateId || null,
@@ -278,13 +271,9 @@ router.put('/:id',
           if (!clientCols.has(column)) continue;
           const paramKey = `${column}_${sets.length}`;
           sets.push(`${column} = :${paramKey}`);
-          if (column === 'is_active' || column === 'active') {
-            params[paramKey] = ['1', 1, true, 'true'].includes(value) ? 1 : 0;
-          } else if (column === 'document_number') {
-            params[paramKey] = value ? encrypt(value) : value;   // cifrado en reposo
-          } else {
-            params[paramKey] = value;
-          }
+          params[paramKey] = (column === 'is_active' || column === 'active')
+            ? (['1', 1, true, 'true'].includes(value) ? 1 : 0)
+            : value;
         }
       }
       if (!sets.length) return R.badRequest(res, 'No valid fields to update');
