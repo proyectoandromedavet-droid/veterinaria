@@ -78,8 +78,10 @@ router.get('/:id/gdpr/export', async (req, res, next) => {
 
     const format = req.query.format || 'json';
     if (format === 'json') {
+      // Sanitizar el id antes de ponerlo en el header para evitar header/response injection.
+      const safeId = String(req.params.id).replace(/[^a-zA-Z0-9_-]/g, '');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="datos-personales-${req.params.id}.json"`);
+      res.setHeader('Content-Disposition', `attachment; filename="datos-personales-${safeId}.json"`);
       return res.send(JSON.stringify(data, null, 2));
     }
     return R.ok(res, data);

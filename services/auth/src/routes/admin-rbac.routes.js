@@ -243,7 +243,7 @@ router.post('/security-alerts/:id/acknowledge',
     if (!alert) return R.notFound(res, 'Alert not found');
     if (String(alert.org_id) !== String(req.user.orgId)) return R.forbidden(res, 'Access denied');
     const { acknowledgeAlert } = require('../../../../shared/dlp');
-    await acknowledgeAlert(req.params.id, req.user.userId);
+    await acknowledgeAlert(req.params.id, req.user.userId, req.user.orgId);
     res.json({ success: true });
   } catch (err) { next(err); }
 });

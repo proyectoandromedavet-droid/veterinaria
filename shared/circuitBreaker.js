@@ -56,6 +56,7 @@ class CircuitBreaker {
     this._failures  = 0;
     this._successes = 0;
     this._openedAt  = null;
+    this._probing   = false;   // limita a UNA sonda concurrente en HALF_OPEN
   }
 
   get state() { return this._state; }
@@ -74,6 +75,7 @@ class CircuitBreaker {
     if (this._state === OPEN) {
       if (Date.now() - this._openedAt >= this.timeout) {
         this._successes = 0;
+        this._probing = true;   // esta request es la sonda
         this._transition(HALF_OPEN);
         return true;
       }
@@ -81,12 +83,18 @@ class CircuitBreaker {
       return false;
     }
 
-    // HALF_OPEN — let one request through
+    // HALF_OPEN — permitir solo UNA sonda a la vez (el resto se rechaza hasta resolver)
+    if (this._probing) {
+      _rejectedRequests?.labels(this.name).inc();
+      return false;
+    }
+    this._probing = true;
     return true;
   }
 
   /** Call after a successful upstream response (status < 500). */
   onSuccess() {
+    this._probing = false;   // la sonda se resolvió → permitir la próxima si sigue HALF_OPEN
     if (this._state === HALF_OPEN) {
       this._successes++;
       if (this._successes >= this.successReq) {
@@ -101,6 +109,7 @@ class CircuitBreaker {
 
   /** Call after a connection error or 5xx response. */
   onFailure() {
+    this._probing = false;
     if (this._state === HALF_OPEN) {
       // Probe failed — reopen immediately
       this._openedAt = Date.now();

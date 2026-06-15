@@ -117,12 +117,13 @@ async function getAlerts(orgId, { limit = 50, onlyUnacknowledged = false } = {})
 /**
  * Reconoce (ack) una alerta.
  */
-async function acknowledgeAlert(alertId, adminUserId) {
+async function acknowledgeAlert(alertId, adminUserId, orgId) {
+  // SEC: scope por org para impedir que un admin reconozca alertas de otra organización (IDOR).
   return db.query(
     `UPDATE security_alerts
      SET acknowledged = TRUE, acknowledged_by = :adminUserId, acknowledged_at = NOW()
-     WHERE id = :alertId`,
-    { alertId, adminUserId },
+     WHERE id = :alertId AND org_id = :orgId`,
+    { alertId, adminUserId, orgId },
   );
 }
 

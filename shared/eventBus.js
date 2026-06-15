@@ -133,17 +133,20 @@ function nextOutboxAttemptDate(attempt) {
 
 async function markOutboxRetry(id, err) {
   const db = getDb();
+  // Backoff exponencial real basado en el attempt_count actual (5s..300s).
+  // Las expresiones CASE usan attempt_count (valor previo) y el incremento va al final,
+  // por lo que se evalúan con el conteo correcto.
   await db.query(
     `UPDATE event_outbox
      SET status = CASE WHEN attempt_count + 1 >= max_attempts THEN 'failed' ELSE 'pending' END,
+         next_attempt_at = CASE WHEN attempt_count + 1 >= max_attempts THEN NULL
+           ELSE DATE_ADD(NOW(), INTERVAL FLOOR(LEAST(300, GREATEST(5, POW(2, LEAST(attempt_count + 1, 8))))) SECOND) END,
          attempt_count = attempt_count + 1,
-         next_attempt_at = CASE WHEN attempt_count + 1 >= max_attempts THEN NULL ELSE :nextAttemptAt END,
          last_error = :lastError,
          updated_at = NOW()
      WHERE id = :id`,
     {
       id,
-      nextAttemptAt: nextOutboxAttemptDate(1),
       lastError: String(err?.message || err).slice(0, 512),
     }
   );

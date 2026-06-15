@@ -177,7 +177,7 @@ async function stripeWebhookHandler(req, res) {
             : null;
           if (nextBillingDate) {
             await db.query(
-              'UPDATE tenants SET next_billing_date = :date, subscription_status = :status WHERE org_id = :orgId',
+              'UPDATE tenants SET next_billing_date = :date, status = :status WHERE org_id = :orgId',
               { date: nextBillingDate, status: 'active', orgId },
             );
           }

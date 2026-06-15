@@ -242,13 +242,17 @@ async function idempotency(req, res, next) {
     // Intercept response to cache it
     const origJson = res.json.bind(res);
     res.json = function(body) {
-      const serialised = JSON.stringify({ status: res.statusCode, body });
-      // No cachear respuestas que excedan el límite — previene memory exhaustion en Redis
-      if (Buffer.byteLength(serialised) <= IDEMPOTENCY_MAX_BODY_BYTES) {
-        redis.setEx(redisKey, 86400, serialised)
-          .catch((err) => log.warn('Idempotency cache write failed', { error: err.message, key: redisKey }));
-      } else {
-        log.warn('Idempotency body too large — not cached', { key: redisKey, bytes: Buffer.byteLength(serialised) });
+      // Solo cachear respuestas exitosas (2xx). Cachear 4xx/5xx haría que un error
+      // transitorio quede "pegado" 24h y el reintento con la misma key no reintente.
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        const serialised = JSON.stringify({ status: res.statusCode, body });
+        // No cachear respuestas que excedan el límite — previene memory exhaustion en Redis
+        if (Buffer.byteLength(serialised) <= IDEMPOTENCY_MAX_BODY_BYTES) {
+          redis.setEx(redisKey, 86400, serialised)
+            .catch((err) => log.warn('Idempotency cache write failed', { error: err.message, key: redisKey }));
+        } else {
+          log.warn('Idempotency body too large — not cached', { key: redisKey, bytes: Buffer.byteLength(serialised) });
+        }
       }
       return origJson(body);
     };
@@ -268,22 +272,54 @@ async function idempotency(req, res, next) {
  * Env: ALLOWED_HOSTS — lista CSV de hosts permitidos (ej: "app.vetmanager.io,api.vetmanager.io")
  * En desarrollo, se permiten localhost y 127.0.0.1 si no hay lista configurada.
  */
+// Deriva la lista de hosts permitidos de varias env vars (ALLOWED_HOSTS y, como
+// fallback robusto, las URLs públicas que la app ya configura). Esto evita que un
+// ALLOWED_HOSTS ausente bloquee TODO el tráfico cuando APP_URL/FRONTEND_URL sí están,
+// sin abrir el guard (sigue validando contra hosts legítimos).
+function deriveAllowedHosts() {
+  const out = [];
+  const sources = [
+    process.env.ALLOWED_HOSTS,
+    process.env.APP_URL,
+    process.env.FRONTEND_URL,
+    process.env.PUBLIC_URL,
+  ];
+  for (const v of sources) {
+    if (!v) continue;
+    for (const part of String(v).split(',')) {
+      const s = part.trim();
+      if (!s) continue;
+      try {
+        if (/^https?:\/\//i.test(s)) out.push(new URL(s).hostname.toLowerCase());
+        else out.push(s.toLowerCase().split('/')[0].split(':')[0]);
+      } catch { /* entrada inválida → ignorar */ }
+    }
+  }
+  return out;
+}
+
 function dnsRebindingGuard(req, res, next) {
-  const allowedRaw = process.env.ALLOWED_HOSTS || '';
-  if (!allowedRaw && process.env.NODE_ENV !== 'production') return next();
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowedHosts = new Set(deriveAllowedHosts());
 
-  const allowedHosts = new Set(
-    allowedRaw.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
-  );
-
-  // En desarrollo, siempre permitir localhost/127.0.0.1 si no hay lista
-  if (!allowedHosts.size && process.env.NODE_ENV !== 'production') return next();
+  // En desarrollo, sin lista configurada → permitir
+  if (!allowedHosts.size && !isProd) return next();
 
   const host = (req.headers['host'] || '').toLowerCase().split(':')[0];   // strip port
 
   // Permitir localhost en dev aunque haya lista
-  if (process.env.NODE_ENV !== 'production' && (host === 'localhost' || host === '127.0.0.1')) {
+  if (!isProd && (host === 'localhost' || host === '127.0.0.1')) {
     return next();
+  }
+
+  // Prod sin NINGÚN host configurado: no se puede validar. Fail-closed (no degradar
+  // seguridad) pero con log explícito para diagnosticar la mala configuración.
+  if (!allowedHosts.size) {
+    log.error('dnsRebindingGuard: sin ALLOWED_HOSTS/APP_URL/FRONTEND_URL en producción — se rechazan todas las requests. Configurar ALLOWED_HOSTS.');
+    return res.status(400).json({
+      success: false,
+      error: { message: 'Host header no permitido', code: 'HOST_HEADER_INVALID' },
+    });
   }
 
   if (!allowedHosts.has(host)) {

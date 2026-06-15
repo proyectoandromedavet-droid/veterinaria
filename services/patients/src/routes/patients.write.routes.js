@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { Router } = require('express');
 const { requirePerm } = require('../../../../shared/serviceBase');
 const {
@@ -107,7 +108,7 @@ router.post('/',
            VALUES (${values.join(', ')})`,
           {
             ...params,
-            hcNumber: `TMP${Date.now()}${Math.floor(Math.random() * 1000)}`,
+            hcNumber: `TMP${Date.now().toString(36)}${crypto.randomBytes(4).toString('hex')}`,
           }
         );
         const patientId = r.insertId;

@@ -1294,21 +1294,27 @@ async function ssoCallback(req, res) {
     const firstName = claims.given_name || claims.name?.split(' ')[0] || 'SSO';
     const lastName = claims.family_name || claims.name?.split(' ').slice(1).join(' ') || provider.toUpperCase();
 
-    const [created] = await db.query(
-      `INSERT INTO users
-         (branch_id, username, first_name, last_name, email, password_hash, is_active, created_at, updated_at)
-       VALUES
-         (:branchId, :username, :firstName, :lastName, :email, :passwordHash, 1, NOW(), NOW())`,
-      { branchId, username: String(email).slice(0, 100), firstName, lastName, email, passwordHash: generatedPasswordHash }
-    );
     const role = await db.queryOne(`SELECT id FROM roles WHERE name = :name`, { name: configRow.default_role });
-    if (role?.id) {
-      await db.query(
-        `INSERT INTO user_roles (user_id, role_id, assigned_by, is_active, created_at)
-         VALUES (:userId, :roleId, NULL, 1, NOW())`,
-        { userId: created.insertId, roleId: role.id }
+    // Crear usuario + rol de forma atómica: si falla la asignación de rol, se revierte
+    // el alta para no dejar usuarios SSO sin rol (estado inconsistente).
+    const created = await db.transaction(async (conn) => {
+      const [ins] = await conn.query(
+        `INSERT INTO users
+           (branch_id, username, first_name, last_name, email, password_hash, is_active, created_at, updated_at)
+         VALUES
+           (:branchId, :username, :firstName, :lastName, :email, :passwordHash, 1, NOW(), NOW())`,
+        { branchId, username: String(email).slice(0, 100), firstName, lastName, email, passwordHash: generatedPasswordHash }
       );
-    }
+      if (role?.id) {
+        // user_roles no tiene created_at; assigned_at tiene default CURRENT_TIMESTAMP.
+        await conn.query(
+          `INSERT INTO user_roles (user_id, role_id, assigned_by, is_active)
+           VALUES (:userId, :roleId, NULL, 1)`,
+          { userId: ins.insertId, roleId: role.id }
+        );
+      }
+      return ins;
+    });
     user = await db.queryOne(
       `SELECT u.*, b.organization_id
        FROM users u
