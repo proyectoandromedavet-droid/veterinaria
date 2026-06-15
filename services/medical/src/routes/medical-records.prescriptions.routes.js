@@ -2,6 +2,7 @@
 
 const { Router } = require('express');
 const { body, db, R, validate, logMedicalError } = require('./medical.common');
+const { ensureMedicalRecordInScope } = require('./medical-records.sections.common');
 const { encrypt, decryptRows, PRESCRIPTION_FIELDS } = require('../../../../shared/encryption');
 
 const router = Router();
@@ -28,6 +29,11 @@ async function getPrescriptionSchema() {
 
 const getPrescriptions = [async (req, res, next) => {
   try {
+    // SEC: verificar que la ficha pertenezca a la org/sucursal del usuario antes de
+    // exponer prescripciones (PHI). Sin esto era posible leer recetas de otra org por id.
+    const scopedRecord = await ensureMedicalRecordInScope(req, req.params.id);
+    if (!scopedRecord) return R.notFound(res, 'Historia clinica no encontrada');
+
     const rows = await db.query(
       `SELECT p.*, pi.medication_name, pi.dose, pi.frequency, pi.duration_days, pi.quantity, pi.instructions
        FROM prescriptions p
@@ -55,6 +61,11 @@ const postPrescriptions = [
       if (!userRoles.some((role) => VET_RX_ROLES.includes(role))) {
         return R.forbidden(res, 'Solo veterinarios pueden crear prescripciones');
       }
+
+      // SEC: la ficha debe pertenecer a la org/sucursal del usuario (evita crear
+      // recetas sobre historias de otro tenant via medical_record_id arbitrario).
+      const scopedRecord = await ensureMedicalRecordInScope(req, req.params.id);
+      if (!scopedRecord) return R.notFound(res, 'Historia clinica no encontrada');
 
       const { items, notes, refills = 0 } = req.body;
       const schema = await getPrescriptionSchema();
