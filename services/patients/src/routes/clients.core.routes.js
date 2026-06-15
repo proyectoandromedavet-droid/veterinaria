@@ -1,7 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
-const { encrypt, decrypt } = require('../../../../shared/encryption');
+const { encrypt, decrypt, hashForSearch } = require('../../../../shared/encryption');
 const {
   body,
   db,
@@ -31,12 +31,22 @@ router.get('/', async (req, res, next) => {
     const clientDeleted = deletedPredicate(clientCols, 'c');
     const ownerDeleted = deletedPredicate(ownerCols, 'po');
 
+    const hasDocHash = clientCols.has('document_number_hash');
     let where = `WHERE c.branch_id = :branchId AND ${activeExpr} = TRUE AND ${clientDeleted}`;
     const params = { branchId, limit: parsedLimit, offset };
+    const countParams = { branchId };
     if (search) {
-      // document_number está cifrado en reposo: no se puede buscar por LIKE parcial.
-      where += ` AND (c.first_name LIKE :s OR c.last_name LIKE :s OR c.email LIKE :s OR c.phone LIKE :s)`;
+      // document_number está cifrado en reposo: no se puede LIKE parcial, pero sí
+      // buscar por coincidencia EXACTA vía blind index (HMAC) sin exponer el valor.
+      const docClause = hasDocHash ? ' OR c.document_number_hash = :docHash' : '';
+      where += ` AND (c.first_name LIKE :s OR c.last_name LIKE :s OR c.email LIKE :s OR c.phone LIKE :s${docClause})`;
       params.s = `%${search}%`;
+      countParams.s = `%${search}%`;
+      if (hasDocHash) {
+        const docHash = hashForSearch(search);
+        params.docHash = docHash;
+        countParams.docHash = docHash;
+      }
     }
 
     const [rows, [{ total }]] = await Promise.all([
@@ -60,7 +70,7 @@ router.get('/', async (req, res, next) => {
         `SELECT COUNT(*) AS total
          FROM clients c
          ${where}`,
-        search ? { branchId, s: `%${search}%` } : { branchId }
+        countParams
       ),
     ]);
 
@@ -198,6 +208,7 @@ router.post('/',
         phone,
         docType: documentType || 'dni',
         docNum: documentNumber ? encrypt(documentNumber) : null,
+        docNumHash: documentNumber ? hashForSearch(documentNumber) : null,   // blind index para búsqueda exacta
         addr: address || null,
         city: city || null,
         stateId: stateId || null,
@@ -212,6 +223,7 @@ router.post('/',
       if (clientCols.has('email')) { columns.push('email'); values.push(':email'); }
       if (clientCols.has('document_type')) { columns.push('document_type'); values.push(':docType'); }
       if (clientCols.has('document_number')) { columns.push('document_number'); values.push(':docNum'); }
+      if (clientCols.has('document_number_hash')) { columns.push('document_number_hash'); values.push(':docNumHash'); }
       if (clientCols.has('address')) { columns.push('address'); values.push(':addr'); }
       if (clientCols.has('city')) { columns.push('city'); values.push(':city'); }
       if (clientCols.has('state_id')) { columns.push('state_id'); values.push(':stateId'); }
@@ -286,6 +298,13 @@ router.put('/:id',
             params[paramKey] = value;
           }
         }
+      }
+      // Mantener el blind index sincronizado cuando cambia el document_number.
+      if ('documentNumber' in req.body && clientCols.has('document_number_hash')) {
+        const v = req.body.documentNumber;
+        const pk = `document_number_hash_${sets.length}`;
+        sets.push(`document_number_hash = :${pk}`);
+        params[pk] = v ? hashForSearch(v) : null;
       }
       if (!sets.length) return R.badRequest(res, 'No valid fields to update');
 

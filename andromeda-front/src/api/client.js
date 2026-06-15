@@ -117,6 +117,7 @@ http.interceptors.response.use(
         queue.forEach(({ resolve, config }) => {
           config.headers = config.headers || {}
           config.headers.Authorization = `Bearer ${freshToken}`
+          config._retry = true   // evita que un 401 posterior dispare otro ciclo de refresh
           resolve(http(config))
         })
         queue = []

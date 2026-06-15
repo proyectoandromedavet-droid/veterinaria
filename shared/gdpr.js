@@ -15,6 +15,7 @@
 
 const db         = require('./db');
 const { hashDocument } = require('./digitalSignature');
+const { decrypt } = require('./encryption');
 
 // ─── Consentimientos ──────────────────────────────────────────────────────────
 
@@ -149,6 +150,7 @@ async function exportPersonalData (clientId, orgId) {
     // Datos del cliente
     db.queryOne(
       `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.dni,
+              c.document_type, c.document_number,
               c.address, c.city, c.birthdate, c.notes,
               c.created_at, c.updated_at
        FROM clients c
@@ -223,6 +225,10 @@ async function exportPersonalData (clientId, orgId) {
   ]);
 
   if (!client) throw Object.assign(new Error('Cliente no encontrado'), { code: 'CLIENT_NOT_FOUND' });
+
+  // document_number está cifrado en reposo: descifrar para incluir el documento real
+  // en el export (Derecho de Acceso — el dato debe entregarse legible al titular).
+  if (client.document_number) client.document_number = decrypt(client.document_number);
 
   const exportPackage = {
     exportDate   : new Date().toISOString(),
