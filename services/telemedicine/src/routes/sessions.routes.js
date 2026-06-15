@@ -2,6 +2,7 @@
 
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
+const { getAnySecret } = require('../../../../shared/secrets');
 const {
   crypto,
   body,
@@ -293,7 +294,10 @@ router.post('/:id/prescription',
       }
       const { prescriptionId, validityDays = 30 } = req.body;
       const signatureData = `${prescriptionId}-${req.user.userId}-${Date.now()}`;
-      const signatureHash = crypto.createHash('sha256').update(signatureData).digest('hex');
+      // Firma HMAC con secreto del servidor: no recomputable ni forgeable por terceros
+      // (a diferencia de un SHA-256 plano sobre datos predecibles). Da integridad + autenticidad.
+      const signingSecret = getAnySecret(['PRESCRIPTION_SIGNING_SECRET', 'FIELD_ENCRYPTION_SECRET', 'JWT_SECRET']);
+      const signatureHash = crypto.createHmac('sha256', signingSecret).update(signatureData).digest('hex');
       const expiresAt = new Date(Date.now() + validityDays * 86400000).toISOString().slice(0, 10);
 
       const [r] = await db.query(
