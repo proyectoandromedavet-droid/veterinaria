@@ -343,7 +343,7 @@ function debouncedLoad() { clearTimeout(timer); timer = setTimeout(load, 350) }
 
 function joinCall(t) {
   if (t.meeting_url) {
-    window.open(t.meeting_url, '_blank')
+    window.open(t.meeting_url, '_blank', 'noopener,noreferrer')
   } else {
     alert('El enlace de videollamada no está disponible aún.')
   }
