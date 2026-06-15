@@ -61,13 +61,15 @@ function maskPhone(phone) {
 /**
  * Returns true when the request user is allowed to see full PII fields
  * (email, phone, document_number, tax_id).
- * Requires the 'clients:pii' permission or the 'admin' role.
+ * Requires the 'clients:pii' permission or an admin role (org_admin / superadmin).
  */
 function hasPiiAccess(req) {
   const perms = req.user?.permissions;
   if (Array.isArray(perms) && perms.includes('clients:pii')) return true;
   const roles = req.user?.roles;
-  if (Array.isArray(roles) && (roles.includes('admin') || roles.includes('superadmin'))) return true;
+  // 'org_admin' es el rol real; antes se chequeaba 'admin' (inexistente), dejando al
+  // org_admin sin acceso a PII salvo permiso explicito. 'admin' se mantiene por legacy.
+  if (Array.isArray(roles) && (roles.includes('org_admin') || roles.includes('admin') || roles.includes('superadmin'))) return true;
   return false;
 }
 

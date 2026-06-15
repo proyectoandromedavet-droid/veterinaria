@@ -12,7 +12,9 @@
           @input="emit('search-patients', $event.target.value)"
           autocomplete="off"
         />
-        <div v-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
+        <div v-if="patientSearching" class="autocomplete autocomplete--msg">&#x23F3; Buscando pacientes&#x2026;</div>
+        <div v-else-if="patientSearchError" class="autocomplete autocomplete--msg autocomplete--error">&#x26A0; {{ patientSearchError }}</div>
+        <div v-else-if="patientResults.length" class="autocomplete" role="listbox" :aria-label="t('common.searchResults')">
           <button
             v-for="pt in patientResults"
             :key="pt.id"
@@ -27,6 +29,7 @@
             <span class="autocomplete__owner">- {{ pt.primary_owner || '' }}</span>
           </button>
         </div>
+        <div v-else-if="patientSearched && !form.patientId" class="autocomplete autocomplete--msg">Sin resultados para &#x201C;{{ patientSearch }}&#x201D;</div>
         <div v-if="form.patientId" class="selected-patient">&#x2705; {{ selectedPatientLabel }}</div>
         <span v-if="errors.patientId" class="field-error">{{ errors.patientId }}</span>
       </div>
@@ -241,6 +244,9 @@ const props = defineProps({
   loadingHistory: Boolean,
   patientResults: { type: Array, required: true },
   patientSearch: { type: String, required: true },
+  patientSearching: { type: Boolean, default: false },
+  patientSearchError: { type: String, default: '' },
+  patientSearched: { type: Boolean, default: false },
   saving: Boolean,
   selectedPatientLabel: { type: String, required: true },
 })
@@ -254,3 +260,15 @@ function petEmoji(species) {
   return map[sl] || '\u{1F43E}'
 }
 </script>
+
+<style scoped>
+/* .autocomplete base (position/fondo/borde) viene de main.css global; acá solo el variante mensaje */
+.autocomplete--msg {
+  padding: 10px 13px;
+  font-size: 0.85rem;
+  color: var(--text-3);
+}
+.autocomplete--error {
+  color: var(--danger);
+}
+</style>

@@ -47,8 +47,12 @@ const postPrescriptions = [
   validate,
   async (req, res, next) => {
     try {
+      // Roles habilitados para prescribir. Incluye 'veterinarian' (rol real) además de
+      // 'vet' (legacy); el check anterior solo aceptaba 'vet'/'admin', bloqueando a los
+      // veterinarios reales -> 403 al guardar una evolución con receta.
+      const VET_RX_ROLES = ['veterinarian', 'vet', 'tele_vet', 'surgeon', 'org_admin', 'superadmin'];
       const userRoles = req.user.roles || [];
-      if (!userRoles.includes('vet') && !userRoles.includes('admin') && !userRoles.includes('superadmin') && !userRoles.includes('org_admin')) {
+      if (!userRoles.some((role) => VET_RX_ROLES.includes(role))) {
         return R.forbidden(res, 'Solo veterinarios pueden crear prescripciones');
       }
 

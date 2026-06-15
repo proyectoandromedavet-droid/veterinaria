@@ -129,6 +129,9 @@
                 :loading-history="loadingHistory"
                 :patient-results="patientResults"
                 :patient-search="patientSearch"
+                :patient-searching="patientSearching"
+                :patient-search-error="patientSearchError"
+                :patient-searched="patientSearched"
                 :saving="saving"
                 :selected-patient-label="selectedPatientLabel"
                 @search-patients="handleSearchPatients"
@@ -515,6 +518,9 @@ function statusLabel(s) {
 // Patient autocomplete
 const patientSearch        = ref('')
 const patientResults       = ref([])
+const patientSearching     = ref(false)
+const patientSearchError   = ref('')
+const patientSearched      = ref(false)
 const selectedPatientLabel = ref('')
 const loadingHistory       = ref(false)
 let patientTimer = null
@@ -523,13 +529,21 @@ async function searchPatients() {
   clearTimeout(patientTimer)
   form.patientId = ''
   selectedPatientLabel.value = ''
-  if (patientSearch.value.length < 2) { patientResults.value = []; return }
+  patientSearchError.value = ''
+  const q = patientSearch.value.trim()
+  if (q.length < 2) { patientResults.value = []; patientSearched.value = false; patientSearching.value = false; return }
+  patientSearching.value = true
   patientTimer = setTimeout(async () => {
     try {
-      patientResults.value = await searchPatientsRequest(patientSearch.value)
+      patientResults.value = await searchPatientsRequest(q)
+      patientSearched.value = true
     } catch (error) {
-      logError('evoluciones.searchPatients', error, { search: patientSearch.value })
+      logError('evoluciones.searchPatients', error, { search: q })
       patientResults.value = []
+      patientSearched.value = true
+      patientSearchError.value = extractEvolutionError(error, 'No se pudo buscar pacientes. Reintentá en unos segundos.')
+    } finally {
+      patientSearching.value = false
     }
   }, 300)
 }
@@ -545,12 +559,18 @@ async function selectPatient(pt) {
   patientSearch.value = pt.name
   patientResults.value = []
 
+  // TAB 0 (Datos generales) trae datos del paciente: peso y condición corporal actuales.
+  if (pt.weight_kg != null && pt.weight_kg !== '') form.weightKg = Number(pt.weight_kg)
+  if (pt.body_condition_score != null && pt.body_condition_score !== '') form.bodyConditionScore = Number(pt.body_condition_score)
+
+  // TAB 1 (Anamnesis) trae el historial del paciente (vacunas, desparasitación, cirugías).
+  // Son campos de texto: usar '' como fallback, no [].
   loadingHistory.value = true
   try {
     const history = await loadPatientHistoryRequest(pt.id)
-    form.vaccinationHistory = history?.vaccinationHistory ?? []
-    form.dewormingHistory = history?.dewormingHistory ?? []
-    form.previousSurgeries = history?.previousSurgeries ?? []
+    form.vaccinationHistory = history?.vaccinationHistory ?? ''
+    form.dewormingHistory = history?.dewormingHistory ?? ''
+    form.previousSurgeries = history?.previousSurgeries ?? ''
   } catch (error) {
     logError('evoluciones.loadHistory', error, { patientId: pt?.id })
   }
