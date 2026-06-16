@@ -284,6 +284,7 @@ async function anonymizeClient (clientId, orgId, requestedBy) {
          phone          = NULL,
          dni            = NULL,
          document_number = NULL,
+         document_number_hash = NULL,
          address        = NULL,
          city           = NULL,
          notes          = NULL,

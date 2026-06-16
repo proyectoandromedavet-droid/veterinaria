@@ -119,7 +119,12 @@ router.get('/alerts', requireInternalSig, fromHeaders, requireOrgContext, requir
   } catch (e) { next(e); }
 });
 
-router.post('/alerts/scan', fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
+// SEC: requireInternalSig faltaba aqui (a diferencia de /export y /alerts). Sin la firma
+// interna del gateway, fromHeaders confiaria en X-User-Roles/X-Org-Id spoofeables si el
+// servicio fuese alcanzable directo -> permitiria disparar scans pesados (DoS) y poblar
+// security_alerts. El cron interno llama scanSuspiciousAccessPatterns() como funcion, no
+// por HTTP, asi que agregar la firma no afecta al scan programado.
+router.post('/alerts/scan', requireInternalSig, fromHeaders, requireOrgContext, requireAdminRole, async (req, res, next) => {
   try {
     const generated = await scanSuspiciousAccessPatterns(parseInt(req.body?.windowMinutes || '1', 10));
     return R.ok(res, { generated });

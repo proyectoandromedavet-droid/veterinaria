@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const { decrypt, hashForSearch } = require('../../../../shared/encryption');
 const { db, R, logBranchesError } = require('./branches.common');
 
 function maskEmail(email) {
@@ -82,12 +83,17 @@ router.get('/search/clients', async (req, res, next) => {
     const search = `%${q}%`;
     const pii = hasPiiAccess(req);
 
-    // Sin acceso PII no se permite buscar por email/teléfono/DNI para evitar oracle attack sobre datos sensibles
-    const piiFilter = pii ? 'OR cl.email LIKE :s OR cl.phone LIKE :s OR cl.dni LIKE :s' : '';
+    // Sin acceso PII no se permite buscar por email/teléfono/DNI para evitar oracle attack.
+    // El DNI vive cifrado en `document_number` (+ blind index `document_number_hash`); la
+    // columna legacy `dni` está en texto plano y en desuso, así que NO se lee ni se filtra.
+    // Búsqueda por DNI = match exacto contra el blind index (no expone el valor).
+    const piiFilter = pii ? 'OR cl.email LIKE :s OR cl.phone LIKE :s OR cl.document_number_hash = :docHash' : '';
+    const params = { orgId: req.user.orgId, s: search, limit: parsedLimit, offset };
+    if (pii) params.docHash = hashForSearch(q);
 
     const rows = await db.query(
       `SELECT cl.id, CONCAT(cl.first_name,' ',cl.last_name) AS client_name,
-              cl.email, cl.phone, cl.dni,
+              cl.email, cl.phone, cl.document_number,
               b.id AS branch_id, b.name AS branch_name,
               COUNT(DISTINCT po.patient_id) AS patient_count
        FROM clients cl
@@ -98,14 +104,23 @@ router.get('/search/clients', async (req, res, next) => {
          AND cl.is_active = TRUE
        GROUP BY cl.id ORDER BY client_name
        LIMIT :limit OFFSET :offset`,
-      { orgId: req.user.orgId, s: search, limit: parsedLimit, offset }
+      params
     );
-    const safeRows = rows.map(r => ({
-      ...r,
-      email: pii ? r.email : maskEmail(r.email),
-      phone: pii ? r.phone : maskPhone(r.phone),
-      dni:   pii ? r.dni : (r.dni ? '***' : null),
-    }));
+    // document_number cifrado en reposo: descifrar y exponer como `dni` (contrato de la API),
+    // enmascarado si el usuario no tiene acceso PII. Nunca se devuelve el ciphertext crudo.
+    const safeRows = rows.map(r => {
+      const docNum = r.document_number ? decrypt(r.document_number) : null;
+      return {
+        id: r.id,
+        client_name: r.client_name,
+        branch_id: r.branch_id,
+        branch_name: r.branch_name,
+        patient_count: r.patient_count,
+        email: pii ? r.email : maskEmail(r.email),
+        phone: pii ? r.phone : maskPhone(r.phone),
+        dni:   pii ? docNum : (docNum ? '****' : null),
+      };
+    });
     return R.ok(res, safeRows, { query: q });
   } catch (e) {
     logBranchesError('GET /branches/search/clients', e, { orgId: req.user?.orgId, query: req.query });
