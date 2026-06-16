@@ -67,7 +67,13 @@ router.delete('/:id/gdpr/consents', async (req, res, next) => {
   }
 });
 
-router.get('/:id/gdpr/export', async (req, res, next) => {
+// SEC: el export entrega TODA la PII descifrada y SIN enmascarar (DNI real, dossier
+// completo). Es un GET, asi que guardWrite no aplica y el mount solo exige 'clients:read'
+// (lo tiene casi cualquier rol: groomer, lab_tech, recepcion...). Sin este gate, un rol
+// de baja jerarquia podia saltear el enmascarado de PII via el endpoint de export.
+// 'clients:pii' = mismo privilegio que ver PII sin mascara (org_admin/branch_manager/
+// superadmin via clients:* / *).
+router.get('/:id/gdpr/export', requirePerm('clients:pii'), async (req, res, next) => {
   try {
     const data = await gdpr.exportPersonalData(req.params.id, req.user.orgId);
     await db.query(
